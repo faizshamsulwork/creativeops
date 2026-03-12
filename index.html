@@ -1,120 +1,138 @@
-<script>
-    let db = JSON.parse(localStorage.getItem('at_db')) || [];
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adtechinno | Creative Ops</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-secondary: #8c8c8c; --muji-border: #e6e6e6; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; min-height: 100vh; }
+        .sidebar { width: 240px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; }
+        .logo { font-weight: 600; font-size: 1.1rem; letter-spacing: 3px; margin-bottom: 50px; }
+        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: var(--muji-secondary); margin-bottom: 5px; border-radius: 4px; }
+        .nav-item:hover, .nav-item.active { background: #f5f5f5; color: var(--muji-text); font-weight: 600; }
+        .main-content { margin-left: 240px; padding: 60px 80px; width: 100%; box-sizing: border-box; }
+        .page { display: none; }
+        .page.active { display: block; }
+        .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .column { background: #f9f9f9; padding: 20px; border-radius: 8px; min-height: 500px; }
+        .column-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muji-secondary); margin-bottom: 20px; display: block; }
+        .task-card { background: white; padding: 15px; border: 1px solid var(--muji-border); border-radius: 6px; margin-bottom: 12px; font-size: 0.9rem; }
+        .form-group { margin-bottom: 20px; max-width: 500px; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--muji-border); border-radius: 4px; margin-top: 8px; font-family: inherit; }
+        .btn-muji { background: var(--muji-text); color: white; border: none; padding: 12px 25px; border-radius: 4px; cursor: pointer; }
+        .btn-next { background: none; border: 1px solid var(--muji-border); padding: 5px 10px; font-size: 0.75rem; cursor: pointer; margin-top: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
 
-    // --- Kredensial Telegram Faiz ---
-    const TELEGRAM_BOT_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
-    const TELEGRAM_CHAT_ID = '5964232885'; 
+    <div class="sidebar">
+        <div class="logo">ADTECHINNO</div>
+        <div class="nav-item active" onclick="showPage('board-page')">Internal Queue</div>
+        <div class="nav-item" onclick="showPage('request-page')">New Request</div>
+        <div class="nav-item" onclick="showPage('settings-page')">Settings</div>
+    </div>
 
-    function showPage(id) {
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
-        if (event && event.currentTarget) event.currentTarget.classList.add('active');
-        if(id === 'board-page') render();
-    }
+    <div class="main-content">
+        <div id="board-page" class="page active">
+            <h1>Creative Operations</h1>
+            <div class="board">
+                <div class="column" id="col-backlog"><span class="column-header">Backlog</span></div>
+                <div class="column" id="col-progress"><span class="column-header">In Progress</span></div>
+                <div class="column" id="col-review"><span class="column-header">Lead Review</span></div>
+            </div>
+        </div>
 
-    const form = document.getElementById('creativeForm');
-    if(form) {
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const pName = document.getElementById('pName').value;
-            const pType = document.getElementById('pType').value;
-            const pBrief = document.getElementById('pBrief').value;
+        <div id="request-page" class="page">
+            <h1>New Request</h1>
+            <div class="form-group">
+                <label>Project Name</label>
+                <input type="text" id="pName">
+            </div>
+            <div class="form-group">
+                <label>Type</label>
+                <select id="pType"><option>Static Image</option><option>Video / Motion</option></select>
+            </div>
+            <div class="form-group">
+                <label>Brief Details</label>
+                <textarea id="pBrief" rows="4"></textarea>
+            </div>
+            <button class="btn-muji" onclick="submitRequest()">Submit & Notify Telegram</button>
+        </div>
 
-            const newReq = {
-                id: Date.now(),
-                name: pName,
-                type: pType,
-                status: 'backlog'
-            };
+        <div id="settings-page" class="page">
+            <h1>Settings</h1>
+            <button class="btn-muji" onclick="localStorage.clear(); location.reload();" style="background:#a94442;">Reset Data</button>
+        </div>
+    </div>
 
-            // 1. Simpan dalam Dashboard LocalStorage
+    <script>
+        const BOT_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
+        const CHAT_ID = '5964232885';
+
+        let db = JSON.parse(localStorage.getItem('at_db')) || [];
+
+        function showPage(id) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            if(id === 'board-page') render();
+        }
+
+        async function submitRequest() {
+            const name = document.getElementById('pName').value;
+            const type = document.getElementById('pType').value;
+            const brief = document.getElementById('pBrief').value;
+
+            if(!name) return alert("Isi nama projek!");
+
+            const newReq = { id: Date.now(), name, type, status: 'backlog' };
             db.push(newReq);
             localStorage.setItem('at_db', JSON.stringify(db));
 
-            // 2. Format Mesej Telegram (Muji Style - Clean & Clear)
-            const mesejTelegram = `
-✨ *NEW CREATIVE REQUEST* ✨
-─────────────────────
-📋 *Project:* ${pName}
-🏷️ *Type:* ${pType}
-📝 *Brief:* ${pBrief}
-
-─────────────────────
-🕒 *Time:* ${new Date().toLocaleString('ms-MY')}
-✅ _Sila semak dashboard Adtechinno untuk tindakan lanjut._
-            `;
+            const text = `🚀 *NEW REQUEST*\n\n📁 *Project:* ${name}\n🎨 *Type:* ${type}\n📝 *Brief:* ${brief}\n\n✅ Semak dashboard Adtechinno!`;
 
             try {
-                const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: TELEGRAM_CHAT_ID,
-                        text: mesejTelegram,
-                        parse_mode: 'Markdown'
-                    })
+                    body: JSON.stringify({ chat_id: CHAT_ID, text: text, parse_mode: 'Markdown' })
                 });
+            } catch (e) { console.error(e); }
 
-                if(response.ok) {
-                    alert("Request Recorded & Telegram Sent!");
-                } else {
-                    alert("Request Saved, but Telegram failed. (Check if you have started the bot)");
-                }
-            } catch (error) {
-                console.error("Error:", error);
-                alert("Network Error: Data saved locally only.");
-            }
-
-            form.reset();
+            document.getElementById('pName').value = '';
+            document.getElementById('pBrief').value = '';
             showPage('board-page');
-        });
-    }
+        }
 
-    function render() {
-        const cols = {
-            backlog: document.getElementById('col-backlog'),
-            progress: document.getElementById('col-progress'),
-            review: document.getElementById('col-review')
-        };
+        function render() {
+            const cols = {
+                backlog: document.getElementById('col-backlog'),
+                progress: document.getElementById('col-progress'),
+                review: document.getElementById('col-review')
+            };
+            if(!cols.backlog) return;
+            Object.values(cols).forEach(c => c.innerHTML = `<span class="column-header">${c.id.split('-')[1]}</span>`);
 
-        if(!cols.backlog) return;
+            db.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'task-card';
+                card.innerHTML = `<strong>${item.name}</strong><small>${item.type}</small><br>
+                ${item.status !== 'review' ? `<button class="btn-next" onclick="next(${item.id})">Next →</button>` : '⭐ Lead Review'}`;
+                cols[item.status].appendChild(card);
+            });
+        }
 
-        Object.values(cols).forEach(c => {
-            c.innerHTML = `<span class="column-header">${c.id.split('-')[1].toUpperCase()}</span>`;
-        });
-
-        db.forEach(item => {
-            const card = document.createElement('div');
-            card.className = 'task-card';
-            card.innerHTML = `
-                <strong>${item.name}</strong>
-                <span>${item.type}</span><br>
-                ${item.status !== 'review' ? 
-                    `<button class="btn-next" onclick="next(${item.id})">Move to ${item.status === 'backlog' ? 'Progress' : 'Review'} →</button>` : 
-                    '<div class="tag" style="background:#dcfce7; color:#166534;">⭐ Ready for Review</div>'}
-                <button onclick="deleteTask(${item.id})" style="border:none; background:none; color:#ff4d4d; font-size:0.7rem; cursor:pointer; margin-left:10px;">Delete</button>
-            `;
-            cols[item.status].appendChild(card);
-        });
-    }
-
-    function next(id) {
-        const i = db.findIndex(x => x.id == id);
-        if(db[i].status === 'backlog') db[i].status = 'progress';
-        else if(db[i].status === 'progress') db[i].status = 'review';
-        localStorage.setItem('at_db', JSON.stringify(db));
-        render();
-    }
-
-    function deleteTask(id) {
-        if(confirm("Confirm delete request?")) {
-            db = db.filter(x => x.id != id);
+        function next(id) {
+            const i = db.findIndex(x => x.id == id);
+            if(db[i].status === 'backlog') db[i].status = 'progress';
+            else if(db[i].status === 'progress') db[i].status = 'review';
             localStorage.setItem('at_db', JSON.stringify(db));
             render();
         }
-    }
 
-    window.onload = render;
-</script>
+        window.onload = render;
+    </script>
+</body>
+</html>
