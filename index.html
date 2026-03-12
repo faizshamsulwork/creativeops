@@ -3,67 +3,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Ops</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>Adtechinno | Creative Ops Portal</title>
     <style>
-        :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-secondary: #8c8c8c; --muji-border: #e6e6e6; }
-        body { font-family: 'Inter', sans-serif; background-color: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; min-height: 100vh; }
-        .sidebar { width: 240px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; }
-        .logo { font-weight: 600; font-size: 1.1rem; letter-spacing: 3px; margin-bottom: 50px; }
-        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: var(--muji-secondary); margin-bottom: 5px; border-radius: 4px; }
-        .nav-item:hover, .nav-item.active { background: #f5f5f5; color: var(--muji-text); font-weight: 600; }
-        .main-content { margin-left: 240px; padding: 60px 80px; width: 100%; box-sizing: border-box; }
+        :root {
+            --muji-bg: #fdfcfb;
+            --muji-text: #3c3c3c;
+            --muji-border: #e6e6e6;
+            --muji-accent: #7a8471; /* Sage Green */
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; }
+        .sidebar { width: 250px; border-right: 1px solid var(--muji-border); height: 100vh; padding: 40px 20px; position: fixed; background: #fff; }
+        .main-content { margin-left: 250px; padding: 60px; width: 100%; }
         .page { display: none; }
         .page.active { display: block; }
-        .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-        .column { background: #f9f9f9; padding: 20px; border-radius: 8px; min-height: 500px; }
-        .column-header { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muji-secondary); margin-bottom: 20px; display: block; }
-        .task-card { background: white; padding: 15px; border: 1px solid var(--muji-border); border-radius: 6px; margin-bottom: 12px; font-size: 0.9rem; }
-        .form-group { margin-bottom: 20px; max-width: 500px; }
-        input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--muji-border); border-radius: 4px; margin-top: 8px; font-family: inherit; }
-        .btn-muji { background: var(--muji-text); color: white; border: none; padding: 12px 25px; border-radius: 4px; cursor: pointer; }
-        .btn-next { background: none; border: 1px solid var(--muji-border); padding: 5px 10px; font-size: 0.75rem; cursor: pointer; margin-top: 10px; border-radius: 4px; }
+        .card { background: white; border: 1px solid var(--muji-border); padding: 25px; border-radius: 8px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-size: 0.8rem; margin-bottom: 8px; color: #888; text-transform: uppercase; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--muji-border); border-radius: 4px; font-family: inherit; }
+        .btn-black { background: #000; color: #fff; border: none; padding: 12px 25px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: 600; }
+        .status-tag { font-size: 0.7rem; padding: 3px 10px; border-radius: 12px; background: #eee; }
     </style>
 </head>
 <body>
 
     <div class="sidebar">
-        <div class="logo">ADTECHINNO</div>
-        <div class="nav-item active" onclick="showPage('board-page')">Internal Queue</div>
-        <div class="nav-item" onclick="showPage('request-page')">New Request</div>
-        <div class="nav-item" onclick="showPage('settings-page')">Settings</div>
+        <h2 style="letter-spacing: 2px;">ADTECHINNO</h2>
+        <div onclick="showPage('dashboard')" style="cursor:pointer; margin-bottom: 15px;">📊 Queue Board</div>
+        <div onclick="showPage('request')" style="cursor:pointer; margin-bottom: 15px;">➕ New Request</div>
     </div>
 
     <div class="main-content">
-        <div id="board-page" class="page active">
-            <h1>Creative Operations</h1>
-            <div class="board">
-                <div class="column" id="col-backlog"><span class="column-header">Backlog</span></div>
-                <div class="column" id="col-progress"><span class="column-header">In Progress</span></div>
-                <div class="column" id="col-review"><span class="column-header">Lead Review</span></div>
-            </div>
+        <div id="dashboard" class="page active">
+            <h1>Creative Queue</h1>
+            <div id="requestList"></div>
         </div>
 
-        <div id="request-page" class="page">
-            <h1>New Request</h1>
-            <div class="form-group">
-                <label>Project Name</label>
-                <input type="text" id="pName">
+        <div id="request" class="page">
+            <h1>New Creative Brief</h1>
+            <div class="card" style="max-width: 600px;">
+                <div class="form-group">
+                    <label>Client Name</label>
+                    <input type="text" id="clientName" placeholder="Contoh: Cagamas">
+                </div>
+                <div class="form-group">
+                    <label>Creative Type</label>
+                    <select id="assetType">
+                        <option value="Static">Static Image</option>
+                        <option value="Video">Video / Reels</option>
+                        <option value="Carousel">Carousel Post</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Deadline</label>
+                    <input type="date" id="deadline">
+                </div>
+                <div class="form-group">
+                    <label>Creative Brief / Copywriting</label>
+                    <textarea id="brief" rows="5" placeholder="Masukkan headline, visual direction, dll..."></textarea>
+                </div>
+                <button class="btn-black" onclick="hantarRequest()">Submit Request & Notify Faiz</button>
             </div>
-            <div class="form-group">
-                <label>Type</label>
-                <select id="pType"><option>Static Image</option><option>Video / Motion</option></select>
-            </div>
-            <div class="form-group">
-                <label>Brief Details</label>
-                <textarea id="pBrief" rows="4"></textarea>
-            </div>
-            <button class="btn-muji" onclick="submitRequest()">Submit & Notify Telegram</button>
-        </div>
-
-        <div id="settings-page" class="page">
-            <h1>Settings</h1>
-            <button class="btn-muji" onclick="localStorage.clear(); location.reload();" style="background:#a94442;">Reset Data</button>
         </div>
     </div>
 
@@ -71,68 +70,63 @@
         const BOT_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
         const CHAT_ID = '5964232885';
 
-        let db = JSON.parse(localStorage.getItem('at_db')) || [];
-
         function showPage(id) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.getElementById(id).classList.add('active');
-            if(id === 'board-page') render();
+            if(id === 'dashboard') paparkanSenarai();
         }
 
-        async function submitRequest() {
-            const name = document.getElementById('pName').value;
-            const type = document.getElementById('pType').value;
-            const brief = document.getElementById('pBrief').value;
+        async function hantarRequest() {
+            const data = {
+                client: document.getElementById('clientName').value,
+                type: document.getElementById('assetType').value,
+                date: document.getElementById('deadline').value,
+                brief: document.getElementById('brief').value,
+                status: 'Backlog'
+            };
 
-            if(!name) return alert("Isi nama projek!");
+            if(!data.client || !data.date) return alert("Sila lengkapkan maklumat!");
 
-            const newReq = { id: Date.now(), name, type, status: 'backlog' };
-            db.push(newReq);
-            localStorage.setItem('at_db', JSON.stringify(db));
+            // Simpan ke LocalStorage
+            let senarai = JSON.parse(localStorage.getItem('adtech_requests')) || [];
+            senarai.push(data);
+            localStorage.setItem('adtech_requests', JSON.stringify(senarai));
 
-            const text = `🚀 *NEW REQUEST*\n\n📁 *Project:* ${name}\n🎨 *Type:* ${type}\n📝 *Brief:* ${brief}\n\n✅ Semak dashboard Adtechinno!`;
-
+            // Hantar ke Telegram
+            const mesej = `🚀 *NEW CREATIVE REQUEST*\n\n📁 Client: ${data.client}\n🎨 Type: ${data.type}\n📅 Deadline: ${data.date}\n📝 Brief: ${data.brief}`;
+            
             try {
                 await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ chat_id: CHAT_ID, text: text, parse_mode: 'Markdown' })
+                    body: JSON.stringify({ chat_id: CHAT_ID, text: mesej, parse_mode: 'Markdown' })
                 });
+                alert("Request berjaya dihantar ke Telegram!");
             } catch (e) { console.error(e); }
 
-            document.getElementById('pName').value = '';
-            document.getElementById('pBrief').value = '';
-            showPage('board-page');
+            showPage('dashboard');
         }
 
-        function render() {
-            const cols = {
-                backlog: document.getElementById('col-backlog'),
-                progress: document.getElementById('col-progress'),
-                review: document.getElementById('col-review')
-            };
-            if(!cols.backlog) return;
-            Object.values(cols).forEach(c => c.innerHTML = `<span class="column-header">${c.id.split('-')[1]}</span>`);
-
-            db.forEach(item => {
-                const card = document.createElement('div');
-                card.className = 'task-card';
-                card.innerHTML = `<strong>${item.name}</strong><small>${item.type}</small><br>
-                ${item.status !== 'review' ? `<button class="btn-next" onclick="next(${item.id})">Next →</button>` : '⭐ Lead Review'}`;
-                cols[item.status].appendChild(card);
+        function paparkanSenarai() {
+            const list = document.getElementById('requestList');
+            const senarai = JSON.parse(localStorage.getItem('adtech_requests')) || [];
+            list.innerHTML = senarai.length ? '' : '<p>Tiada request buat masa ini.</p>';
+            
+            senarai.forEach((req, index) => {
+                list.innerHTML += `
+                    <div class="card">
+                        <div style="display:flex; justify-content:space-between;">
+                            <strong>${req.client} - ${req.type}</strong>
+                            <span class="status-tag">${req.status}</span>
+                        </div>
+                        <p style="font-size:0.9rem; color:#666;">${req.brief}</p>
+                        <small>Due: ${req.date}</small>
+                    </div>
+                `;
             });
         }
 
-        function next(id) {
-            const i = db.findIndex(x => x.id == id);
-            if(db[i].status === 'backlog') db[i].status = 'progress';
-            else if(db[i].status === 'progress') db[i].status = 'review';
-            localStorage.setItem('at_db', JSON.stringify(db));
-            render();
-        }
-
-        window.onload = render;
+        window.onload = paparkanSenarai;
     </script>
 </body>
 </html>
