@@ -1,168 +1,103 @@
-<!DOCTYPE html>
-<html lang="ms">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Engine v7</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    <style>
-        :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-border: #e6e6e6; }
-        body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; flex-direction: row; min-height: 100vh; }
-        .sidebar { width: 260px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; }
-        .logo { font-weight: 700; letter-spacing: 3px; margin-bottom: 40px; font-size: 1.1rem; text-align: center; }
-        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #888; border-radius: 6px; margin-bottom: 5px; }
-        .nav-item.active { background: #f5f5f5; color: #000; font-weight: 600; }
-        .main-content { margin-left: 260px; padding: 40px; width: 100%; box-sizing: border-box; }
-        .page { display: none; max-width: 900px; margin: 0 auto; }
-        .page.active { display: block; animation: fadeIn 0.4s ease; }
-        .card { background: white; border: 1px solid var(--muji-border); padding: 25px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
-        .grid-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin-bottom: 30px; }
-        .stat-card { background: white; border: 1px solid var(--muji-border); padding: 12px; border-radius: 8px; text-align: center; font-size: 0.7rem; }
-        label { display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 8px; color: #666; text-transform: uppercase; }
-        input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--muji-border); border-radius: 6px; font-size: 0.9rem; margin-bottom: 15px; box-sizing: border-box; font-family: inherit; }
-        .btn-submit { background: #000; color: #fff; border: none; padding: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 0.9rem; }
-        .badge { font-size: 0.65rem; padding: 4px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; }
-        .status-pending { background: #fff7ed; color: #9a3412; }
-        .status-approved { background: #f0fdf4; color: #166534; }
-        @media (max-width: 768px) {
-            body { flex-direction: column; }
-            .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; border-bottom: 1px solid var(--muji-border); }
-            .nav-container { display: flex; flex-direction: row; overflow-x: auto; }
-            .main-content { margin-left: 0; padding: 20px; }
-            .grid-stats { grid-template-columns: repeat(3, 1fr); }
+<script>
+    const SUPABASE_URL = 'https://iesotisvudyalggyrgxaq.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imllc290aXN2dWR5YWxneXJneGFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMzE2NTgsImV4cCI6MjA4ODkwNzY1OH0.-hxy9X7gxce8XvTyvHKGXtLilDujhZUSo_Twx2HXv_U';
+    
+    // Inisialisasi Supabase dengan error handling
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const myTeam = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Steven", "MY-Aaron", "MY-Faiz"];
+    const idTeam = ["ID-Miftahul Fikri", "ID-Youke Yap", "ID-Annisya Ninis"];
+    const PLAYBOOK_LINK = "https://docs.google.com/presentation/d/1pd63VK-tqOfVlfLSJs3KRLAAdSdOVjNvpSuZFbxoEYo/copy";
+
+    async function showPage(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        if(id === 'workload') fetchAndRender();
+    }
+
+    async function submitRequest() {
+        const client = document.getElementById('pClient').value;
+        const deadline = document.getElementById('pDeadline').value;
+        if(!client || !deadline) return alert("Sila isi maklumat!");
+
+        try {
+            const { count } = await _supabase.from('creative_ops').select('*', { count: 'exact', head: true });
+            const jobID = `AT26-${((count || 0) + 1).toString().padStart(3, '0')}`;
+
+            const { error } = await _supabase.from('creative_ops').insert([{
+                job_id: jobID, client, type: document.getElementById('pType').value,
+                size: document.getElementById('pSize').value, deadline,
+                brief: document.getElementById('pBrief').value, status: 'pending', assign: 'Unassigned'
+            }]);
+
+            if(error) throw error;
+            alert(`Berjaya! Job ID: ${jobID}`);
+            showPage('workload');
+        } catch (err) {
+            alert("Ralat: Cuba tutup AdBlocker anda. Detail: " + err.message);
         }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
-</head>
-<body>
+    }
 
-    <div class="sidebar">
-        <div class="logo">ADTECHINNO</div>
-        <div class="nav-container">
-            <div class="nav-item active" onclick="showPage('workload')">Workload Board</div>
-            <div class="nav-item" onclick="showPage('request')">New Request</div>
-        </div>
-    </div>
+    async function assignWork(id, jobID) {
+        const designer = document.getElementById(`assign-${id}`).value;
+        if(designer === 'Unassigned') return alert("Pilih designer!");
 
-    <div class="main-content">
-        <div id="workload" class="page active">
-            <h1>Creative Workload</h1>
-            <div class="grid-stats" id="teamStats"></div>
-            <h2 style="font-weight: 500; font-size: 1.1rem;">Project Queue</h2>
-            <div id="projectList">Menghubungkan ke database...</div>
-        </div>
-
-        <div id="request" class="page">
-            <h1>Creative Request Form</h1>
-            <div class="card">
-                <label>Client & Project Name</label>
-                <input type="text" id="pClient" placeholder="e.g. Cagamas - Raya Ads">
-                <label>Creative Type</label>
-                <select id="pType">
-                    <option>Static Graphic</option><option>Carousel</option><option>Short Video/Reels</option><option>Copywriting Only</option>
-                </select>
-                <label>Platform / Size</label>
-                <input type="text" id="pSize" placeholder="e.g. 1080x1080">
-                <label>Deadline</label>
-                <input type="date" id="pDeadline">
-                <label>Brief Details</label>
-                <textarea id="pBrief" rows="5" placeholder="Masukkan detail brief..."></textarea>
-                <button class="btn-submit" onclick="submitRequest()">Submit Request</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const SUPABASE_URL = 'https://iesotisvudyalggyrgxaq.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imllc290aXN2dWR5YWxneXJneGFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMzE2NTgsImV4cCI6MjA4ODkwNzY1OH0.-hxy9X7gxce8XvTyvHKGXtLilDujhZUSo_Twx2HXv_U';
-        
-        // Initialize Supabase correctly
-        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        const myTeam = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Steven", "MY-Aaron", "MY-Faiz"];
-        const idTeam = ["ID-Miftahul Fikri", "ID-Youke Yap", "ID-Annisya Ninis"];
-        const PLAYBOOK_LINK = "https://docs.google.com/presentation/d/1pd63VK-tqOfVlfLSJs3KRLAAdSdOVjNvpSuZFbxoEYo/copy";
-
-        async function showPage(id) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-            if(id === 'workload') fetchAndRender();
+        try {
+            const { error } = await _supabase.from('creative_ops').update({ assign: designer, status: 'approved' }).eq('id', id);
+            if(error) throw error;
+            const msg = `*CREATIVE PLAYBOOK READY*\n\nJob ID: ${jobID}\nDesigner: ${designer}\nPlaybook: ${PLAYBOOK_LINK}`;
+            navigator.clipboard.writeText(msg);
+            alert("Assigned! WhatsApp message copied.");
+            fetchAndRender();
+        } catch (err) {
+            alert("Ralat: " + err.message);
         }
+    }
 
-        async function submitRequest() {
-            const client = document.getElementById('pClient').value;
-            const deadline = document.getElementById('pDeadline').value;
-            if(!client || !deadline) return alert("Sila isi maklumat!");
-
-            try {
-                const { count } = await _supabase.from('creative_ops').select('*', { count: 'exact', head: true });
-                const jobID = `AT26-${((count || 0) + 1).toString().padStart(3, '0')}`;
-
-                const { error } = await _supabase.from('creative_ops').insert([{
-                    job_id: jobID, client, type: document.getElementById('pType').value,
-                    size: document.getElementById('pSize').value, deadline,
-                    brief: document.getElementById('pBrief').value, status: 'pending', assign: 'Unassigned'
-                }]);
-
-                if(error) throw error;
-                alert(`Request ${jobID} Berjaya!`);
-                showPage('workload');
-            } catch (err) {
-                alert("Ralat: " + err.message);
-            }
+    async function deleteTask(id) {
+        if(!confirm("Betul ke nak padam request ni?")) return;
+        try {
+            const { error } = await _supabase.from('creative_ops').delete().eq('id', id);
+            if(error) throw error;
+            fetchAndRender();
+        } catch (err) {
+            alert("Gagal padam: " + err.message);
         }
+    }
 
-        async function assignWork(id, jobID) {
-            const designer = document.getElementById(`assign-${id}`).value;
-            if(designer === 'Unassigned') return alert("Pilih designer!");
+    async function fetchAndRender() {
+        try {
+            const { data, error } = await _supabase.from('creative_ops').select('*').order('created_at', { ascending: false });
+            if(error) throw error;
 
-            try {
-                const { error } = await _supabase.from('creative_ops').update({ assign: designer, status: 'approved' }).eq('id', id);
-                if(error) throw error;
-                const msg = `*CREATIVE PLAYBOOK READY*\n\nJob ID: ${jobID}\nDesigner: ${designer}\nPlaybook: ${PLAYBOOK_LINK}`;
-                navigator.clipboard.writeText(msg);
-                alert("Assigned! WhatsApp message copied.");
-                fetchAndRender();
-            } catch (err) {
-                alert("Ralat Assign: " + err.message);
-            }
-        }
+            const team = [...myTeam, ...idTeam];
+            document.getElementById('teamStats').innerHTML = team.map(m => `
+                <div class="stat-card"><strong>${data.filter(x => x.assign === m && x.status === 'approved').length}</strong><br><small>${m}</small></div>
+            `).join('');
 
-        async function fetchAndRender() {
-            try {
-                const { data, error } = await _supabase.from('creative_ops').select('*').order('created_at', { ascending: false });
-                if(error) throw error;
-
-                const team = [...myTeam, ...idTeam];
-                document.getElementById('teamStats').innerHTML = team.map(m => `
-                    <div class="stat-card"><strong>${data.filter(x => x.assign === m && x.status === 'approved').length}</strong><br><small>${m}</small></div>
-                `).join('');
-
-                document.getElementById('projectList').innerHTML = data.length ? data.map(item => `
-                    <div class="card">
-                        <div style="display:flex; justify-content:space-between;">
-                            <div><small>${item.job_id}</small><h3 style="margin:0;">${item.client}</h3></div>
-                            <span class="badge status-${item.status}">${item.status}</span>
-                        </div>
-                        <p style="font-size:0.8rem; color:#666;">${item.type} | Due: ${item.deadline}</p>
-                        ${item.status === 'pending' ? `
-                            <select id="assign-${item.id}" style="margin-top:10px; padding:10px; font-size:0.8rem;">
-                                <option value="Unassigned">-- Assign Designer --</option>
-                                <optgroup label="Malaysia">${myTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
-                                <optgroup label="Indonesia">${idTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
-                            </select>
-                            <button class="btn-submit" style="padding:10px; font-size:0.75rem; margin-top:5px;" onclick="assignWork(${item.id}, '${item.job_id}')">Approve & Assign</button>
-                        ` : `<p style="font-size:0.75rem; background:#f9f9f9; padding:10px; border-radius:5px;"><strong>Assigned to:</strong> ${item.assign}</p>`}
+            document.getElementById('projectList').innerHTML = data.length ? data.map(item => `
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between;">
+                        <div><small>${item.job_id}</small><h3 style="margin:0;">${item.client}</h3></div>
+                        <span class="badge status-${item.status}">${item.status}</span>
+                    </div>
+                    <p style="font-size:0.8rem; color:#666;">${item.type} | Due: ${item.deadline}</p>
+                    ${item.status === 'pending' ? `
+                        <select id="assign-${item.id}" style="margin-top:10px; padding:10px; font-size:0.8rem;">
+                            <option value="Unassigned">-- Assign Designer --</option>
+                            <optgroup label="Malaysia">${myTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
+                            <optgroup label="Indonesia">${idTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
+                        </select>
+                        <button class="btn-submit" style="padding:10px; font-size:0.75rem; margin-top:5px;" onclick="assignWork(${item.id}, '${item.job_id}')">Approve & Assign</button>
+                    ` : `<p style="font-size:0.75rem; background:#f9f9f9; padding:10px; border-radius:5px;"><strong>Assigned to:</strong> ${item.assign}</p>`}
+                    <button onclick="deleteTask(${item.id})" style="border:none; background:none; color:red; font-size:0.6rem; cursor:pointer; margin-top:10px; opacity:0.5;">Delete Request</button>
                 </div>
-                `).join('') : '<p>Tiada projek aktif.</p>';
-            } catch (err) {
-                document.getElementById('projectList').innerHTML = "Gagal memuat data: " + err.message;
-            }
+            `).join('') : '<p>Tiada projek aktif.</p>';
+        } catch (err) {
+            document.getElementById('projectList').innerHTML = "Gagal memuat data: " + err.message;
         }
+    }
 
-        window.onload = fetchAndRender;
-    </script>
-</body>
-</html>
+    window.onload = fetchAndRender;
+</script>
