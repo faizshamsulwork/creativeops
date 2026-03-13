@@ -33,36 +33,20 @@
             --mesh-1: rgba(56, 189, 248, 0.2); --mesh-2: rgba(139, 92, 246, 0.2); --mesh-3: rgba(16, 185, 129, 0.15); --mesh-bg: #0f172a;
         }
 
-        body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; min-height: 100vh; transition: background 0.3s, color 0.3s; overflow-x: hidden; }
-        body.no-scroll { overflow: hidden; }
-
-        /* 🌟 NOISE / GRAIN OVERLAY 🌟 */
-        .noise-overlay {
-            position: fixed; top: -50%; left: -50%; width: 200%; height: 200%;
-            pointer-events: none; z-index: 9998; opacity: 0.04;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-            animation: noiseAnim 8s steps(10) infinite;
+        /* 🌟 THEME MORPH VIEW TRANSITIONS 🌟 */
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+            animation: none;
+            mix-blend-mode: normal;
         }
-        [data-theme="dark"] .noise-overlay { opacity: 0.03; }
-        @keyframes noiseAnim {
-            0% { transform: translate(0,0); } 10% { transform: translate(-5%, -5%); }
-            20% { transform: translate(-10%, 5%); } 30% { transform: translate(5%, -10%); }
-            40% { transform: translate(-5%, 15%); } 50% { transform: translate(-10%, 5%); }
-            60% { transform: translate(15%, 0); } 70% { transform: translate(0, 10%); }
-            80% { transform: translate(-15%, 0); } 90% { transform: translate(10%, 5%); }
-            100% { transform: translate(5%, 0); }
-        }
-
-        /* 🌟 LIQUID / GOOEY TRANSITION 🌟 */
-        .liquid-bg {
-            position: fixed; bottom: -20vh; left: 0; width: 100%; height: 140vh;
-            background: var(--text-strong); z-index: 2500;
-            border-radius: 50% 50% 0 0; transform: translateY(100%);
-            pointer-events: none;
-        }
+        ::view-transition-old(root) { z-index: 1; }
+        ::view-transition-new(root) { z-index: 2; }
 
         /* MAGNETIC CLASS FOR BUTTONS */
         .magnetic { display: inline-block; will-change: transform; }
+
+        body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; min-height: 100vh; overflow-x: hidden; }
+        body.no-scroll { overflow: hidden; }
 
         /* INTRO PAGE */
         .intro-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background-color: var(--mesh-bg); z-index: 9999; display: flex; justify-content: center; align-items: center; overflow: hidden; transition: opacity 1s cubic-bezier(0.85, 0, 0.15, 1); }
@@ -126,6 +110,8 @@
         .welcome-banner { margin-bottom: 30px; border-bottom: 1px solid var(--border-main); padding-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 15px; }
         .welcome-text h1 { color: var(--text-strong); margin: 0 0 5px 0; font-size: 1.8rem; letter-spacing: -0.02em; }
         .welcome-text p { margin: 0; color: var(--text-muted); font-size: 0.95rem; }
+        .adaptive-note { color: var(--accent); font-size: 0.8rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 10px; background: var(--bg-box); border-radius: 6px; border: 1px solid var(--border-main); }
+        
         .welcome-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .date-badge { display: flex; align-items: center; gap: 6px; background: var(--bg-box); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border-main); }
         .shortcut-btn { display: flex; align-items: center; gap: 6px; background: var(--accent); color: var(--accent-text); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; border: none; cursor: pointer; transition: 0.2s; }
@@ -285,8 +271,7 @@
         
         /* 📱 MOBILE OVERRIDES */
         @media (max-width: 768px) {
-            body { flex-direction: column; } 
-            
+            body { flex-direction: column; }
             .intro-logo { max-width: 180px; }
             .intro-title { font-size: 2.2rem; }
             .intro-subtitle { font-size: 1rem; margin-bottom: 20px; }
@@ -323,10 +308,6 @@
     </style>
 </head>
 <body class="no-scroll">
-
-    <div class="noise-overlay"></div>
-
-    <div id="liquid-overlay" class="liquid-bg"></div>
 
     <div id="introPage" class="intro-overlay">
         <div class="orb-container">
@@ -385,7 +366,7 @@
                 <div class="nav-item btn-new-request magnetic" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
             </div>
             <div class="bottom-actions">
-                <button id="themeBtn" class="action-btn magnetic" onclick="toggleTheme()"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
+                <button id="themeBtn" class="action-btn magnetic" onclick="toggleTheme(event)"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
                 <button id="adminBtn" class="action-btn magnetic" onclick="toggleAdmin()"><i data-lucide="lock"></i> <span>Admin Access</span></button>
             </div>
         </div>
@@ -395,7 +376,7 @@
                 <div class="welcome-banner">
                     <div class="welcome-text">
                         <h1 id="greetingMsg">Good day.</h1>
-                        <p>Here is what's happening with your creative requests.</p>
+                        <p id="subGreetingMsg">Here is what's happening with your creative requests.</p>
                     </div>
                     <div class="welcome-actions">
                         <button class="shortcut-btn magnetic" onclick="viewMyRequests()"><i data-lucide="search"></i> My Past Requests</button>
@@ -656,7 +637,6 @@
             });
         }
 
-        // INTRO MOUSE TRACKING LOGIC (For Ambient Orbs only now)
         document.addEventListener('mousemove', (e) => {
             const intro = document.getElementById('introPage');
             if(intro && intro.style.display !== 'none' && !intro.classList.contains('hide-intro')) {
@@ -667,7 +647,6 @@
             }
         });
 
-        // 🌟 PROGRESSIVE DISCLOSURE LOGIC 🌟
         function goToStep(step) {
             if (step === 2) {
                 const n1 = document.getElementById('requesterName').value;
@@ -690,7 +669,6 @@
             refreshIcons();
         }
 
-        // 🌟 PAST REQUEST SHORTCUT 🌟
         function viewMyRequests() {
             showPage('workload');
             const savedName = localStorage.getItem('adtech_user_name');
@@ -722,6 +700,7 @@
             return cleanName.split(' ')[0]; 
         }
 
+        // 🌟 DYNAMIC GREETING & ADAPTIVE NOTE 🌟
         function setGreetingAndDate(userName = "") {
             const hour = new Date().getHours();
             let greeting = "Good evening";
@@ -736,8 +715,19 @@
             
             document.getElementById('greetingMsg').innerText = finalGreeting;
 
+            const isWorkingLate = (hour < 9 || hour >= 17);
+            const hasSavedTheme = localStorage.getItem('adtech_theme');
+            const subGreeting = document.getElementById('subGreetingMsg');
+
+            if (isWorkingLate && !hasSavedTheme) {
+                subGreeting.innerHTML = "Here is what's happening. <br><span class='adaptive-note'><i data-lucide='sparkles' style='width:14px; height:14px;'></i> Adaptive UI: Switched to Dark Mode because we know you're working late.</span>";
+            } else {
+                subGreeting.innerHTML = "Here is what's happening with your creative requests.";
+            }
+
             const dateOptions = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
             document.getElementById('currentDateDisplay').innerText = new Date().toLocaleDateString('en-US', dateOptions);
+            refreshIcons();
         }
 
         function startApp() {
@@ -797,28 +787,68 @@
             return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
         }
 
-        const currentTheme = localStorage.getItem('adtech_theme') || 'light';
-        if(currentTheme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        // 🌟 GOLDEN HOUR THEME INIT 🌟
+        function initTheme() {
+            const savedTheme = localStorage.getItem('adtech_theme');
+            const hour = new Date().getHours();
+            const isWorkingLate = (hour < 9 || hour >= 17);
+            
+            let targetTheme = 'light';
+            
+            if (savedTheme) {
+                targetTheme = savedTheme; 
+            } else {
+                if (isWorkingLate) targetTheme = 'dark';
+            }
+            
+            applyThemeState(targetTheme);
+        }
 
-        function toggleTheme() {
+        function applyThemeState(theme) {
             const root = document.documentElement;
             const themeBtn = document.getElementById('themeBtn');
-            if(root.getAttribute('data-theme') === 'dark') {
-                root.removeAttribute('data-theme');
-                localStorage.setItem('adtech_theme', 'light');
-                themeBtn.innerHTML = '<i data-lucide="moon"></i> <span>Dark Mode</span>';
-            } else {
+            if (theme === 'dark') {
                 root.setAttribute('data-theme', 'dark');
-                localStorage.setItem('adtech_theme', 'dark');
                 themeBtn.innerHTML = '<i data-lucide="sun"></i> <span>Light Mode</span>';
+            } else {
+                root.removeAttribute('data-theme');
+                themeBtn.innerHTML = '<i data-lucide="moon"></i> <span>Dark Mode</span>';
             }
             refreshIcons();
         }
-        
-        if(currentTheme === 'dark') {
-            document.getElementById('themeBtn').innerHTML = '<i data-lucide="sun"></i> <span>Light Mode</span>';
-        } else {
-            document.getElementById('themeBtn').innerHTML = '<i data-lucide="moon"></i> <span>Dark Mode</span>';
+
+        // 🌟 THE THEME MORPH EFFECT 🌟
+        function toggleTheme(event) {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const nextTheme = isDark ? 'light' : 'dark';
+            
+            localStorage.setItem('adtech_theme', nextTheme);
+            setGreetingAndDate(localStorage.getItem('adtech_user_name')); // Update note state
+
+            if (!document.startViewTransition) {
+                applyThemeState(nextTheme);
+                return;
+            }
+
+            const x = event?.clientX ?? window.innerWidth / 2;
+            const y = event?.clientY ?? window.innerHeight / 2;
+            const endRadius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+
+            const transition = document.startViewTransition(() => {
+                applyThemeState(nextTheme);
+            });
+
+            transition.ready.then(() => {
+                const clipPath = [
+                    `circle(0px at ${x}px ${y}px)`,
+                    `circle(${endRadius}px at ${x}px ${y}px)`
+                ];
+                
+                document.documentElement.animate(
+                    { clipPath: clipPath },
+                    { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
+                );
+            });
         }
 
         let securePin = localStorage.getItem('adtech_lead_pin') || null;
@@ -866,62 +896,21 @@
             }
         }
 
-        // 🌟 LIQUID TRANSITION FOR NEW REQUEST TAB 🌟
-        let isAnimating = false;
         function showPage(id) {
-            if(isAnimating) return;
-            const currentActive = document.querySelector('.page.active');
-            if(currentActive && currentActive.id === id) return;
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            
+            let navItem;
+            if(id === 'request') navItem = document.getElementById('btn-request');
+            else if(id === 'dashboard') navItem = document.getElementById('btn-dashboard');
+            else if(id === 'workload') navItem = document.getElementById('btn-workload');
+            else if(id === 'done') navItem = document.getElementById('btn-done');
+            if(navItem) navItem.classList.add('active');
+            
+            if (id === 'request') goToStep(1);
 
-            if (id === 'request') {
-                isAnimating = true;
-                const liquid = document.getElementById('liquid-overlay');
-                
-                // Reset liquid state
-                liquid.style.transition = 'none';
-                liquid.style.transform = 'translateY(100%)';
-                liquid.style.borderRadius = '50% 50% 0 0';
-                
-                // Force reflow
-                void liquid.offsetWidth;
-                
-                // Animate Up
-                liquid.style.transition = 'transform 0.6s cubic-bezier(0.65, 0, 0.35, 1), border-radius 0.6s cubic-bezier(0.65, 0, 0.35, 1)';
-                liquid.style.transform = 'translateY(0)';
-                liquid.style.borderRadius = '0';
-
-                setTimeout(() => {
-                    // Switch pages behind the liquid
-                    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-                    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-                    document.getElementById(id).classList.add('active');
-                    
-                    let navItem = document.getElementById('btn-request');
-                    if(navItem) navItem.classList.add('active');
-
-                    goToStep(1); // Reset form wizard
-                    if(globalData.length > 0) renderBoards();
-
-                    // Animate liquid away
-                    liquid.style.transform = 'translateY(-140%)';
-                    liquid.style.borderRadius = '0 0 50% 50%';
-
-                    setTimeout(() => { isAnimating = false; }, 600);
-                }, 600);
-
-            } else {
-                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-                document.getElementById(id).classList.add('active');
-                
-                let navItem;
-                if(id === 'dashboard') navItem = document.getElementById('btn-dashboard');
-                else if(id === 'workload') navItem = document.getElementById('btn-workload');
-                else if(id === 'done') navItem = document.getElementById('btn-done');
-                if(navItem) navItem.classList.add('active');
-                
-                if(globalData.length > 0) renderBoards(); 
-            }
+            if(globalData.length > 0) renderBoards(); 
         }
 
         async function gasPost(payload) {
@@ -1131,7 +1120,7 @@
             const borderColor = borderColors[ws] || '#cbd5e1';
             
             return `
-                <div class="card" style="border-left: 6px solid ${borderColor}; padding-left: 29px; padding-top: 25px; padding-bottom: 25px;">
+                <div class="card magnetic-card" style="border-left: 6px solid ${borderColor}; padding-left: 29px; padding-top: 25px; padding-bottom: 25px;">
                     <div class="card-summary" onclick="this.closest('.card').classList.toggle('expanded')">
                         <div style="flex: 1;">
                             <div class="job-id">${item.job_id}</div>
@@ -1213,11 +1202,7 @@
                                     <div class="action-buttons">
                                         <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy magnetic"><i data-lucide="copy"></i> Msg: Requester</button>
                                         <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy magnetic"><i data-lucide="copy"></i> Msg: Team</button>
-                                        
-                                        ${item.work_status === 'Client Review' ? `
-                                            <button onclick="copyText('review', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}', '${item.requester_name}')" class="btn-action magnetic" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>
-                                        ` : ''}
-
+                                        ${item.work_status === 'Client Review' ? `<button onclick="copyText('review', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}', '${item.requester_name}')" class="btn-action magnetic" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}
                                         <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy magnetic"><i data-lucide="edit-2"></i> Edit</button>
                                         <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete magnetic"><i data-lucide="trash-2"></i> Delete</button>
                                     </div>
@@ -1356,13 +1341,13 @@
                 document.getElementById('doneList').innerHTML = doneHtml;
             }
             refreshIcons();
-            initMagnetic(); // Re-bind magnetic effect to new dynamic buttons
+            initMagnetic(); 
         }
 
         window.onload = () => {
+            initTheme(); 
             initMagnetic();
             checkSavedName();
-            setGreetingAndDate();
             checkAdminUI();
             showPage('dashboard');
             fetchAndRender();
