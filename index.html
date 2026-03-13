@@ -19,6 +19,7 @@
             --gradient-orange: linear-gradient(135deg, rgba(245,158,11,0.05), transparent);
             --gradient-green: linear-gradient(135deg, rgba(16,185,129,0.05), transparent);
             --mesh-1: rgba(56, 189, 248, 0.3); --mesh-2: rgba(244, 63, 94, 0.2); --mesh-3: rgba(16, 185, 129, 0.2); --mesh-bg: #ffffff;
+            --overlay-bg: rgba(255, 255, 255, 0.85);
         }
         [data-theme="dark"] {
             --bg-main: #0f172a; --bg-sidebar: #1e293b; --bg-card: #1e293b; --bg-box: #0f172a; --bg-input: #0f172a;
@@ -31,19 +32,49 @@
             --gradient-orange: linear-gradient(135deg, rgba(245,158,11,0.05), transparent);
             --gradient-green: linear-gradient(135deg, rgba(16,185,129,0.05), transparent);
             --mesh-1: rgba(56, 189, 248, 0.2); --mesh-2: rgba(139, 92, 246, 0.2); --mesh-3: rgba(16, 185, 129, 0.15); --mesh-bg: #0f172a;
+            --overlay-bg: rgba(15, 23, 42, 0.85);
         }
 
-        /* 🌟 THEME MORPH VIEW TRANSITIONS 🌟 */
+        /* THEME MORPH VIEW TRANSITIONS */
         ::view-transition-old(root),
         ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
         ::view-transition-old(root) { z-index: 1; }
         ::view-transition-new(root) { z-index: 2; }
 
-        /* MAGNETIC CLASS FOR BUTTONS */
-        .magnetic { display: inline-block; will-change: transform; }
-
         body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; min-height: 100vh; overflow-x: hidden; }
         body.no-scroll { overflow: hidden; }
+
+        /* 🌟 APPLE SUCCESS ANIMATION OVERLAY 🌟 */
+        #successOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--overlay-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            z-index: 10000; display: none; flex-direction: column; justify-content: center; align-items: center;
+            opacity: 0; transition: opacity 0.4s ease;
+        }
+        #successOverlay.show { display: flex; opacity: 1; }
+        
+        .success-icon-wrapper {
+            width: 80px; height: 80px; border-radius: 50%; background: var(--green); 
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
+            transform: scale(0);
+        }
+        #successOverlay.show .success-icon-wrapper { animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        .check-anim polyline {
+            stroke-dasharray: 24; stroke-dashoffset: 24;
+        }
+        #successOverlay.show .check-anim polyline { animation: drawCheck 0.5s ease 0.3s forwards; }
+        
+        .success-text { margin-top: 25px; font-size: 1.5rem; font-weight: 800; color: var(--text-strong); letter-spacing: -0.02em; opacity: 0; transform: translateY(10px); }
+        .success-subtext { margin-top: 8px; font-size: 1rem; color: var(--text-muted); font-weight: 500; opacity: 0; transform: translateY(10px); }
+        
+        #successOverlay.show .success-text { animation: fadeUp 0.5s ease 0.2s forwards; }
+        #successOverlay.show .success-subtext { animation: fadeUp 0.5s ease 0.3s forwards; }
+
+        @keyframes popIn { 100% { transform: scale(1); } }
+        @keyframes drawCheck { to { stroke-dashoffset: 0; } }
+        @keyframes fadeUp { 100% { opacity: 1; transform: translateY(0); } }
 
         /* INTRO PAGE */
         .intro-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background-color: var(--mesh-bg); z-index: 9999; display: flex; justify-content: center; align-items: center; overflow: hidden; transition: opacity 1s cubic-bezier(0.85, 0, 0.15, 1); }
@@ -78,7 +109,7 @@
         #app-wrapper { display: flex; width: 100%; min-height: 100vh; opacity: 0; transform: scale(0.95); filter: blur(10px); transition: all 1.2s cubic-bezier(0.85, 0, 0.15, 1); }
         #app-wrapper.app-active { opacity: 1; transform: scale(1); filter: blur(0); }
 
-        /* SIDEBAR */
+        /* SIDEBAR (DESKTOP) */
         .sidebar { width: 260px; border-right: 1px solid var(--border-main); padding: 40px 20px; background: var(--bg-sidebar); position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; display: flex; flex-direction: column; transition: 0.3s; }
         .logo-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 30px; }
         .brand-logo { max-width: 170px; height: auto; display: block; transition: 0.3s; }
@@ -308,6 +339,16 @@
 </head>
 <body class="no-scroll">
 
+    <div id="successOverlay">
+        <div class="success-icon-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="check-anim">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        </div>
+        <div class="success-text">Request Submitted</div>
+        <div class="success-subtext" id="successJobId">Job ID</div>
+    </div>
+
     <div id="introPage" class="intro-overlay">
         <div class="orb-container">
             <div class="orb orb-1"></div>
@@ -322,7 +363,7 @@
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
             
             <div class="intro-form-wrapper">
-                <select id="introNameSelect" class="intro-field magnetic" onchange="toggleIntroManualInput()">
+                <select id="introNameSelect" class="intro-field" onchange="toggleIntroManualInput()">
                     <option value="">Select your name...</option>
                     <optgroup label="Malaysia">
                         <option>MY - Ain Sabrina</option><option>MY - Ammelia</option><option>MY - Angie Ng</option><option>MY - Bernice Mah</option>
@@ -345,7 +386,7 @@
             </div>
 
             <div class="intro-btn-wrapper">
-                <button class="intro-btn magnetic" onclick="startApp()">
+                <button class="intro-btn" onclick="startApp()">
                     Start Now <i data-lucide="arrow-right" style="width: 20px;"></i>
                 </button>
             </div>
@@ -354,19 +395,19 @@
 
     <div id="app-wrapper">
         <div class="sidebar">
-            <div class="logo-container magnetic">
+            <div class="logo-container">
                 <img src="AdTechinno.png" alt="AdTechinno" class="brand-logo">
                 <span class="logo-sub">Creative Request</span>
             </div>
             <div class="nav-group">
-                <div class="nav-item magnetic active" id="btn-dashboard" onclick="showPage('dashboard')"><i data-lucide="layout-dashboard"></i> <span>Dashboard</span></div>
-                <div class="nav-item magnetic" id="btn-workload" onclick="showPage('workload')"><i data-lucide="kanban-square"></i> <span>Request Status</span></div>
-                <div class="nav-item magnetic" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> <span>Done Tasks</span></div>
-                <div class="nav-item btn-new-request magnetic" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
+                <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')"><i data-lucide="layout-dashboard"></i> <span>Dashboard</span></div>
+                <div class="nav-item" id="btn-workload" onclick="showPage('workload')"><i data-lucide="kanban-square"></i> <span>Request Status</span></div>
+                <div class="nav-item" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> <span>Done Tasks</span></div>
+                <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
             </div>
             <div class="bottom-actions">
-                <button id="themeBtn" class="action-btn magnetic" onclick="toggleTheme(event)"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
-                <button id="adminBtn" class="action-btn magnetic" onclick="toggleAdmin()"><i data-lucide="lock"></i> <span>Admin Access</span></button>
+                <button id="themeBtn" class="action-btn" onclick="toggleTheme(event)"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
+                <button id="adminBtn" class="action-btn" onclick="toggleAdmin()"><i data-lucide="lock"></i> <span>Admin Access</span></button>
             </div>
         </div>
 
@@ -378,8 +419,8 @@
                         <p id="subGreetingMsg">Here is what's happening with your creative requests.</p>
                     </div>
                     <div class="welcome-actions">
-                        <button class="shortcut-btn magnetic" onclick="viewMyRequests()"><i data-lucide="search"></i> My Past Requests</button>
-                        <div class="date-badge magnetic">
+                        <button class="shortcut-btn" onclick="viewMyRequests()"><i data-lucide="search"></i> My Past Requests</button>
+                        <div class="date-badge">
                             <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
                             <span id="currentDateDisplay">Date</span>
                         </div>
@@ -456,7 +497,7 @@
                         <i data-lucide="search"></i>
                         <input type="text" id="searchDone" placeholder="Search Client Name or Job ID..." onkeyup="renderBoards()">
                     </div>
-                    <button onclick="exportToCSV()" class="export-btn magnetic"><i data-lucide="download"></i> Export Data (CSV)</button>
+                    <button onclick="exportToCSV()" class="export-btn"><i data-lucide="download"></i> Export Data (CSV)</button>
                 </div>
 
                 <div id="doneList">
@@ -520,7 +561,7 @@
                             </div>
                         </div>
                         <div class="form-navigation" style="justify-content: flex-end;">
-                            <button class="btn-nav btn-next magnetic" onclick="goToStep(2)">Next Step <i data-lucide="arrow-right"></i></button>
+                            <button class="btn-nav btn-next" onclick="goToStep(2)">Next Step <i data-lucide="arrow-right"></i></button>
                         </div>
                     </div>
 
@@ -546,8 +587,8 @@
                             <textarea id="pMonthlyPlan" rows="3" placeholder="Paste plan here..."></textarea>
                         </div>
                         <div class="form-navigation">
-                            <button class="btn-nav btn-prev magnetic" onclick="goToStep(1)"><i data-lucide="arrow-left"></i> Back</button>
-                            <button class="btn-nav btn-next magnetic" onclick="goToStep(3)">Next Step <i data-lucide="arrow-right"></i></button>
+                            <button class="btn-nav btn-prev" onclick="goToStep(1)"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn-nav btn-next" onclick="goToStep(3)">Next Step <i data-lucide="arrow-right"></i></button>
                         </div>
                     </div>
 
@@ -569,8 +610,8 @@
                         <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
                         
                         <div class="form-navigation">
-                            <button class="btn-nav btn-prev magnetic" onclick="goToStep(2)"><i data-lucide="arrow-left"></i> Back</button>
-                            <button class="btn-nav btn-submit magnetic" id="submitBtn" onclick="submitRequest()"><i data-lucide="send"></i> Submit Request</button>
+                            <button class="btn-nav btn-prev" onclick="goToStep(2)"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn-nav btn-submit" id="submitBtn" onclick="submitRequest()"><i data-lucide="send"></i> Submit Request</button>
                         </div>
                     </div>
 
@@ -601,7 +642,7 @@
                 <label>Deadline</label>
                 <input type="date" id="editDeadline">
             </div>
-            <button class="btn-submit magnetic" id="saveEditBtn" onclick="saveEdit()" style="margin-top:20px; width:100%;">Update Request</button>
+            <button class="btn-submit" id="saveEditBtn" onclick="saveEdit()" style="margin-top:20px; width:100%;">Update Request</button>
         </div>
     </div>
 
@@ -649,22 +690,6 @@
             } catch (e) {
                 console.log("Audio not supported or blocked.");
             }
-        }
-
-        function initMagnetic() {
-            document.querySelectorAll('.magnetic').forEach(btn => {
-                btn.addEventListener('mousemove', e => {
-                    const rect = btn.getBoundingClientRect();
-                    const x = e.clientX - rect.left - rect.width / 2;
-                    const y = e.clientY - rect.top - rect.height / 2;
-                    btn.style.transform = `translate(${x * 0.15}px, ${y * 0.15}px)`;
-                    btn.style.transition = 'none';
-                });
-                btn.addEventListener('mouseleave', () => {
-                    btn.style.transition = 'transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)';
-                    btn.style.transform = `translate(0px, 0px)`;
-                });
-            });
         }
 
         document.addEventListener('mousemove', (e) => {
@@ -994,37 +1019,51 @@
 
                 const res = await gasPost(payload);
                 if(res.status === "success") {
-                    playSuccessSound(); // 🎵 PREMIUM SOUND EFFECT 
                     
-                    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[NEW REQUEST]%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
-                    
-                    // Allow sound to play before alert blocks thread
-                    setTimeout(() => {
-                        alert(`Request Submitted Successfully.\nJob ID: ${jobID}`);
-                        document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
-                        document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
-                        
-                        const savedName = localStorage.getItem('adtech_user_name');
-                        if(savedName) {
-                            const reqSelect = document.getElementById('requesterName');
-                            let found = false;
-                            for (let i = 0; i < reqSelect.options.length; i++) {
-                                if (reqSelect.options[i].value === savedName || reqSelect.options[i].text === savedName) {
-                                    reqSelect.selectedIndex = i; found = true; break;
-                                }
-                            }
-                            if (!found) document.getElementById('manualName').value = savedName;
-                        }
+                    // 🌟 TRIGGER SUCCESS ANIMATION & SOUND 🌟
+                    playSuccessSound();
+                    document.getElementById('successJobId').innerText = `Job ID: ${jobID}`;
+                    const overlay = document.getElementById('successOverlay');
+                    overlay.classList.add('show');
 
-                        showPage('dashboard');
-                        fetchAndRender(); 
-                    }, 150);
+                    // Fire telegram silently
+                    fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[NEW REQUEST]%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
+                    
+                    // Clear the form in the background
+                    document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
+                    document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
+                    
+                    const savedName = localStorage.getItem('adtech_user_name');
+                    if(savedName) {
+                        const reqSelect = document.getElementById('requesterName');
+                        let found = false;
+                        for (let i = 0; i < reqSelect.options.length; i++) {
+                            if (reqSelect.options[i].value === savedName || reqSelect.options[i].text === savedName) {
+                                reqSelect.selectedIndex = i; found = true; break;
+                            }
+                        }
+                        if (!found) document.getElementById('manualName').value = savedName;
+                    }
+
+                    // Wait 2.5s, then hide overlay and go to dashboard
+                    setTimeout(() => {
+                        overlay.classList.remove('show');
+                        setTimeout(() => {
+                            showPage('dashboard');
+                            fetchAndRender();
+                            submitBtn.innerHTML = originalText;
+                            submitBtn.disabled = false;
+                            refreshIcons();
+                        }, 400); // Wait for fade out
+                    }, 2500);
+
                 } else { throw new Error(res.message); }
-            } catch(e) { alert("Submission failed: " + e.message); } finally {
+            } catch(e) { 
+                alert("Submission failed: " + e.message); 
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
                 refreshIcons();
-            }
+            } 
         }
 
         async function approveJob(jobID, client, title) {
@@ -1105,7 +1144,6 @@
             const client = document.getElementById('editClient').value;
             const title = document.getElementById('editTitle').value;
             const deadline = document.getElementById('editDeadline').value;
-
             if(!client || !title || !deadline) return alert("Fields cannot be empty.");
 
             const btn = document.getElementById('saveEditBtn');
@@ -1125,10 +1163,8 @@
             if (!globalData || globalData.length === 0) return alert("No data available to export.");
             const doneData = globalData.filter(d => d.status === 'approved' && d.work_status === 'Done');
             if (doneData.length === 0) return alert("No completed tasks available to export.");
-
             const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Deadline", "Revision", "Assigned Team", "Playbook Link"];
             const rows = doneData.map(d => [d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(d.deadline), (d.revision || 0), d.assignee, d.playbook_link].map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(","));
-
             const csvContent = [headers.join(","), ...rows].join("\n");
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
@@ -1150,7 +1186,7 @@
             const borderColor = borderColors[ws] || '#cbd5e1';
             
             return `
-                <div class="card magnetic-card" style="border-left: 6px solid ${borderColor}; padding-left: 29px; padding-top: 25px; padding-bottom: 25px;">
+                <div class="card" style="border-left: 6px solid ${borderColor}; padding-left: 29px; padding-top: 25px; padding-bottom: 25px;">
                     <div class="card-summary" onclick="this.closest('.card').classList.toggle('expanded')">
                         <div style="flex: 1;">
                             <div class="job-id">${item.job_id}</div>
@@ -1215,9 +1251,9 @@
                                     <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block; color: var(--text-main);">2. Paste Creative Playbook Link here:</label>
                                     <input type="text" id="playbook-${item.job_id}" placeholder="https://docs.google.com/presentation/d/..." style="margin-bottom: 15px; border-style: dashed;">
                                     <div class="action-buttons">
-                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve magnetic"><i data-lucide="check"></i> Approve & Assign</button>
-                                        <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy magnetic"><i data-lucide="edit-2"></i> Edit Request</button>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete magnetic"><i data-lucide="trash-2"></i> Delete</button>
+                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve"><i data-lucide="check"></i> Approve & Assign</button>
+                                        <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit Request</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button>
                                     </div>
                                 </div>
                             ` : `<div class="locked-msg"><i data-lucide="lock"></i> Status: Reviewing requirements. Awaiting Admin Assignment.</div>`}
@@ -1229,11 +1265,11 @@
                                 </div>
                                 ${securePin && !isDoneTab ? `
                                     <div class="action-buttons">
-                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy magnetic"><i data-lucide="copy"></i> Msg: Requester</button>
-                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy magnetic"><i data-lucide="copy"></i> Msg: Team</button>
-                                        ${item.work_status === 'Client Review' ? `<button onclick="copyText('review', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}', '${item.requester_name}')" class="btn-action magnetic" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}
-                                        <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy magnetic"><i data-lucide="edit-2"></i> Edit</button>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete magnetic"><i data-lucide="trash-2"></i> Delete</button>
+                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Requester</button>
+                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Team</button>
+                                        ${item.work_status === 'Client Review' ? `<button onclick="copyText('review', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}', '${item.requester_name}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}
+                                        <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button>
                                     </div>
                                 ` : ``}
                                 ${securePin && isDoneTab ? `
@@ -1242,7 +1278,7 @@
                                             <option value="">Undo Status...</option>
                                             <option value="Client Review">Move back to Review</option>
                                         </select>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete magnetic" style="margin-left:auto;"><i data-lucide="trash-2"></i> Delete Record</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:auto;"><i data-lucide="trash-2"></i> Delete Record</button>
                                     </div>
                                 ` : ``}
                             </div>
@@ -1370,12 +1406,10 @@
                 document.getElementById('doneList').innerHTML = doneHtml;
             }
             refreshIcons();
-            initMagnetic(); 
         }
 
         window.onload = () => {
             initTheme(); 
-            initMagnetic();
             checkSavedName();
             checkAdminUI();
             showPage('dashboard');
