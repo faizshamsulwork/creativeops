@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Engine v15</title>
+    <title>Adtechinno | Creative Engine v16</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-border: #e6e6e6; --accent: #000; }
@@ -15,42 +15,44 @@
         .nav-group { display: flex; flex-direction: column; gap: 8px; }
         .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #888; border-radius: 8px; transition: 0.2s; display: flex; align-items: center; gap: 10px; }
         .nav-item:hover, .nav-item.active { background: #f5f5f5; color: #000; font-weight: 600; }
-        .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; justify-content: center; font-weight: 600; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; justify-content: center; font-weight: 600; }
 
         /* Main Content */
         .main-content { margin-left: 260px; padding: 40px; width: 100%; box-sizing: border-box; }
-        .page { display: none; max-width: 1000px; margin: 0 auto; }
+        .page { display: none; max-width: 900px; margin: 0 auto; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
 
-        /* Stats */
+        /* Stats Dashboard */
         .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
         .stat-card { background: #fff; padding: 25px; border-radius: 12px; border: 1px solid var(--muji-border); text-align: center; }
         .stat-card p { margin: 10px 0 0; font-size: 2.2rem; font-weight: 600; }
 
-        /* Cards & Lists */
-        .card { background: white; border: 1px solid var(--muji-border); padding: 25px; border-radius: 12px; margin-bottom: 20px; position: relative; }
-        .project-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
-        .job-id { font-size: 0.7rem; font-weight: 600; color: #aaa; text-transform: uppercase; }
-        .project-title { margin: 5px 0; font-size: 1.1rem; }
+        /* Request Form UI Fix */
+        .card { background: white; border: 1px solid var(--muji-border); padding: 35px; border-radius: 12px; margin-bottom: 20px; }
+        .form-section { margin-bottom: 30px; }
+        .form-section h3 { font-size: 1.1rem; margin-bottom: 20px; color: #000; font-weight: 600; }
         
-        .info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; font-size: 0.85rem; color: #666; }
-        .info-item b { color: #333; display: block; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 2px; }
+        .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: #444; }
+        
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem; box-sizing: border-box; font-family: inherit; }
+        
+        .checkbox-container { background: #f9f9f9; padding: 20px; border-radius: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .checkbox-item { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer; }
+        .checkbox-item input { width: 18px; height: 18px; cursor: pointer; }
 
-        /* Form Controls */
-        .checkbox-group { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; background: #f9f9f9; padding: 20px; border-radius: 8px; }
-        .checkbox-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; cursor: pointer; }
-        .btn-submit { background: #000; color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; }
-        
+        .btn-submit { background: #000; color: #fff; border: none; padding: 20px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 10px; transition: 0.2s; }
+        .btn-submit:hover { background: #333; }
+
+        /* Board Badges */
         .badge { font-size: 0.65rem; padding: 4px 10px; border-radius: 12px; font-weight: 600; text-transform: uppercase; }
         .status-pending { background: #fff7ed; color: #9a3412; }
         .status-approved { background: #f0fdf4; color: #166534; }
 
-        .playbook-btn { display: inline-block; margin-top: 10px; font-size: 0.75rem; color: #2563eb; text-decoration: none; font-weight: 600; }
-
         @media (max-width: 768px) {
-            .sidebar { width: 100%; height: auto; position: relative; padding: 20px; }
+            .sidebar { width: 100%; height: auto; position: relative; }
             .main-content { margin-left: 0; padding: 20px; }
-            .stats-grid, .info-row { grid-template-columns: 1fr; }
+            .input-grid, .checkbox-container { grid-template-columns: 1fr; }
         }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
@@ -75,14 +77,14 @@
                 <div class="stat-card"><h4>In Progress</h4><p id="stat-approved">0</p></div>
             </div>
             <div class="card">
-                <h3>Quick Tip</h3>
-                <p style="font-size: 0.9rem; color: #666;">Every time you approve a request, a Telegram alert is sent to your team with the Playbook link. Keep an eye on the "Request Status" tab for complexity weightage.</p>
+                <h3>System Status</h3>
+                <p style="font-size: 0.9rem; color: #666;">Playbook Automation: <b>Active</b>. Link will be generated upon approval.</p>
             </div>
         </div>
 
         <div id="workload" class="page">
             <h1>Request Status Board</h1>
-            <div id="projectList">Loading data from Google Sheets...</div>
+            <div id="projectList">Fetching current requests...</div>
         </div>
 
         <div id="request" class="page">
@@ -90,31 +92,57 @@
             <div class="card">
                 <div class="form-section">
                     <h3>1. Requester</h3>
-                    <select id="requesterName">
-                        <option value="">-- Select Requester --</option>
-                        <optgroup label="Malaysia"><option>MY - Faiz Shamsul</option><option>MY - Ain Sabrina</option><option>MY - Angie Ng</option></optgroup>
-                        <optgroup label="Indonesia"><option>ID - Miftahul Fikri</option><option>ID - Youke Yap</option></optgroup>
-                    </select>
+                    <div class="input-group">
+                        <select id="requesterName">
+                            <option value="">-- Select Requester --</option>
+                            <optgroup label="Malaysia"><option>MY - Faiz Shamsul</option><option>MY - Ain Sabrina</option><option>MY - Angie Ng</option></optgroup>
+                            <optgroup label="Indonesia"><option>ID - Miftahul Fikri</option><option>ID - Youke Yap</option></optgroup>
+                        </select>
+                    </div>
                 </div>
+
                 <div class="form-section">
                     <h3>2. Project Details</h3>
-                    <label>Client Name</label><input type="text" id="pClient" placeholder="e.g. Adtechinno">
-                    <label>Project Title</label><input type="text" id="pTitle" placeholder="e.g. Social Media Assets">
+                    <div class="input-grid">
+                        <div class="input-group">
+                            <label>Client Name</label>
+                            <input type="text" id="pClient" placeholder="e.g. Adtechinno">
+                        </div>
+                        <div class="input-group">
+                            <label>Project Title</label>
+                            <input type="text" id="pTitle" placeholder="e.g. Raya Campaign Assets">
+                        </div>
+                    </div>
                 </div>
+
                 <div class="form-section">
                     <h3>3. Job Type</h3>
-                    <div class="checkbox-group" id="jobTypes">
+                    <div class="checkbox-container" id="jobTypes">
                         <label class="checkbox-item"><input type="checkbox" value="Poster/Graphic"><span>Poster/Graphic</span></label>
                         <label class="checkbox-item"><input type="checkbox" value="Video Production"><span>Video Production</span></label>
                         <label class="checkbox-item"><input type="checkbox" value="Copywriting"><span>Copywriting</span></label>
-                        <label class="checkbox-item"><input type="checkbox" value="Monthly Content Plan"><span>Monthly Plan</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Monthly Plan"><span>Monthly Plan</span></label>
                     </div>
                 </div>
+
                 <div class="form-section">
                     <h3>4. Briefing</h3>
-                    <label>Deadline</label><input type="date" id="pDeadline">
-                    <label>Briefing Points</label><textarea id="pBrief" rows="4"></textarea>
+                    <div class="input-grid">
+                        <div class="input-group">
+                            <label>Deadline</label>
+                            <input type="date" id="pDeadline">
+                        </div>
+                        <div class="input-group">
+                            <label>Reference Link</label>
+                            <input type="text" id="pRefLink" placeholder="URL">
+                        </div>
+                    </div>
+                    <div class="input-group" style="margin-top:15px;">
+                        <label>Briefing Points</label>
+                        <textarea id="pBrief" rows="4" placeholder="What needs to be done?"></textarea>
+                    </div>
                 </div>
+
                 <button class="btn-submit" onclick="submitRequest()">🚀 Submit Request</button>
             </div>
         </div>
@@ -122,16 +150,12 @@
 
     <script>
         const SHEETDB_API = 'https://sheetdb.io/api/v1/v1fao9lzfm9u7';
-        const PLAYBOOK_MASTER = 'https://docs.google.com/presentation/d/1pd63VK-tqOfVlfLSJs3KRLAAdSdOVjNvpSuZFbxoEYo/copy';
         
-        // TELEGRAM CONFIG (MASUKKAN INFO KAU)
-        const TG_TOKEN = 'TOKEN_BOT_KAU'; 
-        const TG_CHAT = 'CHAT_ID_KAU';
+        // TELEGRAM (UPDATE WITH YOUR INFO)
+        const TG_TOKEN = 'YOUR_BOT_TOKEN';
+        const TG_CHAT = 'YOUR_CHAT_ID';
 
-        const creativeTeam = [
-            "MY-Abel (Copy)", "MY-Simon (Video)", "MY-Alya (GD)", "MY-Steven (GD)", "MY-Aaron (GD)", "MY-Faiz (CL)",
-            "ID-Miftahul Fikri", "ID-Youke Yap", "ID-Annisya Ninis"
-        ];
+        const creativeTeam = ["MY-Abel (Copy)", "MY-Simon (Video)", "MY-Alya (GD)", "MY-Steven (GD)", "ID-Youke Yap"];
 
         function showPage(id) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -167,23 +191,23 @@
             } catch (e) { alert(e.message); }
         }
 
-        async function approveJob(jobID, client, title, requester) {
+        async function approveJob(jobID, client, title) {
             const designer = document.getElementById('assign-' + jobID).value;
-            if(designer === 'Unassigned') return alert("Select designer first!");
+            if(designer === 'Unassigned') return alert("Select designer!");
 
             try {
-                // 1. Update SheetDB
+                // Update SheetDB to 'approved'
                 await fetch(`${SHEETDB_API}/job_id/${jobID}`, {
                     method: 'PATCH',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ data: { assignee: designer, status: 'approved' } })
                 });
 
-                // 2. Telegram Alert
-                const msg = `✅ *JOB APPROVED*%0A%0A*ID:* ${jobID}%0A*Client:* ${client}%0A*Project:* ${title}%0A*Designer:* ${designer}%0A%0A📝 *PLAYBOOK LINK (COPY ME):*%0A${PLAYBOOK_MASTER}`;
+                // Notify Telegram (Note: The Slides URL will be in Google Sheet after Apps Script runs)
+                const msg = `✅ *JOB APPROVED*%0A%0A*ID:* ${jobID}%0A*Client:* ${client}%0A*Designer:* ${designer}%0A%0A_Google Apps Script is generating the Playbook copy now..._`;
                 await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=${msg}&parse_mode=Markdown`);
 
-                alert("Approved! Playbook link sent to Telegram.");
+                alert("Approved! Script is generating slides in background.");
                 fetchAndRender();
             } catch (e) { console.error(e); }
         }
@@ -199,34 +223,31 @@
 
                 document.getElementById('projectList').innerHTML = data.reverse().map(item => `
                     <div class="card">
-                        <div class="project-header">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div>
-                                <span class="job-id">${item.job_id}</span>
-                                <h3 class="project-title">${item.client_name}: ${item.project_title}</h3>
+                                <small style="color:#aaa; font-weight:600;">${item.job_id}</small>
+                                <h3 style="margin:5px 0;">${item.client_name}: ${item.project_title}</h3>
                             </div>
                             <span class="badge status-${item.status}">${item.status}</span>
                         </div>
                         
-                        <div class="info-row">
-                            <div class="info-item"><b>Requester</b>${item.requester_name}</div>
-                            <div class="info-item"><b>Job Type</b>${item.job_type}</div>
-                            <div class="info-item"><b>Deadline</b>${item.deadline}</div>
-                            <div class="info-item"><b>Complexity</b>${item.complexity || 'Not Set'}</div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin:15px 0; font-size:0.8rem; color:#666;">
+                            <div><b>Type:</b> ${item.job_type}</div>
+                            <div><b>Due:</b> ${item.deadline}</div>
                         </div>
 
                         ${item.status === 'pending' ? `
-                            <div style="background: #fdfdfd; padding: 15px; border-radius: 8px; border: 1px dashed #ddd;">
-                                <label style="font-size: 0.6rem;">Assign To</label>
-                                <select id="assign-${item.job_id}" style="padding: 8px; font-size: 0.8rem; width: auto; margin-right: 10px;">
-                                    <option value="Unassigned">-- Choose --</option>
+                            <div style="background:#f9f9f9; padding:15px; border-radius:8px;">
+                                <select id="assign-${item.job_id}" style="padding:8px; font-size:0.8rem; width:auto; margin-right:10px;">
+                                    <option value="Unassigned">-- Assign --</option>
                                     ${creativeTeam.map(t => `<option value="${t}">${t}</option>`).join('')}
                                 </select>
-                                <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.requester_name}')" style="padding: 8px 20px; background: #000; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">Approve & Pass Brief</button>
+                                <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" style="padding:8px 20px; background:#000; color:#fff; border:none; border-radius:5px; cursor:pointer; font-weight:600;">Approve</button>
                             </div>
                         ` : `
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <p style="font-size: 0.8rem; margin: 0;"><strong>PIC:</strong> ${item.assignee}</p>
-                                <a href="${PLAYBOOK_MASTER}" target="_blank" class="playbook-btn">🔗 Open Master Playbook</a>
+                            <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #eee; padding-top:10px;">
+                                <p style="font-size:0.8rem; margin:0;"><strong>PIC:</strong> ${item.assignee}</p>
+                                ${item.link_to_slides ? `<a href="${item.link_to_slides}" target="_blank" style="font-size:0.75rem; color:blue; font-weight:600;">🔗 Open Copy of Playbook</a>` : `<small style="color:#888;">Generating Slides...</small>`}
                             </div>
                         `}
                     </div>
@@ -234,7 +255,7 @@
             } catch (e) { console.error(e); }
         }
 
-        window.onload = () => showPage('dashboard');
+        window.onload = fetchAndRender;
     </script>
 </body>
 </html>
