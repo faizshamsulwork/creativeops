@@ -3,29 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Engine v26</title>
+    <title>Adtechinno | Creative Engine v27</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root { --muji-bg: #f8f9fa; --muji-text: #2d3748; --muji-border: #e2e8f0; --accent: #0f172a; --red: #ef4444; --green: #10b981; --orange: #f59e0b; }
         body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; min-height: 100vh; position: relative; }
         
-        /* Sidebar */
         .sidebar { width: 260px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; z-index: 1000; display: flex; flex-direction: column; }
         .logo { font-weight: 800; letter-spacing: 2px; margin-bottom: 30px; font-size: 1.2rem; text-align: center; color: var(--accent); line-height: 1.2; }
         .logo-sub { display: block; font-size: 0.65rem; color: #64748b; font-weight: 600; letter-spacing: 1px; margin-top: 4px; text-transform: uppercase; }
         
         .nav-group { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #64748b; border-radius: 8px; transition: 0.2s; display: flex; align-items: center; font-weight: 500; justify-content: center; text-align: center; }
+        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #64748b; border-radius: 8px; transition: 0.2s; display: flex; align-items: center; font-weight: 500; }
         .nav-item:hover, .nav-item.active { background: #f1f5f9; color: var(--accent); font-weight: 600; }
-        .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; }
+        .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; justify-content: center; text-align: center; }
         .btn-new-request:hover { background: #334155; }
 
-        /* Admin Toggle */
         .admin-toggle { position: absolute; top: 20px; right: 40px; padding: 10px 18px; background: #fff; border: 1px solid var(--muji-border); color: #64748b; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); z-index: 100; }
         .admin-toggle:hover { border-color: #cbd5e1; color: var(--accent); }
         .admin-toggle.unlocked { background: var(--green); color: #fff; border-color: var(--green); }
 
-        /* Main Content */
         .main-content { margin-left: 260px; padding: 40px; width: calc(100% - 260px); box-sizing: border-box; }
         .page { display: none; max-width: 1050px; margin: 0 auto; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
@@ -41,8 +38,7 @@
         .dash-card { background: #fff; border: 1px solid var(--muji-border); border-radius: 12px; padding: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); overflow: hidden; }
         .dash-card h3 { margin-top: 0; font-size: 1rem; color: var(--accent); border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
         
-        /* Table responsive wrapper */
-        .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+        .table-responsive { overflow-x: auto; width: 100%; }
         .recent-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 500px; }
         .recent-table th { text-align: left; padding: 12px 10px; color: #64748b; font-weight: 600; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
         .recent-table td { padding: 15px 10px; border-bottom: 1px solid #f1f5f9; color: #334155; }
@@ -74,7 +70,6 @@
         .check-item input { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; }
         .btn-submit { background: var(--accent); color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; transition: 0.2s; margin-top: 10px; }
         .btn-submit:hover:not(:disabled) { background: #1e293b; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .btn-submit:disabled { opacity: 0.7; cursor: not-allowed; }
 
         /* Board Detailed UI */
         .job-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
@@ -83,13 +78,25 @@
         .badge { font-size: 0.7rem; padding: 5px 12px; border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; white-space: nowrap; }
         .status-pending { background: #ffedd5; color: #c2410c; }
         .status-approved { background: #dcfce7; color: #15803d; }
-        .job-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 15px; font-size: 0.85rem; }
+        
+        .job-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 15px; font-size: 0.85rem; align-items: center; }
         .detail-item { display: flex; flex-direction: column; gap: 4px; }
         .detail-item span { color: #64748b; font-size: 0.75rem; text-transform: uppercase; font-weight: 600; }
         .detail-item strong { color: #334155; word-break: break-word; }
         .brief-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin-bottom: 20px; font-size: 0.85rem; color: #334155; line-height: 1.6; word-break: break-word; }
         .brief-box p { margin: 0 0 10px 0; }
         .brief-box p:last-child { margin: 0; }
+        
+        /* 🌟 WORK STATUS DROPDOWN STYLES 🌟 */
+        .ws-select { padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: center; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .ws-select:hover { filter: brightness(0.9); }
+        .ws-not-started { background: #404040; color: white; }
+        .ws-drafting { background: #fde68a; color: #92400e; }
+        .ws-internal-review { background: #bae6fd; color: #0369a1; }
+        .ws-client-review { background: #5b21b6; color: white; }
+        .ws-done { background: #15803d; color: white; }
+        .ws-badge { display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-align: center; }
+
         .assign-area { border-top: 1px solid #e2e8f0; padding-top: 20px; }
         .designer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 15px; }
         .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
@@ -102,29 +109,20 @@
         .btn-delete:hover { background: #fef2f2; }
         .locked-msg { padding: 15px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center; color: #64748b; font-size: 0.85rem; font-weight: 500; }
 
-        /* 📱 MOBILE RESPONSIVE FIXES 📱 */
         @media (max-width: 768px) {
             body { flex-direction: column; }
             .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; border-bottom: 1px solid var(--muji-border); }
             .main-content { margin-left: 0; padding: 20px; width: 100%; }
             .admin-toggle { position: relative; top: 0; right: 0; width: 100%; margin-bottom: 20px; text-align: center; }
-            
             .nav-group { flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
-            .nav-item { flex: 1; min-width: 100px; padding: 10px; margin: 0; font-size: 0.8rem; }
+            .nav-item { flex: 1; min-width: 100px; padding: 10px; margin: 0; font-size: 0.8rem; justify-content: center; }
             .btn-new-request { margin-top: 0; width: 100%; flex: 100%; }
-            
             .stat-banner { grid-template-columns: 1fr; gap: 15px; }
             .dash-grid-top, .dash-grid-bottom, .form-row { grid-template-columns: 1fr; gap: 15px; }
-            
-            .selection-box { grid-template-columns: 1fr; }
-            .radio-box { grid-template-columns: 1fr; }
-            
+            .selection-box, .radio-box { grid-template-columns: 1fr; }
             .card { padding: 20px; }
             h1 { font-size: 1.5rem; text-align: center; }
-            
             .job-header { flex-direction: column; }
-            .badge { margin-top: 10px; }
-            
             .action-buttons { flex-direction: column; }
             .btn-action { width: 100%; margin-left: 0; }
         }
@@ -141,7 +139,8 @@
         </div>
         <div class="nav-group">
             <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')">📊 Dashboard</div>
-            <div class="nav-item" id="btn-workload" onclick="showPage('workload')">📋 Status</div>
+            <div class="nav-item" id="btn-workload" onclick="showPage('workload')">📋 Request Status</div>
+            <div class="nav-item" id="btn-done" onclick="showPage('done')">✅ Done Tasks</div>
             <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')">+ New Request</div>
         </div>
     </div>
@@ -152,9 +151,8 @@
             <div class="stat-banner">
                 <div class="stat-box" style="border-top: 4px solid #3b82f6;"><h4>Total Jobs</h4><p id="total-val">0</p></div>
                 <div class="stat-box" style="border-top: 4px solid var(--orange);"><h4>Awaiting Approval</h4><p id="pending-val">0</p></div>
-                <div class="stat-box" style="border-top: 4px solid var(--green);"><h4>In Progress</h4><p id="active-val">0</p></div>
+                <div class="stat-box" style="border-top: 4px solid var(--green);"><h4>In Progress (Active)</h4><p id="active-val">0</p></div>
             </div>
-            
             <div class="dash-grid-top">
                 <div class="dash-card">
                     <h3>🕒 5 Latest Requests</h3>
@@ -170,10 +168,9 @@
                     <div id="urgent-list">Loading...</div>
                 </div>
             </div>
-
             <div class="dash-grid-bottom">
                 <div class="dash-card">
-                    <h3>👷 Team Capacity Radar</h3>
+                    <h3>👷 Team Capacity Radar (Active Jobs)</h3>
                     <div class="workload-grid" id="team-workload">Loading...</div>
                 </div>
             </div>
@@ -181,8 +178,14 @@
 
         <div id="workload" class="page">
             <h1 style="margin-bottom: 5px;">Request Status Board</h1>
-            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">View full details, paste Playbook links, and assign team members.</p>
+            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">Track progress. Change Work Status to 'Done' to move jobs to the Done tab.</p>
             <div id="projectList">Loading data...</div>
+        </div>
+
+        <div id="done" class="page">
+            <h1 style="margin-bottom: 5px;">Done Tasks</h1>
+            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">Archive of completed creative requests.</p>
+            <div id="doneList">Loading data...</div>
         </div>
 
         <div id="request" class="page">
@@ -225,7 +228,6 @@
                         </select>
                     </div>
                 </div>
-
                 <h3 class="section-title" style="margin-top: 10px;">2. Project Details</h3>
                 <div class="form-row">
                     <div class="input-group">
@@ -237,7 +239,6 @@
                         <input type="text" id="pTitle" placeholder="e.g. Raya Assets">
                     </div>
                 </div>
-
                 <h3 class="section-title" style="margin-top: 10px;">3. Job Specifications</h3>
                 <div class="input-group" style="margin-bottom: 20px;">
                     <label>Job Type (Select all that apply)</label>
@@ -253,7 +254,6 @@
                     <label>Monthly Content Plan Details (if applicable)</label>
                     <textarea id="pMonthlyPlan" rows="3" placeholder="Paste plan here..."></textarea>
                 </div>
-
                 <h3 class="section-title" style="margin-top: 10px;">4. Creative Brief & Timeline</h3>
                 <div class="input-group" style="margin-bottom: 20px;">
                     <label>Objective</label>
@@ -267,7 +267,6 @@
                     <label>Creative Brief (Important Points / Pitch Deck)</label>
                     <textarea id="pBrief" rows="4" placeholder="What needs to be done?"></textarea>
                 </div>
-                
                 <div class="form-row">
                     <div class="input-group">
                         <label>Deadline (Min. 3 working days)</label>
@@ -282,7 +281,6 @@
                     <label>Remarks</label>
                     <textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea>
                 </div>
-
                 <button class="btn-submit" id="submitBtn" onclick="submitRequest()">🚀 Submit Request</button>
             </div>
         </div>
@@ -322,13 +320,13 @@
                 if(pin === "2026") {
                     localStorage.setItem('adtech_lead_access', 'true');
                     isLeadAdmin = true;
-                    alert("Welcome Lead! You can now assign jobs, paste playbooks, and delete requests.");
+                    alert("Welcome Lead! You can now manage assignments.");
                 } else {
                     alert("Incorrect PIN.");
                 }
             }
             checkAdminUI();
-            if(document.getElementById('workload').classList.contains('active')) fetchAndRender();
+            fetchAndRender(); // Re-render to show/hide buttons
         }
         checkAdminUI();
 
@@ -340,7 +338,6 @@
             if(id !== 'request') fetchAndRender();
         }
 
-        // 🔥 AUTO-INCREMENT ID LOGIC 🔥
         async function submitRequest() {
             const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
             const client = document.getElementById('pClient').value;
@@ -353,27 +350,18 @@
             submitBtn.disabled = true;
 
             try {
-                // Fetch data to get the latest Job ID
                 const existingData = await fetch(SHEETDB_API).then(r => r.json());
                 let nextNum = 1;
-                
                 if (existingData && existingData.length > 0) {
                     const ids = existingData.map(d => {
-                        if (d.job_id) {
-                            const match = d.job_id.match(/AT26-(\d+)/);
-                            return match ? parseInt(match[1]) : 0;
-                        }
+                        if (d.job_id) { const match = d.job_id.match(/AT26-(\d+)/); return match ? parseInt(match[1]) : 0; }
                         return 0;
                     });
-                    const maxId = Math.max(...ids, 0);
-                    nextNum = maxId + 1;
+                    nextNum = Math.max(...ids, 0) + 1;
                 }
-                
-                // Format ID as AT26-001, AT26-002, etc.
                 const jobID = `AT26-${String(nextNum).padStart(3, '0')}`;
                 
-                submitBtn.innerHTML = '🚀 Submitting to Database...';
-
+                submitBtn.innerHTML = '🚀 Submitting...';
                 const types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
                 const objective = document.querySelector('input[name="obj"]:checked')?.value || 'N/A';
                 
@@ -387,7 +375,7 @@
                     job_type: types, objective: objective, brief: fullBrief,
                     deadline: deadline, ref_link: document.getElementById('pRefLink').value,
                     remarks: document.getElementById('pRemarks').value, status: 'pending', assignee: 'Unassigned',
-                    playbook_link: ''
+                    playbook_link: '', work_status: 'Not started'
                 }]};
 
                 const res = await fetch(SHEETDB_API, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
@@ -398,9 +386,7 @@
                     document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
                     showPage('dashboard');
                 }
-            } catch(e) { 
-                alert("Submission failed: " + e.message); 
-            } finally {
+            } catch(e) { alert("Submission failed: " + e.message); } finally {
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
             }
@@ -416,12 +402,25 @@
                 await fetch(`${SHEETDB_API}/job_id/${jobID}`, { 
                     method: 'PATCH', 
                     headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({data: {assignee: selectedDesigners, status: 'approved', playbook_link: playbookLink}})
+                    body: JSON.stringify({data: {assignee: selectedDesigners, status: 'approved', playbook_link: playbookLink, work_status: 'Not started'}})
                 });
                 await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=✅ *APPROVED*%0AJob: ${jobID}%0AClient: ${client}%0APIC: ${selectedDesigners}%0APlaybook: ${playbookLink}&parse_mode=Markdown`);
                 alert("Job Approved & Messages Ready!");
                 fetchAndRender();
             } catch(e) { alert("Error: " + e.message); }
+        }
+
+        // 🔥 NEW: Update Work Status Logic 🔥
+        async function updateWorkStatus(jobID, newStatus) {
+            try {
+                await fetch(`${SHEETDB_API}/job_id/${jobID}`, { 
+                    method: 'PATCH', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({data: {work_status: newStatus}})
+                });
+                if(newStatus === 'Done') alert("Job marked as Done! It has been moved to the Done Tasks tab.");
+                fetchAndRender();
+            } catch(e) { alert("Error updating status: " + e.message); }
         }
 
         async function deleteJob(jobID) {
@@ -436,7 +435,80 @@
             if(type === 'requester') msg = `Hi! 👋 Your creative request has been *APPROVED*.\n\n*Job ID:* ${jobID}\n*Project:* ${client} - ${title}\n*Deadline:* ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
             else if (type === 'team') msg = `🚨 *NEW ASSIGNED JOB*\n\n*Team:* ${assignee}\n*Job ID:* ${jobID}\n*Client:* ${client} - ${title}\n*Deadline:* ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions!`;
             navigator.clipboard.writeText(msg);
-            alert("Message copied to clipboard! Ready to paste in WhatsApp/Telegram.");
+            alert("Message copied to clipboard! Ready to paste.");
+        }
+
+        // Generator for Job Cards to avoid repeating code
+        function generateJobCard(item, isDoneTab = false) {
+            const ws = item.work_status || 'Not started';
+            const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
+            
+            return `
+                <div class="card">
+                    <div class="job-header">
+                        <div><div class="job-id">${item.job_id}</div><h3 class="job-title">${item.client_name}: ${item.project_title}</h3></div>
+                        <span class="badge status-${item.status}">${item.status === 'pending' ? 'PENDING' : 'APPROVED'}</span>
+                    </div>
+                    <div class="job-details">
+                        <div class="detail-item"><span>Requester</span><strong>${item.requester_name} (${item.region})</strong></div>
+                        <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
+                        <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${item.deadline}</strong></div>
+                        <div class="detail-item">
+                            <span>Work Status</span>
+                            ${item.status === 'pending' ? '<strong>-</strong>' : `
+                                <select onchange="updateWorkStatus('${item.job_id}', this.value)" class="ws-select ${wsClass}">
+                                    <option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option>
+                                    <option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option>
+                                    <option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option>
+                                    <option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option>
+                                    <option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option>
+                                </select>
+                            `}
+                        </div>
+                    </div>
+                    <div class="brief-box">
+                        <p><strong>📝 Creative Brief & Plan:</strong><br>${item.brief ? item.brief.replace(/\n/g, '<br>') : 'No brief provided.'}</p>
+                        ${item.ref_link ? `<p><strong>🔗 Reference:</strong> <a href="${item.ref_link}" target="_blank" style="color: #0284c7; text-decoration: none; word-break: break-all;">Click to view reference</a></p>` : ''}
+                        ${item.remarks ? `<p><strong>📌 Remarks:</strong> ${item.remarks}</p>` : ''}
+                    </div>
+                    ${item.status === 'pending' ? `
+                        ${isLeadAdmin ? `
+                            <div class="assign-area">
+                                <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block;">1. Select Creative Team (Multiple Allowed):</label>
+                                <div class="designer-grid">
+                                    ${designersMY.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
+                                    ${designersID.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
+                                </div>
+                                <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block;">2. Paste Creative Playbook Link here:</label>
+                                <input type="text" id="playbook-${item.job_id}" placeholder="https://docs.google.com/presentation/d/..." style="margin-bottom: 15px; border: 1px dashed #94a3b8; background: #f8fafc;">
+                                <div class="action-buttons">
+                                    <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve">✅ Approve & Assign</button>
+                                    <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="locked-msg">⏳ Status: Reviewing requirements. Awaiting Creative Lead Assignment.</div>
+                        `}
+                    ` : `
+                        <div class="assign-area">
+                            <div class="job-details" style="background: transparent; border: none; padding: 0; margin-bottom: 15px;">
+                                <div class="detail-item"><span>Assigned Team</span><strong>${item.assignee}</strong></div>
+                                <div class="detail-item"><span>Playbook Link</span><strong><a href="${item.playbook_link || '#'}" target="_blank" style="color:#0284c7; word-break: break-all;">Open Playbook Slides</a></strong></div>
+                            </div>
+                            ${isLeadAdmin && !isDoneTab ? `
+                                <div class="action-buttons">
+                                    <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Msg for Requester</button>
+                                    <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Msg for Team</button>
+                                    <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
+                                </div>
+                            ` : ``}
+                            ${isLeadAdmin && isDoneTab ? `
+                                <div class="action-buttons"><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:0;">🗑️ Delete Record</button></div>
+                            ` : ``}
+                        </div>
+                    `}
+                </div>
+            `;
         }
 
         async function fetchAndRender() {
@@ -444,10 +516,15 @@
             const rawData = await res.json();
             const data = rawData.reverse();
             
-            // Dashboard Logic
+            // Separate Data Logic
+            const pendingData = data.filter(d => d.status === 'pending');
+            const activeData = data.filter(d => d.status === 'approved' && d.work_status !== 'Done');
+            const doneData = data.filter(d => d.status === 'approved' && d.work_status === 'Done');
+
+            // Dashboard Stats
             document.getElementById('total-val').innerText = data.length;
-            document.getElementById('pending-val').innerText = data.filter(d => d.status === 'pending').length;
-            document.getElementById('active-val').innerText = data.filter(d => d.status === 'approved').length;
+            document.getElementById('pending-val').innerText = pendingData.length;
+            document.getElementById('active-val').innerText = activeData.length;
 
             const recent5 = data.slice(0, 5);
             document.getElementById('recent-list').innerHTML = recent5.length ? recent5.map(d => `
@@ -462,8 +539,8 @@
             const today = new Date(); today.setHours(0,0,0,0);
             const nextWeek = new Date(today); nextWeek.setDate(today.getDate() + 7);
             
-            const urgentJobs = data.filter(d => {
-                if(d.status === 'done' || !d.deadline) return false;
+            const urgentJobs = activeData.filter(d => {
+                if(!d.deadline) return false;
                 const dDate = new Date(d.deadline);
                 return dDate >= today && dDate <= nextWeek;
             }).sort((a,b) => new Date(a.deadline) - new Date(b.deadline));
@@ -479,13 +556,12 @@
             `).join('') : '<div style="font-size:0.85rem; color:#64748b; padding:10px 0;">Relax, no urgent deadlines. ☕</div>';
 
             document.getElementById('team-workload').innerHTML = allDesigners.map(name => {
-                const count = data.filter(d => d.assignee && d.assignee.includes(name) && d.status === 'approved').length;
+                const count = activeData.filter(d => d.assignee && d.assignee.includes(name)).length;
                 const maxCap = 5; 
                 const pct = Math.min((count / maxCap) * 100, 100);
                 let color = 'var(--accent)';
                 if(count >= 3) color = 'var(--orange)';
                 if(count >= 5) color = 'var(--red)';
-                
                 return `
                     <div class="wl-bar-container">
                         <div class="wl-info"><span>${name}</span><span>${count} Jobs</span></div>
@@ -494,60 +570,13 @@
                 `;
             }).join('');
 
-            // Workload Board
+            // Render Boards
             if(document.getElementById('workload').classList.contains('active')) {
-                document.getElementById('projectList').innerHTML = data.map(item => `
-                    <div class="card">
-                        <div class="job-header">
-                            <div><div class="job-id">${item.job_id}</div><h3 class="job-title">${item.client_name}: ${item.project_title}</h3></div>
-                            <span class="badge status-${item.status}">${item.status}</span>
-                        </div>
-                        <div class="job-details">
-                            <div class="detail-item"><span>Requester</span><strong>${item.requester_name} (${item.region})</strong></div>
-                            <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
-                            <div class="detail-item"><span>Objective</span><strong>${item.objective || 'N/A'}</strong></div>
-                            <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${item.deadline}</strong></div>
-                        </div>
-                        <div class="brief-box">
-                            <p><strong>📝 Creative Brief & Plan:</strong><br>${item.brief ? item.brief.replace(/\n/g, '<br>') : 'No brief provided.'}</p>
-                            ${item.ref_link ? `<p><strong>🔗 Reference:</strong> <a href="${item.ref_link}" target="_blank" style="color: #0284c7; text-decoration: none; word-break: break-all;">Click to view reference</a></p>` : ''}
-                            ${item.remarks ? `<p><strong>📌 Remarks:</strong> ${item.remarks}</p>` : ''}
-                        </div>
-                        ${item.status === 'pending' ? `
-                            ${isLeadAdmin ? `
-                                <div class="assign-area">
-                                    <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block;">1. Select Creative Team (Multiple Allowed):</label>
-                                    <div class="designer-grid">
-                                        ${designersMY.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
-                                        ${designersID.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
-                                    </div>
-                                    <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block;">2. Paste Creative Playbook Link here:</label>
-                                    <input type="text" id="playbook-${item.job_id}" placeholder="https://docs.google.com/presentation/d/..." style="margin-bottom: 15px; border: 1px dashed #94a3b8; background: #f8fafc;">
-                                    <div class="action-buttons">
-                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve">✅ Approve, Assign & Save Link</button>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
-                                    </div>
-                                </div>
-                            ` : `
-                                <div class="locked-msg">⏳ Status: Reviewing requirements. Awaiting Creative Lead Assignment.</div>
-                            `}
-                        ` : `
-                            <div class="assign-area">
-                                <div class="job-details" style="background: transparent; border: none; padding: 0; margin-bottom: 15px;">
-                                    <div class="detail-item"><span>Assigned Team</span><strong>${item.assignee}</strong></div>
-                                    <div class="detail-item"><span>Playbook Link</span><strong><a href="${item.playbook_link || '#'}" target="_blank" style="color:#0284c7; word-break: break-all;">Open Playbook Slides</a></strong></div>
-                                </div>
-                                ${isLeadAdmin ? `
-                                    <div class="action-buttons">
-                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Copy Msg for Requester</button>
-                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Copy Msg for Team</button>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
-                                    </div>
-                                ` : ``}
-                            </div>
-                        `}
-                    </div>
-                `).join('');
+                const workloadJobs = [...pendingData, ...activeData];
+                document.getElementById('projectList').innerHTML = workloadJobs.length ? workloadJobs.map(item => generateJobCard(item, false)).join('') : '<p style="color:#64748b;">No active requests.</p>';
+            }
+            if(document.getElementById('done').classList.contains('active')) {
+                document.getElementById('doneList').innerHTML = doneData.length ? doneData.map(item => generateJobCard(item, true)).join('') : '<p style="color:#64748b;">No completed tasks yet.</p>';
             }
         }
 
