@@ -36,9 +36,7 @@
         .intro-btn:hover { transform: scale(1.05); box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
         .hide-intro { opacity: 0; transform: scale(1.03); pointer-events: none; }
 
-        @keyframes slideUpFade {
-            to { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes slideUpFade { to { opacity: 1; transform: translateY(0); } }
 
         /* SIDEBAR */
         .sidebar { width: 260px; border-right: 1px solid var(--border-main); padding: 40px 20px; background: var(--bg-sidebar); position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; display: flex; flex-direction: column; transition: 0.3s; }
@@ -108,7 +106,7 @@
         .btn-submit { background: var(--accent); color: var(--accent-text); border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; transition: 0.2s; margin-top: 10px; }
         .btn-submit:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-2px); box-shadow: var(--shadow); }
         
-        /* CARD COLLAPSIBLE & STATUS UI */
+        /* CARD COLLAPSIBLE, STATUS, & REVISION UI */
         .card-summary { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
         .card-body { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px dashed var(--border-main); }
         .card.expanded .card-body { display: block; animation: fadeIn 0.3s ease; }
@@ -119,7 +117,16 @@
         .badge { font-size: 0.7rem; padding: 5px 12px; border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; white-space: nowrap; }
         .status-pending { background: var(--badge-pend-bg); color: var(--badge-pend-txt); }
         .status-approved { background: var(--badge-appr-bg); color: var(--badge-appr-txt); }
-        .job-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 15px; font-size: 0.85rem; align-items: center; }
+        
+        /* PLAYBOOK PILL & REV BADGE */
+        .playbook-pill { display: inline-block; background: var(--bg-box); color: var(--link-color); border: 1px solid var(--border-main); padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; text-decoration: none; text-transform: uppercase; letter-spacing: 0.5px; transition: 0.2s; }
+        .playbook-pill:hover { background: var(--link-color); color: #fff; border-color: var(--link-color); }
+        .rev-badge { display: inline-block; background: #fee2e2; color: #b91c1c; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; border: 1px solid #fca5a5; }
+        .rev-badge.high-rev { background: #7f1d1d; color: #fca5a5; border-color: #450a0a; } /* Red flag for Rev 3+ */
+        .rev-btn { border: 1px solid var(--border-main); background: var(--bg-card); color: var(--text-main); border-radius: 4px; padding: 2px 8px; cursor: pointer; transition: 0.2s; font-weight:bold; }
+        .rev-btn:hover { background: var(--border-main); }
+
+        .job-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 15px; font-size: 0.85rem; align-items: center; }
         .detail-item { display: flex; flex-direction: column; gap: 4px; }
         .detail-item span { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 600; }
         .detail-item strong { color: var(--text-strong); word-break: break-word; }
@@ -127,14 +134,17 @@
         .brief-box p { margin: 0 0 10px 0; }
         .brief-box p:last-child { margin: 0; }
         .brief-box a { color: var(--link-color); text-decoration: none; font-weight: 500; }
+        
         .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: fit-content; }
         .ws-select:hover { filter: brightness(0.9); }
         .ws-not-started { background: #64748b; color: white; }
         .ws-drafting { background: #f59e0b; color: white; }
         .ws-internal-review { background: #0ea5e9; color: white; }
+        .ws-revision { background: #ea580c; color: white; } /* Orange */
         .ws-client-review { background: #8b5cf6; color: white; }
         .ws-done { background: #10b981; color: white; }
-        .ws-badge { display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-align: center; }
+        .ws-badge { display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-align: center; color: white;}
+
         .assign-area { border-top: 1px solid var(--border-main); padding-top: 20px; }
         .designer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 15px; }
         .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
@@ -174,7 +184,7 @@
             .selection-box, .radio-box { grid-template-columns: 1fr; }
             .card { padding: 25px 20px; }
             .card-summary { flex-direction: column; align-items: flex-start; gap: 10px; }
-            .card-summary > div:last-child { width: 100%; justify-content: space-between; }
+            .card-summary > div:last-child { width: 100%; justify-content: flex-start; flex-wrap: wrap;}
             h1 { font-size: 1.5rem; text-align: center; }
             .action-buttons { flex-direction: column; }
             .btn-action { width: 100%; margin-left: 0; }
@@ -478,7 +488,6 @@
             return res.json();
         }
 
-        // 🌟 🔥 AUTO-YEAR ID LOGIC 🔥 🌟
         async function submitRequest() {
             const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
             const client = document.getElementById('pClient').value;
@@ -493,7 +502,6 @@
             try {
                 const existingData = await fetch(GAS_API).then(r => r.json());
                 
-                // Generate dynamic prefix based on current year (e.g., 2026 -> AT26)
                 const currentYear = new Date().getFullYear().toString().slice(-2);
                 const idPrefix = `AT${currentYear}`;
                 const regex = new RegExp(`${idPrefix}-(\\d+)`);
@@ -527,7 +535,7 @@
                         job_type: types, objective: objective, brief: fullBrief,
                         deadline: deadline, ref_link: document.getElementById('pRefLink').value,
                         remarks: document.getElementById('pRemarks').value, status: 'pending', assignee: 'Unassigned',
-                        playbook_link: '', work_status: 'Not started'
+                        playbook_link: '', work_status: 'Not started', revision: 0
                     }
                 };
 
@@ -555,7 +563,7 @@
             try {
                 const payload = {
                     action: 'update', pin: securePin,
-                    data: { job_id: jobID, assignee: selectedDesigners, status: 'approved', playbook_link: playbookLink, work_status: 'Not started' }
+                    data: { job_id: jobID, assignee: selectedDesigners, status: 'approved', playbook_link: playbookLink, work_status: 'Not started', revision: 0 }
                 };
                 const res = await gasPost(payload);
                 if(res.status !== "success") throw new Error(res.message);
@@ -574,6 +582,20 @@
                 if(newStatus === 'Done') alert("Job marked as Done. Moved to the Done Tasks tab.");
                 fetchAndRender();
             } catch(e) { alert("Error updating status: " + e.message); }
+        }
+
+        // 🌟 UPDATE REVISION LOGIC 🌟
+        async function updateRevision(event, jobID, currentRev, change) {
+            event.stopPropagation(); // prevent card from expanding/collapsing
+            let newRev = parseInt(currentRev) + change;
+            if (newRev < 0) newRev = 0;
+            
+            try {
+                const payload = { action: 'update', pin: securePin, data: { job_id: jobID, revision: newRev } };
+                const res = await gasPost(payload);
+                if(res.status !== "success") throw new Error(res.message);
+                fetchAndRender();
+            } catch(e) { alert("Error updating revision: " + e.message); }
         }
 
         async function deleteJob(jobID) {
@@ -635,9 +657,9 @@
             const doneData = globalData.filter(d => d.status === 'approved' && d.work_status === 'Done');
             if (doneData.length === 0) return alert("No completed tasks available to export.");
 
-            const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Deadline", "Assigned Team", "Playbook Link"];
+            const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Deadline", "Revision", "Assigned Team", "Playbook Link"];
             const rows = doneData.map(d => [
-                d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(d.deadline), d.assignee, d.playbook_link
+                d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(d.deadline), (d.revision || 0), d.assignee, d.playbook_link
             ].map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(","));
 
             const csvContent = [headers.join(","), ...rows].join("\n");
@@ -658,7 +680,7 @@
             } else if (type === 'team') {
                 msg = `[NEW ASSIGNED JOB]\n\nTeam: ${assignee}\nJob ID: ${jobID}\nClient: ${client} - ${title}\nDeadline: ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions.`;
             } else if (type === 'review') {
-                msg = `✅ CREATIVE READY FOR REVIEW \n\nClient: ${client}\nProject: ${title}\n\nHi ${requesterName}, the creatives are now ready for your review. You can check the drafts via the link below:\n${link}\n\nPlease let us know if there are any further amendments or if we can proceed to final. Thank you!`;
+                msg = `[CREATIVE READY FOR REVIEW]\n\nClient: ${client}\nProject: ${title}\n\nHi ${requesterName}, the creatives are now ready for your review. You can check the drafts via the link below:\n${link}\n\nPlease let us know if there are any further amendments or if we can proceed to final. Thank you!`;
             }
 
             navigator.clipboard.writeText(msg);
@@ -668,9 +690,10 @@
         function generateJobCard(item, isDoneTab = false) {
             const ws = item.work_status || 'Not started';
             const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
-            const borderColors = { 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
+            const borderColors = { 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Revision': '#ea580c', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
             const borderColor = borderColors[ws] || '#cbd5e1';
             
+            // Render UI
             return `
                 <div class="card" style="border-left: 6px solid ${borderColor}; padding-left: 29px; padding-top: 25px; padding-bottom: 25px;">
                     <div class="card-summary" onclick="this.closest('.card').classList.toggle('expanded')">
@@ -679,7 +702,9 @@
                             <h3 class="job-title">${item.client_name}: ${item.project_title}</h3>
                             <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">By: ${item.requester_name}</div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 15px;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end;">
+                            ${(item.revision && parseInt(item.revision) > 0) ? `<span class="rev-badge ${parseInt(item.revision) >= 3 ? 'high-rev' : ''}">Rev: ${item.revision}</span>` : ''}
+                            ${item.playbook_link ? `<a href="${item.playbook_link}" target="_blank" class="playbook-pill" onclick="event.stopPropagation()">Open Playbook</a>` : ''}
                             <span class="badge status-${item.status}">${item.status === 'pending' ? 'PENDING' : 'APPROVED'}</span>
                             <span class="expand-icon">▼</span>
                         </div>
@@ -689,6 +714,7 @@
                         <div class="job-details">
                             <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
                             <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${formatDate(item.deadline)}</strong></div>
+                            
                             <div class="detail-item">
                                 <span>Work Status</span>
                                 ${item.status === 'pending' ? '<strong>-</strong>' : `
@@ -697,6 +723,7 @@
                                             <option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option>
                                             <option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option>
                                             <option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option>
+                                            <option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option>
                                             <option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option>
                                             <option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option>
                                         </select>
@@ -705,6 +732,18 @@
                                     `}
                                 `}
                             </div>
+
+                            <div class="detail-item">
+                                <span>Revision Count</span>
+                                ${securePin && !isDoneTab ? `
+                                    <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+                                        <button class="rev-btn" onclick="updateRevision(event, '${item.job_id}', ${item.revision || 0}, -1)">-</button>
+                                        <strong style="min-width:15px; text-align:center;">${item.revision || 0}</strong>
+                                        <button class="rev-btn" onclick="updateRevision(event, '${item.job_id}', ${item.revision || 0}, 1)">+</button>
+                                    </div>
+                                ` : `<strong>${item.revision || 0}</strong>`}
+                            </div>
+
                         </div>
                         
                         <div class="brief-box">
