@@ -1,34 +1,52 @@
 <!DOCTYPE html>
-<html lang="ms">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Request (Local)</title>
+    <title>Adtechinno | Creative Ops Portal</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-border: #e6e6e6; }
         body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; flex-direction: row; min-height: 100vh; }
+        
+        /* Navigation */
         .sidebar { width: 260px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; }
-        .logo { font-weight: 700; letter-spacing: 3px; margin-bottom: 40px; font-size: 1.1rem; text-align: center; }
-        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #888; border-radius: 6px; margin-bottom: 5px; transition: 0.2s; }
+        .logo { font-weight: 700; letter-spacing: 3px; margin-bottom: 40px; font-size: 1.1rem; text-align: center; color: #000; }
+        .nav-container { display: flex; flex-direction: column; gap: 5px; }
+        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #888; border-radius: 6px; transition: 0.2s; }
         .nav-item:hover, .nav-item.active { background: #f5f5f5; color: #000; font-weight: 600; }
+
+        /* Main Content */
         .main-content { margin-left: 260px; padding: 40px; width: 100%; box-sizing: border-box; }
-        .page { display: none; max-width: 800px; margin: 0 auto; }
+        .page { display: none; max-width: 850px; margin: 0 auto; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
+
+        /* UI Elements */
         .card { background: white; border: 1px solid var(--muji-border); padding: 30px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.03); }
         .form-section { border-bottom: 1px solid #f0f0f0; padding-bottom: 20px; margin-bottom: 25px; }
-        .form-section h3 { font-size: 0.9rem; margin-bottom: 15px; color: #000; border-left: 3px solid #000; padding-left: 10px; }
+        .form-section h3 { font-size: 0.9rem; margin-bottom: 15px; color: #000; border-left: 3px solid #000; padding-left: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        
         label { display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 8px; color: #666; text-transform: uppercase; }
         input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--muji-border); border-radius: 6px; font-size: 0.9rem; margin-bottom: 15px; box-sizing: border-box; font-family: inherit; }
-        .checkbox-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; background: #f9f9f9; padding: 15px; border-radius: 8px; }
-        .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; }
+        
+        .checkbox-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; background: #f9f9f9; padding: 15px; border-radius: 8px; }
+        .checkbox-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; cursor: pointer; }
         .checkbox-item input { width: auto; margin: 0; }
-        .btn-submit { background: #000; color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; transition: 0.3s; }
+
+        .btn-submit { background: #000; color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 0.9rem; transition: 0.3s; }
         .btn-submit:hover { background: #333; transform: translateY(-2px); }
+        
         .badge { font-size: 0.65rem; padding: 4px 10px; border-radius: 12px; font-weight: 600; text-transform: uppercase; }
         .status-pending { background: #fff7ed; color: #9a3412; border: 1px solid #ffedd5; }
         .status-approved { background: #f0fdf4; color: #166534; border: 1px solid #dcfce7; }
-        @media (max-width: 768px) { body { flex-direction: column; } .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; } .main-content { margin-left: 0; padding: 20px; } }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; border-bottom: 1px solid var(--muji-border); }
+            .nav-container { flex-direction: row; overflow-x: auto; }
+            .nav-item { white-space: nowrap; }
+            .main-content { margin-left: 0; padding: 20px; }
+        }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
@@ -37,15 +55,15 @@
     <div class="sidebar">
         <div class="logo">ADTECHINNO</div>
         <div class="nav-container">
-            <div class="nav-item active" onclick="showPage('workload')">Workload Board</div>
-            <div class="nav-item" onclick="showPage('request')">New Request</div>
+            <div class="nav-item active" id="nav-workload" onclick="showPage('workload')">Workload Board</div>
+            <div class="nav-item" id="nav-request" onclick="showPage('request')">New Request</div>
         </div>
     </div>
 
     <div class="main-content">
         <div id="workload" class="page active">
-            <h1>Creative Workload (Local Mode)</h1>
-            <div id="projectList">Tiada data disimpan.</div>
+            <h1>Creative Workload (Offline Mode)</h1>
+            <div id="projectList">No data found in this browser.</div>
         </div>
 
         <div id="request" class="page">
@@ -56,7 +74,7 @@
                     <h3>1. Requester Details</h3>
                     <label>Your Name</label>
                     <select id="requesterName">
-                        <option value="">-- Pilih Nama Anda --</option>
+                        <option value="">-- Select Your Name --</option>
                         <optgroup label="Malaysia">
                             <option>MY - Ain Sabrina</option><option>MY - Ammelia</option><option>MY - Angie Ng</option>
                             <option>MY - Bernice Mah</option><option>MY - Boon Jie Xin</option><option>MY - Chong Jia Jun</option>
@@ -87,13 +105,13 @@
                 <div class="form-section">
                     <h3>2. Project Details</h3>
                     <label>Client Name</label>
-                    <input type="text" id="pClient" placeholder="e.g. Cagamas">
+                    <input type="text" id="pClient" placeholder="Enter client name">
                     <label>Project Title</label>
-                    <input type="text" id="pTitle" placeholder="e.g. Raya Campaign 2026">
+                    <input type="text" id="pTitle" placeholder="e.g., Q1 Social Media Campaign">
                 </div>
 
                 <div class="form-section">
-                    <h3>3. Job Type (Boleh pilih banyak)</h3>
+                    <h3>3. Job Type (Select all that apply)</h3>
                     <div class="checkbox-group" id="jobTypes">
                         <label class="checkbox-item"><input type="checkbox" value="Poster/Graphic"> Poster/Graphic</label>
                         <label class="checkbox-item"><input type="checkbox" value="Video Production"> Video Production</label>
@@ -109,14 +127,14 @@
                     <select id="pObjective">
                         <option>Traffic</option><option>Awareness</option><option>Sales</option><option>Other</option>
                     </select>
-                    <label>Creative Brief (Poin Penting)</label>
-                    <textarea id="pBrief" rows="4" placeholder="Apa matlamat projek ni?"></textarea>
+                    <label>Creative Brief (Key Points)</label>
+                    <textarea id="pBrief" rows="4" placeholder="What is the main goal of this project?"></textarea>
                     <label>Reference/Moodboard Link</label>
-                    <input type="text" id="pRefLink" placeholder="Link Google Drive/Slides">
-                    <label>Deadline</label>
+                    <input type="text" id="pRefLink" placeholder="Google Drive or Slides link">
+                    <label>Deadline (Min. 3 working days)</label>
                     <input type="date" id="pDeadline">
                     <label>Remarks</label>
-                    <textarea id="pRemarks" rows="2"></textarea>
+                    <textarea id="pRemarks" rows="2" placeholder="Any additional notes..."></textarea>
                 </div>
 
                 <button class="btn-submit" onclick="submitRequest()">Submit Request (Save Locally)</button>
@@ -132,6 +150,7 @@
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.getElementById(id).classList.add('active');
+            document.getElementById('nav-' + (id === 'workload' ? 'workload' : 'request')).classList.add('active');
             if(id === 'workload') render();
         }
 
@@ -140,11 +159,11 @@
             const client = document.getElementById('pClient').value;
             const deadline = document.getElementById('pDeadline').value;
             
-            if(!requester || !client || !deadline) return alert("Tolong isi Requester, Client, dan Deadline!");
+            if(!requester || !client || !deadline) return alert("Please fill in Requester, Client, and Deadline!");
 
             const selectedTypes = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
 
-            let db = JSON.parse(localStorage.getItem('at_local_db')) || [];
+            let db = JSON.parse(localStorage.getItem('at_local_v1')) || [];
             const jobID = `AT26-${(db.length + 1).toString().padStart(3, '0')}`;
 
             const newReq = {
@@ -161,39 +180,39 @@
             };
 
             db.push(newReq);
-            localStorage.setItem('at_local_db', JSON.stringify(db));
+            localStorage.setItem('at_local_v1', JSON.stringify(db));
 
-            alert(`Berjaya! Job ${jobID} disimpan dalam browser ini.`);
+            alert(`Success! Job ${jobID} has been saved to your browser.`);
             showPage('workload');
         }
 
         function assignWork(id) {
             const designer = document.getElementById('assign-' + id).value;
-            if(designer === 'Unassigned') return alert("Pilih designer!");
+            if(designer === 'Unassigned') return alert("Please select a designer!");
             
-            let db = JSON.parse(localStorage.getItem('at_local_db')) || [];
+            let db = JSON.parse(localStorage.getItem('at_local_v1')) || [];
             const i = db.findIndex(x => x.id === id);
             db[i].assign = designer;
             db[i].status = 'approved';
-            localStorage.setItem('at_local_db', JSON.stringify(db));
+            localStorage.setItem('at_local_v1', JSON.stringify(db));
             render();
         }
 
         function deleteTask(id) {
-            if(confirm("Padam?")) {
-                let db = JSON.parse(localStorage.getItem('at_local_db')) || [];
+            if(confirm("Are you sure you want to delete this?")) {
+                let db = JSON.parse(localStorage.getItem('at_local_v1')) || [];
                 db = db.filter(x => x.id !== id);
-                localStorage.setItem('at_local_db', JSON.stringify(db));
+                localStorage.setItem('at_local_v1', JSON.stringify(db));
                 render();
             }
         }
 
         function render() {
             const list = document.getElementById('projectList');
-            const db = JSON.parse(localStorage.getItem('at_local_db')) || [];
+            const db = JSON.parse(localStorage.getItem('at_local_v1')) || [];
             
             if(db.length === 0) {
-                list.innerHTML = "<p style='color:#888;'>Tiada request dijumpai dalam browser ini.</p>";
+                list.innerHTML = "<p style='color:#888;'>No active requests in this browser storage.</p>";
                 return;
             }
 
@@ -201,27 +220,28 @@
                 <div class="card">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                         <div>
-                            <small style="color:#888;">${item.jobID}</small>
-                            <h3 style="margin:5px 0;">${item.client}: ${item.title}</h3>
+                            <small style="color:#888; font-weight:600;">${item.jobID}</small>
+                            <h3 style="margin:5px 0;">${item.client}: ${item.title || 'Untitled Project'}</h3>
                         </div>
                         <span class="badge status-${item.status}">${item.status}</span>
                     </div>
-                    <p style="font-size:0.8rem; color:#666;">
-                        <strong>Requester:</strong> ${item.requester}<br>
-                        <strong>Type:</strong> ${item.type}<br>
+                    <div style="font-size:0.85rem; color:#666; margin:15px 0; line-height:1.6;">
+                        <strong>Requested by:</strong> ${item.requester}<br>
+                        <strong>Type:</strong> ${item.type || 'N/A'}<br>
                         <strong>Deadline:</strong> ${item.deadline}
-                    </p>
+                    </div>
                     ${item.status === 'pending' ? `
-                        <div style="border-top:1px solid #eee; padding-top:15px; margin-top:10px;">
-                            <select id="assign-${item.id}" style="padding:8px; font-size:0.8rem; margin-bottom:10px;">
-                                <option value="Unassigned">-- Assign Designer --</option>
+                        <div style="border-top:1px solid #eee; padding-top:15px;">
+                            <label style="font-size:0.6rem;">Assign Designer (Lead Only)</label>
+                            <select id="assign-${item.id}" style="padding:10px; font-size:0.8rem; margin-bottom:10px;">
+                                <option value="Unassigned">-- Select Designer --</option>
                                 <optgroup label="Malaysia">${myTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
                                 <optgroup label="Indonesia">${idTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
                             </select>
-                            <button class="btn-submit" style="padding:10px; font-size:0.75rem;" onclick="assignWork(${item.id})">Approve & Assign</button>
+                            <button class="btn-submit" style="padding:12px; font-size:0.75rem;" onclick="assignWork(${item.id})">Approve & Assign</button>
                         </div>
-                    ` : `<p style="font-size:0.75rem; background:#f9f9f9; padding:10px; border-radius:5px;"><strong>Designer:</strong> ${item.assign}</p>`}
-                    <button onclick="deleteTask(${item.id})" style="color:red; font-size:0.6rem; border:none; background:none; cursor:pointer; margin-top:15px; opacity:0.5;">Delete</button>
+                    ` : `<p style="font-size:0.8rem; background:#f9f9f9; padding:12px; border-radius:6px; border-left:4px solid #000;"><strong>Assigned Designer:</strong> ${item.assign}</p>`}
+                    <button onclick="deleteTask(${item.id})" style="color:red; font-size:0.65rem; border:none; background:none; cursor:pointer; margin-top:15px; opacity:0.4;">Delete Record</button>
                 </div>
             `).join('');
         }
