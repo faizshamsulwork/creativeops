@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Engine v33</title>
+    <title>Adtechinno | Creative Engine</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* 🌟 DUAL THEME VARIABLES 🌟 */
+        /* DUAL THEME VARIABLES */
         :root { 
             --bg-main: #f8f9fa; --bg-sidebar: #ffffff; --bg-card: #ffffff; --bg-box: #f8fafc; --bg-input: #ffffff;
             --text-main: #334155; --text-strong: #0f172a; --text-muted: #64748b;
@@ -54,7 +54,6 @@
         .recent-table td { padding: 15px 10px; border-bottom: 1px solid var(--border-light); color: var(--text-main); }
         .td-client { font-weight: 600; color: var(--text-strong); }
         
-        /* 🌟 NEW URGENT BOX STYLING 🌟 */
         .urgent-item { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; border-bottom: 1px dashed var(--border-main); }
         .urgent-item:last-child { border-bottom: none; padding-bottom: 0; }
         .urgent-client { font-weight: 600; color: var(--text-strong); font-size: 0.95rem; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -147,14 +146,14 @@
     <div class="sidebar">
         <div class="logo">Adtechinno<span class="logo-sub">Creative Request</span></div>
         <div class="nav-group">
-            <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')">📊 Dashboard</div>
-            <div class="nav-item" id="btn-workload" onclick="showPage('workload')">📋 Request Status</div>
-            <div class="nav-item" id="btn-done" onclick="showPage('done')">✅ Done Tasks</div>
+            <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')">Dashboard</div>
+            <div class="nav-item" id="btn-workload" onclick="showPage('workload')">Request Status</div>
+            <div class="nav-item" id="btn-done" onclick="showPage('done')">Done Tasks</div>
             <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')">+ New Request</div>
         </div>
         <div class="bottom-actions">
-            <button id="themeBtn" class="action-btn" onclick="toggleTheme()">🌓 Dark Mode</button>
-            <button id="adminBtn" class="action-btn" onclick="toggleAdmin()">🔒 Lead Access</button>
+            <button id="themeBtn" class="action-btn" onclick="toggleTheme()">Dark Mode</button>
+            <button id="adminBtn" class="action-btn" onclick="toggleAdmin()">Lead Access</button>
         </div>
     </div>
 
@@ -168,26 +167,26 @@
             </div>
             <div class="dash-grid-top">
                 <div class="dash-card">
-                    <h3>🕒 5 Latest Requests</h3>
+                    <h3>5 Latest Requests</h3>
                     <div class="table-responsive">
                         <table class="recent-table">
                             <thead><tr><th>Job ID</th><th>Client / Title</th><th>Deadline</th><th>Status</th></tr></thead>
-                            <tbody id="recent-list"><tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Loading...</td></tr></tbody>
+                            <tbody id="recent-list"><tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Loading data...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
                 <div class="dash-card">
                     <h3>
-                        <span style="display:flex; align-items:center; gap:8px;">🔥 Urgent Deadlines</span> 
+                        <span style="display:flex; align-items:center; gap:8px;">Urgent Deadlines</span> 
                         <span style="font-size:0.75rem; font-weight:500; color:var(--text-muted); background:var(--bg-box); padding:4px 8px; border-radius:4px;">Next 7 Days</span>
                     </h3>
-                    <div id="urgent-list">Loading...</div>
+                    <div id="urgent-list">Loading data...</div>
                 </div>
             </div>
             <div class="dash-grid-bottom">
                 <div class="dash-card">
-                    <h3>👷 Team Capacity Radar (Active Jobs)</h3>
-                    <div class="workload-grid" id="team-workload">Loading...</div>
+                    <h3>Team Capacity Radar (Active Jobs)</h3>
+                    <div class="workload-grid" id="team-workload">Loading data...</div>
                 </div>
             </div>
         </div>
@@ -273,13 +272,12 @@
                     <div class="input-group"><label>Reference/Moodboard (Google Slides Link)</label><input type="text" id="pRefLink" placeholder="Paste URL here"></div>
                 </div>
                 <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
-                <button class="btn-submit" id="submitBtn" onclick="submitRequest()">🚀 Submit Request</button>
+                <button class="btn-submit" id="submitBtn" onclick="submitRequest()">Submit Request</button>
             </div>
         </div>
     </div>
 
     <script>
-        // 🔥 INI LINK GOOGLE APPS SCRIPT KAU 🔥
         const GAS_API = 'https://script.google.com/macros/s/AKfycbx62SrsKxtUOtYJioecLU8Yw3tjYW7OPaTmstklYwMYMQzdcMwJUsrQC1esWyA9q61S/exec'; 
         const TG_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
         const TG_CHAT = '5964232885';
@@ -288,7 +286,6 @@
         const designersID = ["ID-Miftahul", "ID-Youke", "ID-Annisya"];
         const allDesigners = [...designersMY, ...designersID];
 
-        // 🌟 HELPER: DATE FORMATTER (FIX FOR UGLY GAS DATES) 🌟
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             const d = new Date(dateStr);
@@ -297,7 +294,6 @@
             return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
         }
 
-        // 🌟 THEME LOGIC 🌟
         const currentTheme = localStorage.getItem('adtech_theme') || 'light';
         if(currentTheme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
 
@@ -307,21 +303,20 @@
             if(root.getAttribute('data-theme') === 'dark') {
                 root.removeAttribute('data-theme');
                 localStorage.setItem('adtech_theme', 'light');
-                themeBtn.innerHTML = '🌓 Dark Mode';
+                themeBtn.innerHTML = 'Dark Mode';
             } else {
                 root.setAttribute('data-theme', 'dark');
                 localStorage.setItem('adtech_theme', 'dark');
-                themeBtn.innerHTML = '☀️ Light Mode';
+                themeBtn.innerHTML = 'Light Mode';
             }
         }
-        if(currentTheme === 'dark') document.getElementById('themeBtn').innerHTML = '☀️ Light Mode';
+        if(currentTheme === 'dark') document.getElementById('themeBtn').innerHTML = 'Light Mode';
 
-        // 🌟 LEAD ACCESS LOGIC 🌟
         let isLeadAdmin = localStorage.getItem('adtech_lead_access') === 'true';
         function checkAdminUI() {
             const btn = document.getElementById('adminBtn');
-            if(isLeadAdmin) { btn.innerHTML = '🔓 Lead Unlocked'; btn.classList.add('unlocked'); } 
-            else { btn.innerHTML = '🔒 Lead Access'; btn.classList.remove('unlocked'); }
+            if(isLeadAdmin) { btn.innerHTML = 'Lead Unlocked'; btn.classList.add('unlocked'); } 
+            else { btn.innerHTML = 'Lead Access'; btn.classList.remove('unlocked'); }
         }
         function toggleAdmin() {
             if(isLeadAdmin) {
@@ -349,7 +344,6 @@
             if(id !== 'request') fetchAndRender();
         }
 
-        // 🌟 GAS HELPER FUNCTION 🌟
         async function gasPost(payload) {
             const res = await fetch(GAS_API, {
                 method: 'POST',
@@ -362,12 +356,12 @@
         async function submitRequest() {
             const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
             const client = document.getElementById('pClient').value;
-            const deadline = document.getElementById('pDeadline').value; // Returns YYYY-MM-DD
-            if(!name || !client || !deadline) return alert("Please fill in Name, Client, and Deadline!");
+            const deadline = document.getElementById('pDeadline').value;
+            if(!name || !client || !deadline) return alert("Please fill in Name, Client, and Deadline.");
 
             const submitBtn = document.getElementById('submitBtn');
             const originalText = submitBtn.innerHTML;
-            submitBtn.innerHTML = '⏳ Generating Job ID...';
+            submitBtn.innerHTML = 'Generating Job ID...';
             submitBtn.disabled = true;
 
             try {
@@ -382,7 +376,7 @@
                 }
                 const jobID = `AT26-${String(nextNum).padStart(3, '0')}`;
                 
-                submitBtn.innerHTML = '🚀 Submitting...';
+                submitBtn.innerHTML = 'Submitting...';
                 const types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
                 const objective = document.querySelector('input[name="obj"]:checked')?.value || 'N/A';
                 
@@ -404,7 +398,7 @@
 
                 const res = await gasPost(payload);
                 if(res.status === "success") {
-                    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=🚀 *NEW REQUEST*%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
+                    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[NEW REQUEST]%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
                     alert(`Request Submitted Successfully!\nYour Job ID is: ${jobID}`);
                     document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
                     document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
@@ -418,9 +412,9 @@
 
         async function approveJob(jobID, client, title) {
             const selectedDesigners = Array.from(document.querySelectorAll(`.cb-${jobID}:checked`)).map(cb => cb.value).join(', ');
-            if(!selectedDesigners) return alert("Please select at least one designer!");
+            if(!selectedDesigners) return alert("Please select at least one designer.");
             const playbookLink = document.getElementById(`playbook-${jobID}`).value.trim();
-            if(!playbookLink) return alert("Please paste the generated Creative Playbook link first!");
+            if(!playbookLink) return alert("Please paste the generated Creative Playbook link first.");
 
             try {
                 const payload = {
@@ -428,8 +422,8 @@
                     data: { job_id: jobID, assignee: selectedDesigners, status: 'approved', playbook_link: playbookLink, work_status: 'Not started' }
                 };
                 await gasPost(payload);
-                await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=✅ *APPROVED*%0AJob: ${jobID}%0AClient: ${client}%0APIC: ${selectedDesigners}%0APlaybook: ${playbookLink}&parse_mode=Markdown`);
-                alert("Job Approved & Messages Ready!");
+                await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[APPROVED]%0AJob: ${jobID}%0AClient: ${client}%0APIC: ${selectedDesigners}%0APlaybook: ${playbookLink}&parse_mode=Markdown`);
+                alert("Job Approved & Messages Ready.");
                 fetchAndRender();
             } catch(e) { alert("Error: " + e.message); }
         }
@@ -438,7 +432,7 @@
             try {
                 const payload = { action: 'update', data: { job_id: jobID, work_status: newStatus } };
                 await gasPost(payload);
-                if(newStatus === 'Done') alert("Job marked as Done! Moved to the Done Tasks tab.");
+                if(newStatus === 'Done') alert("Job marked as Done. Moved to the Done Tasks tab.");
                 fetchAndRender();
             } catch(e) { alert("Error updating status: " + e.message); }
         }
@@ -455,10 +449,10 @@
             let msg = "";
             const link = playbookLink || 'Link not provided';
             const deadline = formatDate(deadlineStr);
-            if(type === 'requester') msg = `Hi! 👋 Your creative request has been *APPROVED*.\n\n*Job ID:* ${jobID}\n*Project:* ${client} - ${title}\n*Deadline:* ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
-            else if (type === 'team') msg = `🚨 *NEW ASSIGNED JOB*\n\n*Team:* ${assignee}\n*Job ID:* ${jobID}\n*Client:* ${client} - ${title}\n*Deadline:* ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions!`;
+            if(type === 'requester') msg = `Hi! Your creative request has been APPROVED.\n\nJob ID: ${jobID}\nProject: ${client} - ${title}\nDeadline: ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
+            else if (type === 'team') msg = `[NEW ASSIGNED JOB]\n\nTeam: ${assignee}\nJob ID: ${jobID}\nClient: ${client} - ${title}\nDeadline: ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions.`;
             navigator.clipboard.writeText(msg);
-            alert("Message copied to clipboard! Ready to paste.");
+            alert("Message copied to clipboard.");
         }
 
         function generateJobCard(item, isDoneTab = false) {
@@ -504,9 +498,9 @@
                         </div>
                         
                         <div class="brief-box">
-                            <p><strong>📝 Creative Brief & Plan:</strong><br>${item.brief ? item.brief.replace(/\n/g, '<br>') : 'No brief provided.'}</p>
-                            ${item.ref_link ? `<p><strong>🔗 Reference:</strong> <a href="${item.ref_link}" target="_blank">Click to view reference</a></p>` : ''}
-                            ${item.remarks ? `<p><strong>📌 Remarks:</strong> ${item.remarks}</p>` : ''}
+                            <p><strong>Creative Brief & Plan:</strong><br>${item.brief ? item.brief.replace(/\n/g, '<br>') : 'No brief provided.'}</p>
+                            ${item.ref_link ? `<p><strong>Reference:</strong> <a href="${item.ref_link}" target="_blank">Click to view reference</a></p>` : ''}
+                            ${item.remarks ? `<p><strong>Remarks:</strong> ${item.remarks}</p>` : ''}
                         </div>
 
                         ${item.status === 'pending' ? `
@@ -520,12 +514,12 @@
                                     <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block; color: var(--text-main);">2. Paste Creative Playbook Link here:</label>
                                     <input type="text" id="playbook-${item.job_id}" placeholder="https://docs.google.com/presentation/d/..." style="margin-bottom: 15px; border-style: dashed;">
                                     <div class="action-buttons">
-                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve">✅ Approve & Assign</button>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
+                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve">Approve & Assign</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">Delete</button>
                                     </div>
                                 </div>
                             ` : `
-                                <div class="locked-msg">⏳ Status: Reviewing requirements. Awaiting Creative Lead Assignment.</div>
+                                <div class="locked-msg">Status: Reviewing requirements. Awaiting Creative Lead Assignment.</div>
                             `}
                         ` : `
                             <div class="assign-area">
@@ -535,9 +529,9 @@
                                 </div>
                                 ${isLeadAdmin && !isDoneTab ? `
                                     <div class="action-buttons">
-                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Msg for Requester</button>
-                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Msg for Team</button>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
+                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">Copy Msg: Requester</button>
+                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">Copy Msg: Team</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">Delete</button>
                                     </div>
                                 ` : ``}
                                 ${isLeadAdmin && isDoneTab ? `
@@ -546,7 +540,7 @@
                                             <option value="">Undo Status...</option>
                                             <option value="Client Review">Move back to Review</option>
                                         </select>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:auto;">🗑️ Delete Record</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:auto;">Delete Record</button>
                                     </div>
                                 ` : ``}
                             </div>
@@ -579,7 +573,7 @@
                         <td>${formatDate(d.deadline)}</td>
                         <td><span class="badge status-${d.status}">${d.status}</span></td>
                     </tr>
-                `).join('') : '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No requests yet.</td></tr>';
+                `).join('') : '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No requests available.</td></tr>';
 
                 const today = new Date(); today.setHours(0,0,0,0);
                 const nextWeek = new Date(today); nextWeek.setDate(today.getDate() + 7);
@@ -598,7 +592,7 @@
                         </div>
                         <div class="urgent-date">${formatDate(u.deadline)}</div>
                     </div>
-                `).join('') : '<div style="font-size:0.85rem; color:var(--text-muted); padding:10px 0;">Relax, no urgent deadlines. ☕</div>';
+                `).join('') : '<div style="font-size:0.85rem; color:var(--text-muted); padding:10px 0;">No urgent deadlines at the moment.</div>';
 
                 document.getElementById('team-workload').innerHTML = allDesigners.map(name => {
                     const count = activeData.filter(d => d.assignee && d.assignee.includes(name)).length;
@@ -620,7 +614,7 @@
                     document.getElementById('projectList').innerHTML = workloadJobs.length ? workloadJobs.map(item => generateJobCard(item, false)).join('') : '<p style="color:var(--text-muted);">No active requests.</p>';
                 }
                 if(document.getElementById('done').classList.contains('active')) {
-                    document.getElementById('doneList').innerHTML = doneData.length ? doneData.map(item => generateJobCard(item, true)).join('') : '<p style="color:var(--text-muted);">No completed tasks yet.</p>';
+                    document.getElementById('doneList').innerHTML = doneData.length ? doneData.map(item => generateJobCard(item, true)).join('') : '<p style="color:var(--text-muted);">No completed tasks available.</p>';
                 }
             } catch (err) { console.error("Error loading data:", err); }
         }
