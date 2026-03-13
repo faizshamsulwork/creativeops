@@ -35,10 +35,7 @@
 
         /* 🌟 THEME MORPH VIEW TRANSITIONS 🌟 */
         ::view-transition-old(root),
-        ::view-transition-new(root) {
-            animation: none;
-            mix-blend-mode: normal;
-        }
+        ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
         ::view-transition-old(root) { z-index: 1; }
         ::view-transition-new(root) { z-index: 2; }
 
@@ -81,7 +78,7 @@
         #app-wrapper { display: flex; width: 100%; min-height: 100vh; opacity: 0; transform: scale(0.95); filter: blur(10px); transition: all 1.2s cubic-bezier(0.85, 0, 0.15, 1); }
         #app-wrapper.app-active { opacity: 1; transform: scale(1); filter: blur(0); }
 
-        /* SIDEBAR (DESKTOP) */
+        /* SIDEBAR */
         .sidebar { width: 260px; border-right: 1px solid var(--border-main); padding: 40px 20px; background: var(--bg-sidebar); position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; display: flex; flex-direction: column; transition: 0.3s; }
         .logo-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 30px; }
         .brand-logo { max-width: 170px; height: auto; display: block; transition: 0.3s; }
@@ -171,7 +168,7 @@
 
         /* 🌟 PROGRESSIVE DISCLOSURE FORM 🌟 */
         .card { background: var(--bg-card); border: 1px solid var(--border-main); padding: 30px; border-radius: 12px; margin-bottom: 15px; box-shadow: var(--shadow); transition: 0.3s; position: relative; }
-        .card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.06); }
+        .card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.06); }
         
         .form-progress { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; position: relative; }
         .form-progress::before { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: var(--border-main); z-index: 0; transform: translateY(-50%); }
@@ -271,7 +268,8 @@
         
         /* 📱 MOBILE OVERRIDES */
         @media (max-width: 768px) {
-            body { flex-direction: column; }
+            body { flex-direction: column; } 
+            
             .intro-logo { max-width: 180px; }
             .intro-title { font-size: 2.2rem; }
             .intro-subtitle { font-size: 1rem; margin-bottom: 20px; }
@@ -285,6 +283,7 @@
             .bottom-actions { margin: 0; flex-direction: row; gap: 10px; width: auto; }
             .action-btn { padding: 8px; font-size: 0; width: auto; }
             .action-btn i { width: 20px; height: 20px; margin: 0; }
+            .action-btn span { display: none; }
             
             .nav-group { position: fixed; bottom: 0; left: 0; width: 100%; height: 70px; background: var(--bg-sidebar); border-top: 1px solid var(--border-main); flex-direction: row; justify-content: space-around; align-items: center; padding: 0; z-index: 1000; box-shadow: 0 -4px 20px rgba(0,0,0,0.05); }
             .nav-item { flex-direction: column; gap: 4px; padding: 10px; font-size: 0.65rem; border-radius: 0; width: 33%; text-align: center; }
@@ -620,7 +619,38 @@
             lucide.createIcons();
         }
 
-        // 🌟 MAGNETIC BUTTONS LOGIC 🌟
+        // 🌟 WEB AUDIO API: SUCCESS CHIME 🌟
+        function playSuccessSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                
+                const playTone = (freq, startTime, duration, vol) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, startTime);
+                    
+                    gain.gain.setValueAtTime(0, startTime);
+                    gain.gain.linearRampToValueAtTime(vol, startTime + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                    
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(startTime);
+                    osc.stop(startTime + duration);
+                };
+
+                const now = ctx.currentTime;
+                // Soft double chime (C5 -> E5)
+                playTone(523.25, now, 0.4, 0.2);       
+                playTone(659.25, now + 0.15, 0.6, 0.25); 
+            } catch (e) {
+                console.log("Audio not supported or blocked.");
+            }
+        }
+
         function initMagnetic() {
             document.querySelectorAll('.magnetic').forEach(btn => {
                 btn.addEventListener('mousemove', e => {
@@ -700,7 +730,6 @@
             return cleanName.split(' ')[0]; 
         }
 
-        // 🌟 DYNAMIC GREETING & ADAPTIVE NOTE 🌟
         function setGreetingAndDate(userName = "") {
             const hour = new Date().getHours();
             let greeting = "Good evening";
@@ -787,20 +816,14 @@
             return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
         }
 
-        // 🌟 GOLDEN HOUR THEME INIT 🌟
         function initTheme() {
             const savedTheme = localStorage.getItem('adtech_theme');
             const hour = new Date().getHours();
             const isWorkingLate = (hour < 9 || hour >= 17);
             
             let targetTheme = 'light';
-            
-            if (savedTheme) {
-                targetTheme = savedTheme; 
-            } else {
-                if (isWorkingLate) targetTheme = 'dark';
-            }
-            
+            if (savedTheme) { targetTheme = savedTheme; } 
+            else { if (isWorkingLate) targetTheme = 'dark'; }
             applyThemeState(targetTheme);
         }
 
@@ -817,13 +840,12 @@
             refreshIcons();
         }
 
-        // 🌟 THE THEME MORPH EFFECT 🌟
         function toggleTheme(event) {
             const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
             const nextTheme = isDark ? 'light' : 'dark';
             
             localStorage.setItem('adtech_theme', nextTheme);
-            setGreetingAndDate(localStorage.getItem('adtech_user_name')); // Update note state
+            setGreetingAndDate(localStorage.getItem('adtech_user_name')); 
 
             if (!document.startViewTransition) {
                 applyThemeState(nextTheme);
@@ -843,7 +865,6 @@
                     `circle(0px at ${x}px ${y}px)`,
                     `circle(${endRadius}px at ${x}px ${y}px)`
                 ];
-                
                 document.documentElement.animate(
                     { clipPath: clipPath },
                     { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
@@ -973,25 +994,31 @@
 
                 const res = await gasPost(payload);
                 if(res.status === "success") {
-                    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[NEW REQUEST]%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
-                    alert(`Request Submitted Successfully.\nJob ID: ${jobID}`);
-                    document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
-                    document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
+                    playSuccessSound(); // 🎵 PREMIUM SOUND EFFECT 
                     
-                    const savedName = localStorage.getItem('adtech_user_name');
-                    if(savedName) {
-                        const reqSelect = document.getElementById('requesterName');
-                        let found = false;
-                        for (let i = 0; i < reqSelect.options.length; i++) {
-                            if (reqSelect.options[i].value === savedName || reqSelect.options[i].text === savedName) {
-                                reqSelect.selectedIndex = i; found = true; break;
+                    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[NEW REQUEST]%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
+                    
+                    // Allow sound to play before alert blocks thread
+                    setTimeout(() => {
+                        alert(`Request Submitted Successfully.\nJob ID: ${jobID}`);
+                        document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
+                        document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
+                        
+                        const savedName = localStorage.getItem('adtech_user_name');
+                        if(savedName) {
+                            const reqSelect = document.getElementById('requesterName');
+                            let found = false;
+                            for (let i = 0; i < reqSelect.options.length; i++) {
+                                if (reqSelect.options[i].value === savedName || reqSelect.options[i].text === savedName) {
+                                    reqSelect.selectedIndex = i; found = true; break;
+                                }
                             }
+                            if (!found) document.getElementById('manualName').value = savedName;
                         }
-                        if (!found) document.getElementById('manualName').value = savedName;
-                    }
 
-                    showPage('dashboard');
-                    fetchAndRender(); 
+                        showPage('dashboard');
+                        fetchAndRender(); 
+                    }, 150);
                 } else { throw new Error(res.message); }
             } catch(e) { alert("Submission failed: " + e.message); } finally {
                 submitBtn.innerHTML = originalText;
@@ -1078,6 +1105,7 @@
             const client = document.getElementById('editClient').value;
             const title = document.getElementById('editTitle').value;
             const deadline = document.getElementById('editDeadline').value;
+
             if(!client || !title || !deadline) return alert("Fields cannot be empty.");
 
             const btn = document.getElementById('saveEditBtn');
@@ -1097,8 +1125,10 @@
             if (!globalData || globalData.length === 0) return alert("No data available to export.");
             const doneData = globalData.filter(d => d.status === 'approved' && d.work_status === 'Done');
             if (doneData.length === 0) return alert("No completed tasks available to export.");
+
             const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Deadline", "Revision", "Assigned Team", "Playbook Link"];
             const rows = doneData.map(d => [d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(d.deadline), (d.revision || 0), d.assignee, d.playbook_link].map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(","));
+
             const csvContent = [headers.join(","), ...rows].join("\n");
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
@@ -1166,7 +1196,6 @@
                                     </div>
                                 ` : `<strong>${item.revision || 0}</strong>`}
                             </div>
-
                         </div>
                         
                         <div class="brief-box">
