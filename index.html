@@ -18,6 +18,10 @@
             --gradient-blue: linear-gradient(135deg, rgba(59,130,246,0.05), transparent);
             --gradient-orange: linear-gradient(135deg, rgba(245,158,11,0.05), transparent);
             --gradient-green: linear-gradient(135deg, rgba(16,185,129,0.05), transparent);
+            
+            /* INTRO EFFECTS */
+            --intro-glow: rgba(2, 132, 199, 0.05); 
+            --intro-alt: rgba(139, 92, 246, 0.04);
         }
         [data-theme="dark"] {
             --bg-main: #0f172a; --bg-sidebar: #1e293b; --bg-card: #1e293b; --bg-box: #0f172a; --bg-input: #0f172a;
@@ -29,14 +33,33 @@
             --gradient-blue: linear-gradient(135deg, rgba(56,189,248,0.05), transparent);
             --gradient-orange: linear-gradient(135deg, rgba(245,158,11,0.05), transparent);
             --gradient-green: linear-gradient(135deg, rgba(16,185,129,0.05), transparent);
+            
+            /* INTRO EFFECTS */
+            --intro-glow: rgba(56, 189, 248, 0.1);
+            --intro-alt: rgba(167, 139, 250, 0.08);
         }
         body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; display: flex; min-height: 100vh; position: relative; transition: background 0.3s, color 0.3s; overflow-x: hidden; }
         body.no-scroll { overflow: hidden; }
 
-        /* INTRO PAGE */
-        .intro-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background: var(--bg-main); z-index: 9999; display: flex; justify-content: center; align-items: center; transition: opacity 0.8s cubic-bezier(0.65, 0, 0.35, 1), transform 0.8s cubic-bezier(0.65, 0, 0.35, 1); }
-        .intro-content { text-align: center; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; opacity: 0; transform: translateY(40px); padding: 20px; }
-        .intro-badge { display: inline-block; padding: 6px 16px; border-radius: 30px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; background: transparent; color: var(--text-muted); border: 1px solid var(--border-main); margin-bottom: 25px; }
+        /* APPLE-STYLE DYNAMIC INTRO PAGE */
+        .intro-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100vh; 
+            background-color: var(--bg-main); 
+            background-image: radial-gradient(circle 800px at var(--mouse-x, 50%) var(--mouse-y, 50%), var(--intro-glow), transparent 80%);
+            z-index: 9999; display: flex; justify-content: center; align-items: center; overflow: hidden;
+            transition: opacity 0.8s cubic-bezier(0.65, 0, 0.35, 1), transform 0.8s cubic-bezier(0.65, 0, 0.35, 1); 
+        }
+        .intro-ambient-1, .intro-ambient-2 { position: absolute; border-radius: 50%; filter: blur(80px); z-index: 0; pointer-events: none; animation: floatAmbient 12s ease-in-out infinite alternate; }
+        .intro-ambient-1 { width: 50vw; height: 50vw; max-width: 600px; max-height: 600px; background: var(--intro-glow); top: -10%; left: -10%; }
+        .intro-ambient-2 { width: 40vw; height: 40vw; max-width: 500px; max-height: 500px; background: var(--intro-alt); bottom: -10%; right: -5%; animation-delay: -6s; }
+        
+        @keyframes floatAmbient {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(10%, 15%) scale(1.1); }
+        }
+
+        .intro-content { position: relative; z-index: 1; text-align: center; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; opacity: 0; transform: translateY(40px); padding: 20px; }
+        .intro-badge { display: inline-block; padding: 6px 16px; border-radius: 30px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; background: transparent; color: var(--text-muted); border: 1px solid var(--border-main); margin-bottom: 25px; backdrop-filter: blur(5px); }
         .intro-title { font-size: 4.5rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text-strong); margin: 0 0 15px 0; line-height: 1.1; }
         .intro-subtitle { font-size: 1.3rem; color: var(--text-muted); font-weight: 400; margin: 0 0 50px 0; letter-spacing: -0.01em; }
         .intro-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--text-strong); color: var(--bg-main); border: none; padding: 18px 45px; border-radius: 40px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
@@ -169,7 +192,7 @@
         .brief-box p:last-child { margin: 0; }
         .brief-box a { color: var(--link-color); text-decoration: none; font-weight: 500; }
         
-        .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: fit-content; }
+        .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; width: fit-content; }
         .ws-select:hover { filter: brightness(0.9); }
         .ws-not-started { background: #64748b; color: white; }
         .ws-drafting { background: #f59e0b; color: white; }
@@ -192,6 +215,7 @@
         .btn-delete:hover { background: rgba(239, 68, 68, 0.1); }
         .locked-msg { padding: 15px; background: var(--bg-box); border: 1px dashed var(--border-main); border-radius: 8px; text-align: center; color: var(--text-muted); font-size: 0.85rem; font-weight: 500; display:flex; justify-content:center; align-items:center; gap:8px; }
         
+        /* MONTHLY GROUPING STYLES */
         .month-group-header { margin-top: 35px; margin-bottom: 15px; color: var(--text-strong); border-bottom: 2px solid var(--border-main); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 1.15rem; font-weight: 700; }
         .month-group-badge { font-size: 0.75rem; background: var(--bg-box); padding: 5px 12px; border-radius: 20px; color: var(--text-muted); border: 1px solid var(--border-main); font-weight: 600; }
 
@@ -228,9 +252,11 @@
 <body class="no-scroll">
 
     <div id="introPage" class="intro-overlay">
+        <div class="intro-ambient-1"></div>
+        <div class="intro-ambient-2"></div>
         <div class="intro-content">
             <div class="intro-badge">System 2.0</div>
-            <h1 class="intro-title">Creative Engine.</h1>
+            <h1 class="intro-title">Adtechinno Creative.</h1>
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
             <button class="intro-btn" onclick="startApp()">
                 Start Now <i data-lucide="arrow-right" style="width: 20px;"></i>
@@ -256,7 +282,6 @@
     </div>
 
     <div class="main-content">
-        
         <div id="dashboard" class="page active">
             
             <div class="welcome-banner">
@@ -457,13 +482,23 @@
         
         const designersMY = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Steven", "MY-Faiz"];
         const designersID = ["ID-Miftahul", "ID-Youke", "ID-Annisya"];
-        const allDesigners = [...designersMY, ...designersID];
         
         let globalData = []; 
 
         function refreshIcons() {
             lucide.createIcons();
         }
+
+        // 🌟 INTRO MOUSE TRACKING LOGIC 🌟
+        document.addEventListener('mousemove', (e) => {
+            const intro = document.getElementById('introPage');
+            if(intro && intro.style.display !== 'none' && !intro.classList.contains('hide-intro')) {
+                const x = (e.clientX / window.innerWidth) * 100;
+                const y = (e.clientY / window.innerHeight) * 100;
+                intro.style.setProperty('--mouse-x', `${x}%`);
+                intro.style.setProperty('--mouse-y', `${y}%`);
+            }
+        });
 
         function setGreetingAndDate() {
             const hour = new Date().getHours();
@@ -511,7 +546,6 @@
             refreshIcons();
         }
         
-        // Initial Theme Icon Setup
         if(currentTheme === 'dark') {
             document.getElementById('themeBtn').innerHTML = '<i data-lucide="sun"></i> Light Mode';
         } else {
@@ -748,6 +782,24 @@
             }
         }
 
+        function exportToCSV() {
+            if (!globalData || globalData.length === 0) return alert("No data available to export.");
+            const doneData = globalData.filter(d => d.status === 'approved' && d.work_status === 'Done');
+            if (doneData.length === 0) return alert("No completed tasks available to export.");
+
+            const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Deadline", "Revision", "Assigned Team", "Playbook Link"];
+            const rows = doneData.map(d => [
+                d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(d.deadline), (d.revision || 0), d.assignee, d.playbook_link
+            ].map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(","));
+
+            const csvContent = [headers.join(","), ...rows].join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `Adtechinno_Done_Tasks_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+
         function copyText(type, jobID, client, title, assignee, deadlineStr, playbookLink, requesterName = '') {
             let msg = "";
             const link = playbookLink || 'Link not provided';
@@ -768,7 +820,7 @@
         function generateJobCard(item, isDoneTab = false) {
             const ws = item.work_status || 'Not started';
             const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
-            const borderColors = { 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
+            const borderColors = { 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Revision': '#ea580c', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
             const borderColor = borderColors[ws] || '#cbd5e1';
             
             return `
