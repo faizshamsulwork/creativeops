@@ -66,7 +66,7 @@
         .stat-box h4 { margin: 0; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
         .stat-box p { margin: 10px 0 0; font-size: 2.2rem; font-weight: 600; color: var(--text-strong); }
         .dash-grid-top { display: grid; grid-template-columns: 2fr 1fr; gap: 25px; margin-bottom: 25px; }
-        .dash-grid-bottom { display: grid; grid-template-columns: 1fr; gap: 25px; }
+        .dash-grid-bottom { display: grid; grid-template-columns: 1fr; gap: 25px; display: none; /* Hidden by default */ }
         .dash-card { background: var(--bg-card); border: 1px solid var(--border-main); border-radius: 12px; padding: 25px; box-shadow: var(--shadow); overflow: hidden; transition: 0.3s; }
         .dash-card h3 { margin-top: 0; font-size: 1rem; color: var(--text-strong); border-bottom: 1px solid var(--border-main); padding-bottom: 15px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
         .table-responsive { overflow-x: auto; width: 100%; }
@@ -183,7 +183,7 @@
     <div id="introPage" class="intro-overlay">
         <div class="intro-content">
             <div class="intro-badge">System 2.0</div>
-            <h1 class="intro-title">Adtechinno Creative Engine.</h1>
+            <h1 class="intro-title">Creative Engine.</h1>
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
             <button class="intro-btn" onclick="startApp()">Start Now</button>
         </div>
@@ -199,7 +199,7 @@
         </div>
         <div class="bottom-actions">
             <button id="themeBtn" class="action-btn" onclick="toggleTheme()">Dark Mode</button>
-            <button id="adminBtn" class="action-btn" onclick="toggleAdmin()">Lead Access</button>
+            <button id="adminBtn" class="action-btn" onclick="toggleAdmin()">Admin Access</button>
         </div>
     </div>
 
@@ -229,7 +229,8 @@
                     <div id="urgent-list">Loading data...</div>
                 </div>
             </div>
-            <div class="dash-grid-bottom">
+            
+            <div class="dash-grid-bottom" id="radarContainer">
                 <div class="dash-card">
                     <h3>Team Capacity Radar (Active Jobs)</h3>
                     <div class="workload-grid" id="team-workload">Loading data...</div>
@@ -239,7 +240,7 @@
 
         <div id="workload" class="page">
             <h1 style="margin-bottom: 5px;">Request Status Board</h1>
-            <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Track progress. Only Lead can update details and work status.</p>
+            <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Track progress. Only Admins can update details and work status.</p>
             
             <div class="controls-container">
                 <div class="search-box">
@@ -377,7 +378,6 @@
         
         let globalData = []; 
 
-        // 🌟 APPLE STYLE INTRO LOGIC 🌟
         function startApp() {
             const intro = document.getElementById('introPage');
             intro.classList.add('hide-intro');
@@ -413,23 +413,34 @@
         }
         if(currentTheme === 'dark') document.getElementById('themeBtn').innerHTML = 'Light Mode';
 
+        // SECURE ADMIN ACCESS LOGIC
         let securePin = localStorage.getItem('adtech_lead_pin') || null;
         
         function checkAdminUI() {
             const btn = document.getElementById('adminBtn');
-            if(securePin) { btn.innerHTML = 'Lead Unlocked'; btn.classList.add('unlocked'); } 
-            else { btn.innerHTML = 'Lead Access'; btn.classList.remove('unlocked'); }
+            const radar = document.getElementById('radarContainer');
+            
+            if(securePin) { 
+                btn.innerHTML = 'Admin Unlocked'; 
+                btn.classList.add('unlocked'); 
+                if(radar) radar.style.display = 'grid'; // Show Radar
+            } 
+            else { 
+                btn.innerHTML = 'Admin Access'; 
+                btn.classList.remove('unlocked'); 
+                if(radar) radar.style.display = 'none'; // Hide Radar
+            }
         }
 
         async function toggleAdmin() {
             if(securePin) {
                 localStorage.removeItem('adtech_lead_pin');
                 securePin = null;
-                alert("Lead Access locked. View-only mode active.");
+                alert("Admin Access locked. View-only mode active.");
                 checkAdminUI();
                 renderBoards();
             } else {
-                const pin = prompt("Enter Creative Lead PIN:");
+                const pin = prompt("Enter Admin PIN:");
                 if(!pin) return;
                 
                 try {
@@ -437,7 +448,7 @@
                     if(res.status === "success") {
                         localStorage.setItem('adtech_lead_pin', pin);
                         securePin = pin;
-                        alert("Welcome Lead! You can now manage assignments and update work status.");
+                        alert("Welcome Admin! You can now manage assignments and update work status.");
                         checkAdminUI();
                         renderBoards();
                     } else {
@@ -699,7 +710,7 @@
                                     </div>
                                 </div>
                             ` : `
-                                <div class="locked-msg">Status: Reviewing requirements. Awaiting Creative Lead Assignment.</div>
+                                <div class="locked-msg">Status: Reviewing requirements. Awaiting Admin Assignment.</div>
                             `}
                         ` : `
                             <div class="assign-area">
