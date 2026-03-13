@@ -47,7 +47,7 @@
         .nav-group { display: flex; flex-direction: column; gap: 8px; width: 100%; flex: 1; }
         .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); border-radius: 8px; transition: 0.2s; display: flex; align-items: center; font-weight: 500; }
         .nav-item:hover, .nav-item.active { background: var(--bg-box); color: var(--accent); font-weight: 600; }
-        .btn-new-request { background: var(--accent); color: var(--accent-text) !important; margin-top: 20px; justify-content: center; text-align: center; }
+        .btn-new-request { background: var(--accent); color: var(--accent-text) !important; margin-top: 20px; justify-content: text-align: center; }
         .btn-new-request:hover { background: var(--accent-hover); }
         .bottom-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; width: 100%; }
         .action-btn { padding: 12px 18px; background: var(--bg-card); border: 1px solid var(--border-main); color: var(--text-muted); border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: var(--shadow); width: 100%; text-align: center; }
@@ -187,7 +187,7 @@
     <div id="introPage" class="intro-overlay">
         <div class="intro-content">
             <div class="intro-badge">System 2.0</div>
-            <h1 class="intro-title">Adtechinno Creative Engine.</h1>
+            <h1 class="intro-title">Creative Engine.</h1>
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
             <button class="intro-btn" onclick="startApp()">Start Now</button>
         </div>
@@ -370,9 +370,7 @@
     </div>
 
     <script>
-        // GOOGLE APPS SCRIPT URL
         const GAS_API = 'https://script.google.com/macros/s/AKfycbx62SrsKxtUOtYJioecLU8Yw3tjYW7OPaTmstklYwMYMQzdcMwJUsrQC1esWyA9q61S/exec'; 
-        
         const TG_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
         const TG_CHAT = '5964232885';
         
@@ -417,7 +415,6 @@
         }
         if(currentTheme === 'dark') document.getElementById('themeBtn').innerHTML = 'Light Mode';
 
-        // SECURE ADMIN ACCESS LOGIC
         let securePin = localStorage.getItem('adtech_lead_pin') || null;
         
         function checkAdminUI() {
@@ -463,14 +460,13 @@
         }
         checkAdminUI();
 
-        // 🌟 FIXED TAB RENDERING (NO AUTO-CLOSE BUG) 🌟
         function showPage(id) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.getElementById(id).classList.add('active');
             document.getElementById('btn-' + id).classList.add('active');
             
-            if(globalData.length > 0) renderBoards(); // Render from memory quietly
+            if(globalData.length > 0) renderBoards(); 
         }
 
         async function gasPost(payload) {
@@ -482,6 +478,7 @@
             return res.json();
         }
 
+        // 🌟 🔥 AUTO-YEAR ID LOGIC 🔥 🌟
         async function submitRequest() {
             const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
             const client = document.getElementById('pClient').value;
@@ -495,15 +492,24 @@
 
             try {
                 const existingData = await fetch(GAS_API).then(r => r.json());
+                
+                // Generate dynamic prefix based on current year (e.g., 2026 -> AT26)
+                const currentYear = new Date().getFullYear().toString().slice(-2);
+                const idPrefix = `AT${currentYear}`;
+                const regex = new RegExp(`${idPrefix}-(\\d+)`);
+                
                 let nextNum = 1;
                 if (existingData && existingData.length > 0) {
                     const ids = existingData.map(d => {
-                        if (d.job_id) { const match = d.job_id.match(/AT26-(\d+)/); return match ? parseInt(match[1]) : 0; }
+                        if (d.job_id) { 
+                            const match = d.job_id.match(regex); 
+                            return match ? parseInt(match[1]) : 0; 
+                        }
                         return 0;
                     });
                     nextNum = Math.max(...ids, 0) + 1;
                 }
-                const jobID = `AT26-${String(nextNum).padStart(3, '0')}`;
+                const jobID = `${idPrefix}-${String(nextNum).padStart(3, '0')}`;
                 
                 submitBtn.innerHTML = 'Submitting...';
                 const types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
@@ -532,7 +538,7 @@
                     document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
                     document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
                     showPage('dashboard');
-                    fetchAndRender(); // Fetch latest data
+                    fetchAndRender(); 
                 } else { throw new Error(res.message); }
             } catch(e) { alert("Submission failed: " + e.message); } finally {
                 submitBtn.innerHTML = originalText;
@@ -618,7 +624,7 @@
                 
                 alert("Request details updated successfully.");
                 closeEditModal();
-                fetchAndRender();
+                fetchAndRender(); 
             } catch(e) { alert("Error updating: " + e.message); } finally {
                 btn.innerHTML = 'Update Request'; btn.disabled = false;
             }
@@ -824,12 +830,11 @@
                     `;
                 }).join('');
 
-                renderBoards(); // 🌟 Render the boards immediately after fetching
+                renderBoards(); 
 
             } catch (err) { console.error("Error loading data:", err); }
         }
 
-        // 🌟 BOARDS WILL NOW PAINT UNCONDITIONALLY (INVISIBLE) SO TABS ARE INSTANT 🌟
         function renderBoards() {
             if(!globalData || globalData.length === 0) {
                 document.getElementById('projectList').innerHTML = '<p style="color:var(--text-muted);">No active requests.</p>';
@@ -852,11 +857,9 @@
                 doneData = doneData.filter(d => d.job_id.toLowerCase().includes(qD) || d.client_name.toLowerCase().includes(qD));
             }
 
-            // Paint Workload Board
             const workloadJobs = [...pendingData, ...activeData];
             document.getElementById('projectList').innerHTML = workloadJobs.length ? workloadJobs.map(item => generateJobCard(item, false)).join('') : '<p style="color:var(--text-muted);">No matching requests found.</p>';
             
-            // Paint Done Board
             if (doneData.length === 0) {
                 document.getElementById('doneList').innerHTML = '<p style="color:var(--text-muted);">No matching tasks found.</p>';
             } else {
