@@ -69,20 +69,27 @@
             100% { transform: translate(-5%, -10%) scale(1.2) rotate(180deg); }
         }
 
-        .intro-content { position: relative; z-index: 2; text-align: center; padding: 20px; transition: all 1.2s cubic-bezier(0.85, 0, 0.15, 1); }
+        .intro-content { position: relative; z-index: 2; text-align: center; padding: 20px; transition: all 1.2s cubic-bezier(0.85, 0, 0.15, 1); width: 100%; max-width: 400px; }
         
         /* Staggered Elements */
         .intro-logo { max-width: 260px; height: auto; margin: 0 auto 25px auto; display: block; opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; transition: 0.3s; }
         [data-theme="dark"] .intro-logo { background: rgba(255, 255, 255, 0.95); padding: 15px 30px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
         
         .intro-title { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text-strong); margin: 0 0 10px 0; line-height: 1.1; opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s forwards; }
-        .intro-subtitle { font-size: 1.2rem; color: var(--text-muted); font-weight: 400; margin: 0 0 40px 0; letter-spacing: -0.01em; opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s forwards; }
-        .intro-btn-wrapper { opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.45s forwards; }
+        .intro-subtitle { font-size: 1.2rem; color: var(--text-muted); font-weight: 400; margin: 0 0 30px 0; letter-spacing: -0.01em; opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s forwards; }
         
-        .intro-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--text-strong); color: var(--bg-main); border: none; padding: 18px 45px; border-radius: 40px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .intro-btn:hover { transform: scale(1.05); box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
+        /* 🌟 COCKTAIL PARTY EFFECT UI 🌟 */
+        .intro-form-wrapper { opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.45s forwards; margin-bottom: 25px; }
+        .intro-field { width: 100%; padding: 16px 20px; border-radius: 30px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); color: var(--text-strong); font-size: 0.95rem; font-family: inherit; font-weight: 600; text-align-last: center; transition: 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.02); margin-bottom: 10px; cursor: pointer; outline: none; }
+        [data-theme="dark"] .intro-field { background: rgba(15,23,42,0.7); color: var(--text-strong); border-color: var(--border-main); }
+        .intro-field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+        .intro-input { text-align: center; }
+
+        .intro-btn-wrapper { opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.6s forwards; }
+        .intro-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--text-strong); color: var(--bg-main); border: none; padding: 16px 30px; border-radius: 30px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .intro-btn:hover { transform: scale(1.03); box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
         
-        /* 🌟 CINEMATIC TRANSITION OUT 🌟 */
+        /* CINEMATIC TRANSITION OUT */
         .hide-intro { opacity: 0; pointer-events: none; }
         .hide-intro .intro-content { transform: scale(1.3) translateY(-30px); opacity: 0; filter: blur(15px); }
 
@@ -250,6 +257,7 @@
         .btn-delete:hover { background: rgba(239, 68, 68, 0.1); }
         .locked-msg { padding: 15px; background: var(--bg-box); border: 1px dashed var(--border-main); border-radius: 8px; text-align: center; color: var(--text-muted); font-size: 0.85rem; font-weight: 500; display:flex; justify-content:center; align-items:center; gap:8px; }
         
+        /* MONTHLY GROUPING STYLES */
         .month-group-header { margin-top: 35px; margin-bottom: 15px; color: var(--text-strong); border-bottom: 2px solid var(--border-main); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 1.15rem; font-weight: 700; }
         .month-group-badge { font-size: 0.75rem; background: var(--bg-box); padding: 5px 12px; border-radius: 20px; color: var(--text-muted); border: 1px solid var(--border-main); font-weight: 600; }
 
@@ -298,6 +306,30 @@
             <img src="AdTechinno.png" alt="AdTechinno" class="intro-logo">
             <h1 class="intro-title">Creative Request.</h1>
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
+            
+            <div class="intro-form-wrapper">
+                <select id="introNameSelect" class="intro-field" onchange="toggleIntroManualInput()">
+                    <option value="">Select your name...</option>
+                    <optgroup label="Malaysia">
+                        <option>MY - Ain Sabrina</option><option>MY - Ammelia</option><option>MY - Angie Ng</option><option>MY - Bernice Mah</option>
+                        <option>MY - Boon Jie Xin</option><option>MY - Chong Jia Jun</option><option>MY - Dillon Frederick Kugan</option>
+                        <option>MY - Darren (Boo Hwa Chian)</option><option>MY - Hao Yun</option><option>MY - Joanne Yap</option>
+                        <option>MY - Joseph Chong</option><option>MY - Kevin Tan</option><option>MY - Lina Leong</option>
+                        <option>MY - Nurul Iman Natasha</option><option>MY - Syaheerah Atiqah</option><option>MY - Wilson Ng Guan De</option>
+                        <option>MY - Xuan Lee</option><option>MY - Zulkarnain Mustapa</option><option>MY - Faiz Shamsul</option>
+                    </optgroup>
+                    <optgroup label="Indonesia">
+                        <option>ID - Angelina</option><option>ID - Annisya Y.</option><option>ID - Arbaasya D.F.</option><option>ID - Areta G.P.</option>
+                        <option>ID - Ashley Karamoy</option><option>ID - Avira P.P.</option><option>ID - Ayu Aprillia</option><option>ID - Fadhil Zuhayr</option>
+                        <option>ID - Fajar Abhirama</option><option>ID - Jap Hetty</option><option>ID - Joanne Chan</option><option>ID - Lutfan Allen R.</option>
+                        <option>ID - Marlina S.</option><option>ID - Miftahul Fikri</option><option>ID - Moh. Reza P.</option><option>ID - Naufal Hilmy</option>
+                        <option>ID - Tiffani Y.</option><option>ID - Verincia T.</option><option>ID - Youke Yap</option>
+                    </optgroup>
+                    <option value="manual">I'm not in the list</option>
+                </select>
+                <input type="text" id="introManualName" class="intro-field intro-input" placeholder="Type your name here..." style="display: none;">
+            </div>
+
             <div class="intro-btn-wrapper">
                 <button class="intro-btn" onclick="startApp()">
                     Start Now <i data-lucide="arrow-right" style="width: 20px;"></i>
@@ -532,19 +564,91 @@
             lucide.createIcons();
         }
 
-        function setGreetingAndDate() {
+        // INTRO MOUSE TRACKING LOGIC
+        document.addEventListener('mousemove', (e) => {
+            const intro = document.getElementById('introPage');
+            if(intro && intro.style.display !== 'none' && !intro.classList.contains('hide-intro')) {
+                const x = (e.clientX / window.innerWidth) * 100;
+                const y = (e.clientY / window.innerHeight) * 100;
+                intro.style.setProperty('--mouse-x', `${x}%`);
+                intro.style.setProperty('--mouse-y', `${y}%`);
+            }
+        });
+
+        // 🌟 THE COCKTAIL PARTY LOGIC 🌟
+        function toggleIntroManualInput() {
+            const val = document.getElementById('introNameSelect').value;
+            const manualInput = document.getElementById('introManualName');
+            if(val === 'manual') {
+                manualInput.style.display = 'block';
+                manualInput.focus();
+            } else {
+                manualInput.style.display = 'none';
+            }
+        }
+
+        function extractFirstName(fullName) {
+            if (!fullName) return "";
+            let cleanName = fullName;
+            if (cleanName.includes('-')) {
+                cleanName = cleanName.split('-')[1].trim(); 
+            }
+            return cleanName.split(' ')[0]; 
+        }
+
+        function setGreetingAndDate(userName = "") {
             const hour = new Date().getHours();
-            let greeting = "Good evening.";
-            if (hour < 12) greeting = "Good morning.";
-            else if (hour < 18) greeting = "Good afternoon.";
-            document.getElementById('greetingMsg').innerText = greeting;
+            let greeting = "Good evening";
+            if (hour < 12) greeting = "Good morning";
+            else if (hour < 18) greeting = "Good afternoon";
+            
+            let finalGreeting = greeting + ".";
+            if (userName) {
+                const firstName = extractFirstName(userName);
+                finalGreeting = greeting + ", " + firstName + ".";
+            }
+            
+            document.getElementById('greetingMsg').innerText = finalGreeting;
 
             const dateOptions = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
             document.getElementById('currentDateDisplay').innerText = new Date().toLocaleDateString('en-US', dateOptions);
         }
 
-        // 🌟 CINEMATIC TRANSITION LOGIC 🌟
         function startApp() {
+            const introSel = document.getElementById('introNameSelect').value;
+            const manualVal = document.getElementById('introManualName').value.trim();
+            let userName = introSel;
+            
+            if (introSel === 'manual') {
+                userName = manualVal;
+            }
+
+            if (!userName) {
+                alert("Please tell us who you are to continue.");
+                return;
+            }
+
+            // Save Memory
+            localStorage.setItem('adtech_user_name', userName);
+            
+            // Personalize Dashboard
+            setGreetingAndDate(userName);
+
+            // Pre-fill New Request Form
+            const reqSelect = document.getElementById('requesterName');
+            let foundInList = false;
+            for (let i = 0; i < reqSelect.options.length; i++) {
+                if (reqSelect.options[i].value === userName || reqSelect.options[i].text === userName) {
+                    reqSelect.selectedIndex = i;
+                    foundInList = true;
+                    break;
+                }
+            }
+            if (!foundInList) {
+                document.getElementById('manualName').value = userName;
+            }
+
+            // Cinematic Transition
             const intro = document.getElementById('introPage');
             const appWrapper = document.getElementById('app-wrapper');
             
@@ -554,7 +658,27 @@
             setTimeout(() => {
                 intro.style.display = 'none';
                 document.body.classList.remove('no-scroll');
-            }, 1000); // Waits for the animation to finish before removing from DOM
+            }, 1000); 
+        }
+
+        function checkSavedName() {
+            const savedName = localStorage.getItem('adtech_user_name');
+            if(savedName) {
+                const introSel = document.getElementById('introNameSelect');
+                let found = false;
+                for(let i=0; i<introSel.options.length; i++) {
+                    if(introSel.options[i].value === savedName || introSel.options[i].text === savedName) {
+                        introSel.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+                if(!found) {
+                    introSel.value = 'manual';
+                    document.getElementById('introManualName').style.display = 'block';
+                    document.getElementById('introManualName').value = savedName;
+                }
+            }
         }
 
         function formatDate(dateStr) {
@@ -712,6 +836,20 @@
                     alert(`Request Submitted Successfully.\nJob ID: ${jobID}`);
                     document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
                     document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
+                    
+                    // Keep the user's name populated after submit!
+                    const savedName = localStorage.getItem('adtech_user_name');
+                    if(savedName) {
+                        const reqSelect = document.getElementById('requesterName');
+                        let found = false;
+                        for (let i = 0; i < reqSelect.options.length; i++) {
+                            if (reqSelect.options[i].value === savedName || reqSelect.options[i].text === savedName) {
+                                reqSelect.selectedIndex = i; found = true; break;
+                            }
+                        }
+                        if (!found) document.getElementById('manualName').value = savedName;
+                    }
+
                     showPage('dashboard');
                     fetchAndRender(); 
                 } else { throw new Error(res.message); }
@@ -1106,6 +1244,7 @@
         }
 
         window.onload = () => {
+            checkSavedName();
             setGreetingAndDate();
             checkAdminUI();
             showPage('dashboard');
