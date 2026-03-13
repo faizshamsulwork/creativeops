@@ -417,7 +417,6 @@
         }
         if(currentTheme === 'dark') document.getElementById('themeBtn').innerHTML = 'Light Mode';
 
-        // SECURE ADMIN ACCESS LOGIC
         let securePin = localStorage.getItem('adtech_lead_pin') || null;
         
         function checkAdminUI() {
@@ -463,12 +462,12 @@
         }
         checkAdminUI();
 
+        // 🌟 TUKAR PAPARAN PANTAS TANPA GANGGU DATA (FIX AUTO-CLOSE BUG) 🌟
         function showPage(id) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.getElementById(id).classList.add('active');
             document.getElementById('btn-' + id).classList.add('active');
-            if(id !== 'request') fetchAndRender();
         }
 
         async function gasPost(payload) {
@@ -530,6 +529,7 @@
                     document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
                     document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
                     showPage('dashboard');
+                    fetchAndRender(); // EXPLICITLY CALL REFRESH
                 } else { throw new Error(res.message); }
             } catch(e) { alert("Submission failed: " + e.message); } finally {
                 submitBtn.innerHTML = originalText;
@@ -553,7 +553,7 @@
 
                 await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[APPROVED]%0AJob: ${jobID}%0AClient: ${client}%0APIC: ${selectedDesigners}%0APlaybook: ${playbookLink}&parse_mode=Markdown`);
                 alert("Job Approved & Messages Ready.");
-                fetchAndRender();
+                fetchAndRender(); // EXPLICITLY CALL REFRESH
             } catch(e) { alert("Error: " + e.message); }
         }
 
@@ -563,7 +563,7 @@
                 const res = await gasPost(payload);
                 if(res.status !== "success") throw new Error(res.message);
                 if(newStatus === 'Done') alert("Job marked as Done. Moved to the Done Tasks tab.");
-                fetchAndRender();
+                fetchAndRender(); // EXPLICITLY CALL REFRESH
             } catch(e) { alert("Error updating status: " + e.message); }
         }
 
@@ -572,7 +572,7 @@
             try {
                 const res = await gasPost({ action: 'delete', pin: securePin, data: { job_id: jobID } });
                 if(res.status !== "success") throw new Error(res.message);
-                fetchAndRender();
+                fetchAndRender(); // EXPLICITLY CALL REFRESH
             } catch(e) { alert("Error deleting: " + e.message); }
         }
 
@@ -615,7 +615,7 @@
                 
                 alert("Request details updated successfully.");
                 closeEditModal();
-                fetchAndRender();
+                fetchAndRender(); // EXPLICITLY CALL REFRESH
             } catch(e) { alert("Error updating: " + e.message); } finally {
                 btn.innerHTML = 'Update Request'; btn.disabled = false;
             }
@@ -639,7 +639,6 @@
             link.click();
         }
 
-        // 🌟 UPDATED: COPY TEXT LOGIC (INCLUDES REVIEW MESSAGE) 🌟
         function copyText(type, jobID, client, title, assignee, deadlineStr, playbookLink, requesterName = '') {
             let msg = "";
             const link = playbookLink || 'Link not provided';
@@ -885,7 +884,11 @@
             }
         }
 
-        window.onload = () => showPage('dashboard');
+        // 🌟 INIT CALL 🌟
+        window.onload = () => {
+            showPage('dashboard');
+            fetchAndRender();
+        };
     </script>
 </body>
 </html>
