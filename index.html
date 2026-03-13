@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Adtechinno | Creative Engine 2.0</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         /* DUAL THEME VARIABLES */
         :root { 
@@ -23,8 +23,23 @@
             --badge-pend-bg: #451a03; --badge-pend-txt: #fed7aa; --badge-appr-bg: #064e3b; --badge-appr-txt: #a7f3d0;
             --shadow: 0 4px 15px rgba(0,0,0,0.3); --focus-ring: rgba(56, 189, 248, 0.3);
         }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; display: flex; min-height: 100vh; position: relative; transition: background 0.3s, color 0.3s; }
-        
+        body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; display: flex; min-height: 100vh; position: relative; transition: background 0.3s, color 0.3s; overflow-x: hidden; }
+        body.no-scroll { overflow: hidden; }
+
+        /* APPLE-STYLE INTRO PAGE */
+        .intro-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background: var(--bg-main); z-index: 9999; display: flex; justify-content: center; align-items: center; transition: opacity 0.8s cubic-bezier(0.65, 0, 0.35, 1), transform 0.8s cubic-bezier(0.65, 0, 0.35, 1); }
+        .intro-content { text-align: center; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; opacity: 0; transform: translateY(40px); padding: 20px; }
+        .intro-badge { display: inline-block; padding: 6px 16px; border-radius: 30px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; background: transparent; color: var(--text-muted); border: 1px solid var(--border-main); margin-bottom: 25px; }
+        .intro-title { font-size: 4.5rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text-strong); margin: 0 0 15px 0; line-height: 1.1; }
+        .intro-subtitle { font-size: 1.3rem; color: var(--text-muted); font-weight: 400; margin: 0 0 50px 0; letter-spacing: -0.01em; }
+        .intro-btn { background: var(--text-strong); color: var(--bg-main); border: none; padding: 18px 45px; border-radius: 40px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .intro-btn:hover { transform: scale(1.05); box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
+        .hide-intro { opacity: 0; transform: scale(1.03); pointer-events: none; }
+
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         /* SIDEBAR */
         .sidebar { width: 260px; border-right: 1px solid var(--border-main); padding: 40px 20px; background: var(--bg-sidebar); position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; display: flex; flex-direction: column; transition: 0.3s; }
         .logo { font-weight: 800; letter-spacing: 2px; margin-bottom: 30px; font-size: 1.2rem; text-align: center; color: var(--text-strong); line-height: 1.2; }
@@ -141,6 +156,8 @@
         
         @media (max-width: 768px) {
             body { flex-direction: column; }
+            .intro-title { font-size: 2.8rem; }
+            .intro-subtitle { font-size: 1.1rem; }
             .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; border-bottom: 1px solid var(--border-main); z-index: 10; }
             .main-content { margin-left: 0; padding: 20px; width: 100%; }
             .bottom-actions { margin-top: 20px; flex-direction: row; }
@@ -159,10 +176,18 @@
             .btn-action { width: 100%; margin-left: 0; }
             .controls-container { flex-direction: column; align-items: stretch; }
         }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body>
+<body class="no-scroll">
+
+    <div id="introPage" class="intro-overlay">
+        <div class="intro-content">
+            <div class="intro-badge">System 2.0</div>
+            <h1 class="intro-title">Creative Engine.</h1>
+            <p class="intro-subtitle">Streamlining the creative workflow.</p>
+            <button class="intro-btn" onclick="startApp()">Start Now</button>
+        </div>
+    </div>
 
     <div class="sidebar">
         <div class="logo">Adtechinno<span class="logo-sub">Creative Request</span></div>
@@ -170,7 +195,7 @@
             <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')">Dashboard</div>
             <div class="nav-item" id="btn-workload" onclick="showPage('workload')">Request Status</div>
             <div class="nav-item" id="btn-done" onclick="showPage('done')">Done Tasks</div>
-            <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')">+ New Request</div>
+            <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')">New Request</div>
         </div>
         <div class="bottom-actions">
             <button id="themeBtn" class="action-btn" onclick="toggleTheme()">Dark Mode</button>
@@ -350,7 +375,17 @@
         const designersID = ["ID-Miftahul", "ID-Youke", "ID-Annisya"];
         const allDesigners = [...designersMY, ...designersID];
         
-        let globalData = []; // Store data locally for search
+        let globalData = []; 
+
+        // 🌟 APPLE STYLE INTRO LOGIC 🌟
+        function startApp() {
+            const intro = document.getElementById('introPage');
+            intro.classList.add('hide-intro');
+            setTimeout(() => {
+                intro.style.display = 'none';
+                document.body.classList.remove('no-scroll');
+            }, 800);
+        }
 
         function formatDate(dateStr) {
             if (!dateStr) return '-';
@@ -378,7 +413,6 @@
         }
         if(currentTheme === 'dark') document.getElementById('themeBtn').innerHTML = 'Light Mode';
 
-        // SECURE LEAD ACCESS LOGIC
         let securePin = localStorage.getItem('adtech_lead_pin') || null;
         
         function checkAdminUI() {
@@ -527,7 +561,6 @@
             } catch(e) { alert("Error deleting: " + e.message); }
         }
 
-        // EDIT FUNCTIONALITY
         function openEditModal(jobID, client, title, deadlineStr) {
             document.getElementById('editJobId').value = jobID;
             document.getElementById('editClient').value = client;
@@ -573,7 +606,6 @@
             }
         }
 
-        // EXPORT TO CSV
         function exportToCSV() {
             if (!globalData || globalData.length === 0) return alert("No data available to export.");
             const doneData = globalData.filter(d => d.status === 'approved' && d.work_status === 'Done');
@@ -763,7 +795,6 @@
             } catch (err) { console.error("Error loading data:", err); }
         }
 
-        // SEARCH & RENDER LOGIC
         function renderBoards() {
             if(!globalData || globalData.length === 0) return;
 
