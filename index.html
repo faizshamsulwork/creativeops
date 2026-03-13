@@ -73,7 +73,8 @@
         /* SEARCH & FILTER CONTROLS */
         .controls-container { display: flex; gap: 15px; margin-bottom: 25px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
         .search-box { flex: 1; min-width: 250px; }
-        .search-box input { width: 100%; padding: 12px 15px; border: 1px solid var(--border-main); border-radius: 8px; font-size: 0.9rem; background: var(--bg-card); color: var(--text-main); }
+        .search-box input { width: 100%; padding: 12px 15px; border: 1px solid var(--border-main); border-radius: 8px; font-size: 0.9rem; background: var(--bg-card); color: var(--text-main); transition: 0.2s; box-sizing: border-box; }
+        .search-box input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
         .export-btn { background: var(--bg-card); color: var(--text-strong); border: 1px solid var(--border-main); padding: 12px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 0.9rem; }
         .export-btn:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -111,7 +112,8 @@
         .brief-box p { margin: 0 0 10px 0; }
         .brief-box p:last-child { margin: 0; }
         .brief-box a { color: var(--link-color); text-decoration: none; font-weight: 500; }
-        .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; width: fit-content; }
+        .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: fit-content; }
+        .ws-select:hover { filter: brightness(0.9); }
         .ws-not-started { background: #64748b; color: white; }
         .ws-drafting { background: #f59e0b; color: white; }
         .ws-internal-review { background: #0ea5e9; color: white; }
@@ -152,6 +154,7 @@
             .card { padding: 25px 20px; }
             .card-summary { flex-direction: column; align-items: flex-start; gap: 10px; }
             .card-summary > div:last-child { width: 100%; justify-content: space-between; }
+            h1 { font-size: 1.5rem; text-align: center; }
             .action-buttons { flex-direction: column; }
             .btn-action { width: 100%; margin-left: 0; }
             .controls-container { flex-direction: column; align-items: stretch; }
@@ -167,7 +170,7 @@
             <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')">Dashboard</div>
             <div class="nav-item" id="btn-workload" onclick="showPage('workload')">Request Status</div>
             <div class="nav-item" id="btn-done" onclick="showPage('done')">Done Tasks</div>
-            <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')">New Request</div>
+            <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')">+ New Request</div>
         </div>
         <div class="bottom-actions">
             <button id="themeBtn" class="action-btn" onclick="toggleTheme()">Dark Mode</button>
@@ -314,7 +317,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3>Edit Request Details</h3>
-                <button class="close-btn" onclick="closeEditModal()">&times;</button>
+                <button class="close-btn" onclick="closeEditModal()">x</button>
             </div>
             <div class="input-group" style="margin-bottom: 15px;">
                 <label>Job ID</label>
@@ -337,8 +340,8 @@
     </div>
 
     <script>
-        // 🔥 PASTE URL GOOGLE APPS SCRIPT KAU KAT BAWAH NI 🔥
-        const GAS_API = 'PASTE_URL_GAS_KAU_DI_SINI'; 
+        // GOOGLE APPS SCRIPT URL
+        const GAS_API = 'https://script.google.com/macros/s/AKfycbx62SrsKxtUOtYJioecLU8Yw3tjYW7OPaTmstklYwMYMQzdcMwJUsrQC1esWyA9q61S/exec'; 
         
         const TG_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
         const TG_CHAT = '5964232885';
@@ -375,7 +378,7 @@
         }
         if(currentTheme === 'dark') document.getElementById('themeBtn').innerHTML = 'Light Mode';
 
-        // 🌟 SECURE LEAD ACCESS LOGIC 🌟
+        // SECURE LEAD ACCESS LOGIC
         let securePin = localStorage.getItem('adtech_lead_pin') || null;
         
         function checkAdminUI() {
@@ -524,13 +527,12 @@
             } catch(e) { alert("Error deleting: " + e.message); }
         }
 
-        // 🌟 EDIT FUNCTIONALITY 🌟
+        // EDIT FUNCTIONALITY
         function openEditModal(jobID, client, title, deadlineStr) {
             document.getElementById('editJobId').value = jobID;
             document.getElementById('editClient').value = client;
             document.getElementById('editTitle').value = title;
             
-            // Format deadline back to YYYY-MM-DD for input type date
             let formattedDate = "";
             if(deadlineStr) {
                 const d = new Date(deadlineStr);
@@ -571,7 +573,7 @@
             }
         }
 
-        // 🌟 EXPORT TO CSV 🌟
+        // EXPORT TO CSV
         function exportToCSV() {
             if (!globalData || globalData.length === 0) return alert("No data available to export.");
             const doneData = globalData.filter(d => d.status === 'approved' && d.work_status === 'Done');
@@ -705,7 +707,6 @@
 
                 globalData = rawData.reverse();
                 
-                // Dashboard Logic
                 const pendingData = globalData.filter(d => d.status === 'pending');
                 const activeData = globalData.filter(d => d.status === 'approved' && d.work_status !== 'Done');
                 
@@ -762,7 +763,7 @@
             } catch (err) { console.error("Error loading data:", err); }
         }
 
-        // 🌟 SEARCH & RENDER LOGIC 🌟
+        // SEARCH & RENDER LOGIC
         function renderBoards() {
             if(!globalData || globalData.length === 0) return;
 
@@ -770,14 +771,12 @@
             let activeData = globalData.filter(d => d.status === 'approved' && d.work_status !== 'Done');
             let doneData = globalData.filter(d => d.status === 'approved' && d.work_status === 'Done');
 
-            // Apply Search Workload
             const qW = document.getElementById('searchWorkload') ? document.getElementById('searchWorkload').value.toLowerCase() : '';
             if(qW) {
                 pendingData = pendingData.filter(d => d.job_id.toLowerCase().includes(qW) || d.client_name.toLowerCase().includes(qW));
                 activeData = activeData.filter(d => d.job_id.toLowerCase().includes(qW) || d.client_name.toLowerCase().includes(qW));
             }
 
-            // Apply Search Done
             const qD = document.getElementById('searchDone') ? document.getElementById('searchDone').value.toLowerCase() : '';
             if(qD) {
                 doneData = doneData.filter(d => d.job_id.toLowerCase().includes(qD) || d.client_name.toLowerCase().includes(qD));
