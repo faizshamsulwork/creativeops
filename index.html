@@ -3,125 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Engine v19</title>
+    <title>Adtechinno | Creative Engine v20</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-border: #e6e6e6; --accent: #000; }
         body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; min-height: 100vh; }
-        
-        /* Sidebar Navigation */
         .sidebar { width: 260px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; z-index: 1000; }
         .logo { font-weight: 700; letter-spacing: 3px; margin-bottom: 40px; font-size: 1.1rem; text-align: center; }
         .nav-group { display: flex; flex-direction: column; gap: 8px; }
         .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #888; border-radius: 8px; transition: 0.2s; display: flex; align-items: center; gap: 10px; }
         .nav-item:hover, .nav-item.active { background: #f5f5f5; color: #000; font-weight: 600; }
         .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; justify-content: center; font-weight: 600; }
-
-        /* Content Area */
         .main-content { margin-left: 260px; padding: 40px; width: 100%; box-sizing: border-box; }
-        .page { display: none; max-width: 900px; margin: 0 auto; }
+        .page { display: none; max-width: 850px; margin: 0 auto; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
-
-        /* Dashboard Stats */
-        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
-        .stat-card { background: #fff; padding: 25px; border-radius: 12px; border: 1px solid var(--muji-border); text-align: center; }
-        .stat-card p { margin: 10px 0 0; font-size: 2.2rem; font-weight: 600; }
-
-        /* Form UI */
-        .card { background: white; border: 1px solid var(--muji-border); padding: 40px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
-        .form-section { margin-bottom: 35px; }
-        .form-section h3 { font-size: 1.1rem; margin-bottom: 20px; color: #333; font-weight: 600; }
-        .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: center; margin-bottom: 15px; }
-        .inline-group { display: flex; align-items: center; gap: 10px; }
-        .inline-group label { font-size: 0.9rem; font-weight: 500; color: #444; white-space: nowrap; }
-        
-        input, select, textarea { padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.95rem; box-sizing: border-box; width: 100%; font-family: inherit; }
-        .job-type-container { background: #f8f9fa; padding: 25px; border-radius: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; border: 1px solid #f0f0f0; }
-        .checkbox-item { display: flex; align-items: center; gap: 12px; font-size: 0.95rem; cursor: pointer; }
-        .btn-submit { background: #000; color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1.1rem; margin-top: 10px; }
-
-        /* Badges & Buttons */
+        .card { background: white; border: 1px solid var(--muji-border); padding: 35px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
+        .form-section { margin-bottom: 30px; border-bottom: 1px solid #f0f0f0; padding-bottom: 20px; }
+        .form-section:last-child { border-bottom: none; }
+        .form-section h3 { font-size: 1rem; margin-bottom: 15px; color: #000; font-weight: 600; }
+        label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: #444; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem; box-sizing: border-box; font-family: inherit; margin-bottom: 15px; }
+        .checkbox-group { background: #f9f9f9; padding: 20px; border-radius: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .checkbox-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; cursor: pointer; }
+        .checkbox-item input { width: 18px; height: 18px; margin: 0; }
+        .btn-submit { background: #000; color: #fff; border: none; padding: 20px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; display: flex; justify-content: center; align-items: center; gap: 10px; }
         .badge { font-size: 0.65rem; padding: 4px 10px; border-radius: 12px; font-weight: 600; text-transform: uppercase; }
         .status-pending { background: #fff7ed; color: #9a3412; }
         .status-approved { background: #f0fdf4; color: #166534; }
-        .btn-delete { color: #ff4d4d; border: none; background: none; font-size: 0.75rem; cursor: pointer; font-weight: 600; opacity: 0.6; }
-
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; height: auto; position: relative; padding: 15px; }
-            .main-content { margin-left: 0; padding: 20px; }
-            .stats-grid, .input-grid, .job-type-container { grid-template-columns: 1fr; }
-        }
+        @media (max-width: 768px) { .sidebar { width: 100%; height: auto; position: relative; } .main-content { margin-left: 0; padding: 20px; } .checkbox-group { grid-template-columns: 1fr; } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
-
     <div class="sidebar">
         <div class="logo">ADTECHINNO</div>
         <div class="nav-group">
-            <div class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard')">📊 Dashboard</div>
-            <div class="nav-item" id="nav-workload" onclick="showPage('workload')">📋 Request Status</div>
-            <div class="nav-item btn-new-request" id="nav-request" onclick="showPage('request')">+ New Request</div>
+            <div class="nav-item active" onclick="showPage('dashboard')">📊 Dashboard</div>
+            <div class="nav-item" onclick="showPage('workload')">📋 Request Status</div>
+            <div class="nav-item btn-new-request" onclick="showPage('request')">+ New Request</div>
         </div>
     </div>
 
     <div class="main-content">
         <div id="dashboard" class="page active">
-            <h1>Executive Dashboard</h1>
-            <div class="stats-grid">
-                <div class="stat-card"><h4>Total Requests</h4><p id="stat-total">0</p></div>
-                <div class="stat-card"><h4>To Approve</h4><p id="stat-pending">0</p></div>
-                <div class="stat-card"><h4>In Progress</h4><p id="stat-approved">0</p></div>
-            </div>
-            <div class="card">
-                <h3>Telegram Bot: Connected ✅</h3>
-                <p style="color: #666; font-size: 0.9rem;">You will receive alerts for new requests and approvals on your Telegram.</p>
-            </div>
+            <h1>Dashboard</h1>
+            <div id="statBox" style="display:flex; gap:20px; margin-bottom:30px;"></div>
+            <div class="card"><h3>System Ready</h3><p>Notifications active for Telegram: <b>5964232885</b></p></div>
         </div>
 
         <div id="workload" class="page">
-            <h1>Request Status Board</h1>
-            <div id="projectList">Syncing records...</div>
+            <h1>Request Status</h1>
+            <div id="projectList">Loading...</div>
         </div>
 
         <div id="request" class="page">
             <h1>Create New Request</h1>
             <div class="card">
                 <div class="form-section">
-                    <h3>1. Requester</h3>
-                    <select id="requesterName" style="width: 250px;">
-                        <option value="">-- Select Requester --</option>
+                    <h3>1. Requester Name</h3>
+                    <select id="requesterName">
+                        <option value="">-- Select Name --</option>
                         <optgroup label="Malaysia">
-                            <option>MY - Faiz Shamsul</option><option>MY - Ain Sabrina</option><option>MY - Angie Ng</option>
+                            <option>MY - Ain Sabrina</option><option>MY - Ammelia</option><option>MY - Angie Ng</option><option>MY - Bernice Mah</option>
+                            <option>MY - Boon Jie Xin</option><option>MY - Chong Jia Jun</option><option>MY - Dillon Frederick Kugan</option>
+                            <option>MY - Darren (Boo Hwa Chian)</option><option>MY - Hao Yun</option><option>MY - Joanne Yap</option>
+                            <option>MY - Joseph Chong</option><option>MY - Kevin Tan</option><option>MY - Lina Leong</option>
+                            <option>MY - Nurul Iman Natasha</option><option>MY - Syaheerah Atiqah</option><option>MY - Wilson Ng Guan De</option>
+                            <option>MY - Xuan Lee</option><option>MY - Zulkarnain Mustapa</option><option>MY - Faiz Shamsul</option>
                         </optgroup>
                         <optgroup label="Indonesia">
-                            <option>ID - Miftahul Fikri</option><option>ID - Youke Yap</option>
+                            <option>ID - Angelina</option><option>ID - Annisya Y.</option><option>ID - Arbaasya D.F.</option><option>ID - Areta G.P.</option>
+                            <option>ID - Ashley Karamoy</option><option>ID - Avira P.P.</option><option>ID - Ayu Aprillia</option><option>ID - Fadhil Zuhayr</option>
+                            <option>ID - Fajar Abhirama</option><option>ID - Jap Hetty</option><option>ID - Joanne Chan</option><option>ID - Lutfan Allen R.</option>
+                            <option>ID - Marlina S.</option><option>ID - Miftahul Fikri</option><option>ID - Moh. Reza P.</option><option>ID - Naufal Hilmy</option>
+                            <option>ID - Tiffani Y.</option><option>ID - Verincia T.</option><option>ID - Youke Yap</option>
                         </optgroup>
+                    </select>
+                    <label>If your name is not on the above:</label>
+                    <input type="text" id="manualName" placeholder="Type name here">
+                </div>
+
+                <div class="form-section">
+                    <h3>2. Office/Region</h3>
+                    <select id="pRegion">
+                        <option>Malaysia</option><option>Hong Kong</option><option>Singapore</option><option>Indonesia</option>
+                        <option>Vietnam</option><option>Japan</option><option>China</option>
                     </select>
                 </div>
 
                 <div class="form-section">
-                    <h3>2. Project Details</h3>
-                    <div class="input-grid">
-                        <div class="inline-group"><label>Client Name</label><input type="text" id="pClient"></div>
-                        <div class="inline-group"><label>Project Title</label><input type="text" id="pTitle"></div>
+                    <h3>3. Project Details</h3>
+                    <label>Client Name</label><input type="text" id="pClient" placeholder="e.g. Adtechinno">
+                    <label>Project Title</label><input type="text" id="pTitle" placeholder="e.g. Raya Assets">
+                </div>
+
+                <div class="form-section">
+                    <h3>4. Job Type</h3>
+                    <div class="checkbox-group" id="jobTypes">
+                        <label class="checkbox-item"><input type="checkbox" value="Poster/Graphic"> Poster/Graphic</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Video Production"> Video Production</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Copywriting/Article"> Copywriting/Article</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Presentation Deck"> Presentation Deck</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Monthly Content Plan"> Monthly Content Plan</label>
+                    </div>
+                    <label style="margin-top:15px;">Paste your monthly content plan here (if applicable):</label>
+                    <textarea id="pMonthlyPlan" rows="3"></textarea>
+                </div>
+
+                <div class="form-section">
+                    <h3>5. Briefing</h3>
+                    <label>Creative Brief (important points/pitch deck):</label>
+                    <textarea id="pBrief" rows="4"></textarea>
+                    <label>Objective:</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-item"><input type="radio" name="obj" value="Traffic"> Traffic</label>
+                        <label class="checkbox-item"><input type="radio" name="obj" value="Awareness"> Awareness</label>
+                        <label class="checkbox-item"><input type="radio" name="obj" value="Sales"> Sales</label>
                     </div>
                 </div>
 
                 <div class="form-section">
-                    <h3>3. Job Type</h3>
-                    <div class="job-type-container" id="jobTypes">
-                        <label class="checkbox-item"><input type="checkbox" value="Poster/Graphic"><span>Poster/Graphic</span></label>
-                        <label class="checkbox-item"><input type="checkbox" value="Video Production"><span>Video Production</span></label>
-                        <label class="checkbox-item"><input type="checkbox" value="Copywriting"><span>Copywriting</span></label>
-                        <label class="checkbox-item"><input type="checkbox" value="Monthly Plan"><span>Monthly Plan</span></label>
-                    </div>
-                </div>
-
-                <div class="form-section">
-                    <h3>4. Briefing</h3>
-                    <div class="input-grid"><div class="inline-group"><label>Deadline</label><input type="date" id="pDeadline"></div></div>
-                    <div style="margin-top: 20px;"><div class="inline-group"><label>Briefing Points</label><textarea id="pBrief" rows="4"></textarea></div></div>
+                    <h3>6. Timeline & Reference</h3>
+                    <label>Deadline (minimum 3 working days):</label>
+                    <input type="date" id="pDeadline">
+                    <label>Reference/Moodboard Link (google slides link):</label>
+                    <input type="text" id="pRefLink">
+                    <label>Remarks:</label>
+                    <textarea id="pRemarks" rows="2"></textarea>
                 </div>
 
                 <button class="btn-submit" onclick="submitRequest()">🚀 Submit Request</button>
@@ -133,99 +141,64 @@
         const SHEETDB_API = 'https://sheetdb.io/api/v1/v1fao9lzfm9u7';
         const TG_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
         const TG_CHAT = '5964232885';
-        const PLAYBOOK_MASTER = 'https://docs.google.com/presentation/d/1pd63VK-tqOfVlfLSJs3KRLAAdSdOVjNvpSuZFbxoEYo/copy';
-
-        const creativeTeam = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Steven", "MY-Faiz", "ID-Miftahul Fikri", "ID-Youke Yap"];
+        const designerTeam = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Steven", "MY-Faiz", "ID-Miftahul Fikri", "ID-Youke Yap"];
 
         function showPage(id) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.getElementById(id).classList.add('active');
-            document.getElementById('nav-' + id).classList.add('active');
             if(id !== 'request') fetchAndRender();
         }
 
-        async function sendTG(msg) {
-            try {
-                await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=${msg}&parse_mode=Markdown`);
-            } catch (e) { console.error("TG Error", e); }
-        }
-
         async function submitRequest() {
+            const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
             const client = document.getElementById('pClient').value;
-            const deadline = document.getElementById('pDeadline').value;
-            if(!client || !deadline) return alert("Fill required fields!");
+            if(!name || !client) return alert("Please fill in Name and Client!");
 
             const types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
+            const objective = document.querySelector('input[name="obj"]:checked')?.value || 'N/A';
             const jobID = `AT26-${Math.floor(Date.now() / 1000).toString().slice(-3)}`;
 
-            const payload = {
-                data: [{
-                    job_id: jobID, requester_name: document.getElementById('requesterName').value,
-                    client_name: client, project_title: document.getElementById('pTitle').value,
-                    job_type: types, deadline: deadline, brief: document.getElementById('pBrief').value,
-                    status: 'pending', assignee: 'Unassigned'
-                }]
-            };
+            const payload = { data: [{
+                job_id: jobID, requester_name: name, region: document.getElementById('pRegion').value,
+                client_name: client, project_title: document.getElementById('pTitle').value,
+                job_type: types, objective: objective, brief: document.getElementById('pBrief').value,
+                deadline: document.getElementById('pDeadline').value, ref_link: document.getElementById('pRefLink').value,
+                remarks: document.getElementById('pRemarks').value, status: 'pending', assignee: 'Unassigned'
+            }]};
 
-            try {
-                const res = await fetch(SHEETDB_API, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-                if(res.ok) {
-                    await sendTG(`🚀 *NEW REQUEST*%0A%0A*ID:* ${jobID}%0A*Client:* ${client}%0A*By:* ${payload.data[0].requester_name}%0A*Due:* ${deadline}`);
-                    alert("Submitted & Telegram Notified!");
-                    showPage('dashboard');
-                }
-            } catch (e) { alert(e.message); }
+            const res = await fetch(SHEETDB_API, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+            if(res.ok) {
+                await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=🚀 *NEW REQUEST*%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
+                alert("Submitted!");
+                showPage('dashboard');
+            }
         }
 
-        async function approveJob(jobID, client) {
-            const designer = document.getElementById('assign-' + jobID).value;
-            if(designer === 'Unassigned') return alert("Select designer!");
-            
-            try {
-                await fetch(`${SHEETDB_API}/job_id/${jobID}`, {
-                    method: 'PATCH',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ data: { assignee: designer, status: 'approved' } })
-                });
-                await sendTG(`✅ *JOB APPROVED*%0A%0A*ID:* ${jobID}%0A*Client:* ${client}%0A*PIC:* ${designer}%0A%0A📝 *PLAYBOOK LINK:*%0A${PLAYBOOK_MASTER}`);
-                alert("Approved!");
-                fetchAndRender();
-            } catch (e) { console.error(e); }
-        }
-
-        async function deleteJob(jobID) {
-            if(!confirm("Delete this request?")) return;
-            await fetch(`${SHEETDB_API}/job_id/${jobID}`, { method: 'DELETE' });
+        async function approveJob(id, client) {
+            const des = document.getElementById('assign-' + id).value;
+            if(des === 'Unassigned') return alert("Select designer!");
+            await fetch(`${SHEETDB_API}/job_id/${id}`, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({data: {assignee: des, status: 'approved'}})});
+            await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=✅ *APPROVED*%0AJob: ${id}%0AClient: ${client}%0APIC: ${des}&parse_mode=Markdown`);
             fetchAndRender();
         }
 
         async function fetchAndRender() {
-            try {
-                const res = await fetch(SHEETDB_API);
-                const data = await res.json();
-                document.getElementById('stat-total').innerText = data.length;
-                document.getElementById('stat-pending').innerText = data.filter(d => d.status === 'pending').length;
-                document.getElementById('stat-approved').innerText = data.filter(d => d.status === 'approved').length;
-
-                document.getElementById('projectList').innerHTML = data.reverse().map(item => `
-                    <div class="card" style="padding: 25px; margin-bottom: 15px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div><small>${item.job_id}</small><h3 style="margin:5px 0;">${item.client_name}</h3></div>
-                            <div style="text-align:right;"><span class="badge status-${item.status}">${item.status}</span><br><button onclick="deleteJob('${item.job_id}')" class="btn-delete">Delete</button></div>
-                        </div>
-                        <div style="font-size:0.85rem; color:#666; margin:10px 0;">By: ${item.requester_name} | Due: ${item.deadline}</div>
-                        ${item.status === 'pending' ? `
-                            <div style="background:#f9f9f9; padding:10px; border-radius:8px; display:flex; gap:10px;">
-                                <select id="assign-${item.job_id}"><option value="Unassigned">-- Assign --</option>${creativeTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</select>
-                                <button onclick="approveJob('${item.job_id}', '${item.client_name}')" style="background:#000; color:#fff; border:none; padding:8px 15px; border-radius:4px; cursor:pointer;">Approve</button>
-                            </div>
-                        ` : `<p style="font-size:0.85rem; margin:0;"><strong>Designer:</strong> ${item.assignee}</p>`}
+            const res = await fetch(SHEETDB_API);
+            const data = await res.json();
+            document.getElementById('projectList').innerHTML = data.reverse().map(item => `
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between;">
+                        <div><small>${item.job_id}</small><h3>${item.client_name}: ${item.project_title}</h3></div>
+                        <span class="badge status-${item.status}">${item.status}</span>
                     </div>
-                `).join('');
-            } catch (e) { console.error(e); }
+                    <p style="font-size:0.8rem; color:#666;">By: ${item.requester_name} | Type: ${item.job_type}</p>
+                    ${item.status === 'pending' ? `
+                        <select id="assign-${item.job_id}"><option value="Unassigned">-- Assign --</option>${designerTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</select>
+                        <button onclick="approveJob('${item.job_id}', '${item.client_name}')" style="background:#000; color:#fff; border:none; padding:8px 15px; border-radius:4px; cursor:pointer;">Approve</button>
+                    ` : `<p style="font-size:0.8rem;"><strong>PIC:</strong> ${item.assignee}</p>`}
+                </div>
+            `).join('');
         }
-
         window.onload = fetchAndRender;
     </script>
 </body>
