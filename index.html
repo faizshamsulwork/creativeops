@@ -639,12 +639,20 @@
             link.click();
         }
 
-        function copyText(type, jobID, client, title, assignee, deadlineStr, playbookLink) {
+        // 🌟 UPDATED: COPY TEXT LOGIC (INCLUDES REVIEW MESSAGE) 🌟
+        function copyText(type, jobID, client, title, assignee, deadlineStr, playbookLink, requesterName = '') {
             let msg = "";
             const link = playbookLink || 'Link not provided';
             const deadline = formatDate(deadlineStr);
-            if(type === 'requester') msg = `Hi! Your creative request has been APPROVED.\n\nJob ID: ${jobID}\nProject: ${client} - ${title}\nDeadline: ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
-            else if (type === 'team') msg = `[NEW ASSIGNED JOB]\n\nTeam: ${assignee}\nJob ID: ${jobID}\nClient: ${client} - ${title}\nDeadline: ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions.`;
+            
+            if (type === 'requester') {
+                msg = `Hi! Your creative request has been APPROVED.\n\nJob ID: ${jobID}\nProject: ${client} - ${title}\nDeadline: ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
+            } else if (type === 'team') {
+                msg = `[NEW ASSIGNED JOB]\n\nTeam: ${assignee}\nJob ID: ${jobID}\nClient: ${client} - ${title}\nDeadline: ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions.`;
+            } else if (type === 'review') {
+                msg = `✅ CREATIVE READY FOR REVIEW \n\nClient: ${client}\nProject: ${title}\n\nHi ${requesterName}, the creatives are now ready for your review. You can check the drafts via the link below:\n${link}\n\nPlease let us know if there are any further amendments or if we can proceed to final. Thank you!`;
+            }
+
             navigator.clipboard.writeText(msg);
             alert("Message copied to clipboard.");
         }
@@ -726,6 +734,11 @@
                                     <div class="action-buttons">
                                         <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">Copy Msg: Requester</button>
                                         <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">Copy Msg: Team</button>
+                                        
+                                        ${item.work_status === 'Client Review' ? `
+                                            <button onclick="copyText('review', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}', '${item.requester_name}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;">Copy Msg: Review</button>
+                                        ` : ''}
+
                                         <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy">Edit</button>
                                         <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">Delete</button>
                                     </div>
@@ -810,7 +823,6 @@
             } catch (err) { console.error("Error loading data:", err); }
         }
 
-        // 🌟 MONTHLY GROUPING LOGIC 🌟
         function renderBoards() {
             if(!globalData || globalData.length === 0) return;
 
@@ -854,7 +866,6 @@
                         groupedDone[sortKey].tasks.push(item);
                     });
 
-                    // Sort so newest month is at the top
                     const sortedKeys = Object.keys(groupedDone).sort((a, b) => b.localeCompare(a));
                     
                     let doneHtml = '';
