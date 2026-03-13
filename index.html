@@ -19,9 +19,11 @@
             --gradient-orange: linear-gradient(135deg, rgba(245,158,11,0.05), transparent);
             --gradient-green: linear-gradient(135deg, rgba(16,185,129,0.05), transparent);
             
-            /* INTRO EFFECTS */
-            --intro-glow: rgba(2, 132, 199, 0.05); 
-            --intro-alt: rgba(139, 92, 246, 0.04);
+            /* APPLE FLUID MESH COLORS */
+            --mesh-1: rgba(56, 189, 248, 0.3);
+            --mesh-2: rgba(244, 63, 94, 0.2);
+            --mesh-3: rgba(16, 185, 129, 0.2);
+            --mesh-bg: #ffffff;
         }
         [data-theme="dark"] {
             --bg-main: #0f172a; --bg-sidebar: #1e293b; --bg-card: #1e293b; --bg-box: #0f172a; --bg-input: #0f172a;
@@ -34,31 +36,40 @@
             --gradient-orange: linear-gradient(135deg, rgba(245,158,11,0.05), transparent);
             --gradient-green: linear-gradient(135deg, rgba(16,185,129,0.05), transparent);
             
-            /* INTRO EFFECTS */
-            --intro-glow: rgba(56, 189, 248, 0.1);
-            --intro-alt: rgba(167, 139, 250, 0.08);
+            /* APPLE FLUID MESH COLORS (DARK) */
+            --mesh-1: rgba(56, 189, 248, 0.2);
+            --mesh-2: rgba(139, 92, 246, 0.2);
+            --mesh-3: rgba(16, 185, 129, 0.15);
+            --mesh-bg: #0f172a;
         }
-        body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; display: flex; min-height: 100vh; position: relative; transition: background 0.3s, color 0.3s; overflow-x: hidden; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; min-height: 100vh; transition: background 0.3s, color 0.3s; overflow-x: hidden; }
         body.no-scroll { overflow: hidden; }
 
-        /* 🌟 APPLE-STYLE DYNAMIC INTRO PAGE (STAGGERED ANIMATION) 🌟 */
+        /* 🌟 APPLE-STYLE FLUID MESH INTRO PAGE 🌟 */
         .intro-overlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100vh; 
-            background-color: var(--bg-main); 
-            background-image: radial-gradient(circle 800px at var(--mouse-x, 50%) var(--mouse-y, 50%), var(--intro-glow), transparent 80%);
+            background-color: var(--mesh-bg); 
             z-index: 9999; display: flex; justify-content: center; align-items: center; overflow: hidden;
-            transition: opacity 0.8s cubic-bezier(0.65, 0, 0.35, 1), transform 0.8s cubic-bezier(0.65, 0, 0.35, 1); 
+            transition: opacity 1s cubic-bezier(0.85, 0, 0.15, 1); 
         }
-        .intro-ambient-1, .intro-ambient-2 { position: absolute; border-radius: 50%; filter: blur(80px); z-index: 0; pointer-events: none; animation: floatAmbient 12s ease-in-out infinite alternate; }
-        .intro-ambient-1 { width: 50vw; height: 50vw; max-width: 600px; max-height: 600px; background: var(--intro-glow); top: -10%; left: -10%; }
-        .intro-ambient-2 { width: 40vw; height: 40vw; max-width: 500px; max-height: 500px; background: var(--intro-alt); bottom: -10%; right: -5%; animation-delay: -6s; }
         
-        @keyframes floatAmbient {
-            0% { transform: translate(0, 0) scale(1); }
-            100% { transform: translate(10%, 15%) scale(1.1); }
+        /* Animated Orbs */
+        .orb-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; overflow: hidden; }
+        .orb { position: absolute; border-radius: 50%; filter: blur(80px); animation: floatOrb 20s infinite alternate cubic-bezier(0.4, 0, 0.2, 1); opacity: 0.8; }
+        .orb-1 { background: var(--mesh-1); width: 45vw; height: 45vw; top: -10%; left: -10%; animation-delay: 0s; }
+        .orb-2 { background: var(--mesh-2); width: 40vw; height: 40vw; bottom: -20%; right: -10%; animation-delay: -5s; animation-duration: 25s; }
+        .orb-3 { background: var(--mesh-3); width: 35vw; height: 35vw; top: 30%; left: 40%; animation-delay: -10s; animation-duration: 22s; }
+        
+        .intro-glassmorphism { position: absolute; top: 0; left: 0; width: 100%; height: 100%; backdrop-filter: blur(100px); -webkit-backdrop-filter: blur(100px); z-index: 1; }
+
+        @keyframes floatOrb {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            33% { transform: translate(15%, 10%) scale(1.1) rotate(45deg); }
+            66% { transform: translate(-10%, 20%) scale(0.9) rotate(90deg); }
+            100% { transform: translate(-5%, -10%) scale(1.2) rotate(180deg); }
         }
 
-        .intro-content { position: relative; z-index: 1; text-align: center; padding: 20px; }
+        .intro-content { position: relative; z-index: 2; text-align: center; padding: 20px; transition: all 1.2s cubic-bezier(0.85, 0, 0.15, 1); }
         
         /* Staggered Elements */
         .intro-logo { max-width: 260px; height: auto; margin: 0 auto 25px auto; display: block; opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; transition: 0.3s; }
@@ -70,20 +81,29 @@
         
         .intro-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--text-strong); color: var(--bg-main); border: none; padding: 18px 45px; border-radius: 40px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         .intro-btn:hover { transform: scale(1.05); box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
-        .hide-intro { opacity: 0; transform: scale(1.03); pointer-events: none; }
         
+        /* 🌟 CINEMATIC TRANSITION OUT 🌟 */
+        .hide-intro { opacity: 0; pointer-events: none; }
+        .hide-intro .intro-content { transform: scale(1.3) translateY(-30px); opacity: 0; filter: blur(15px); }
+
         @keyframes slideUpFade {
             0% { opacity: 0; transform: translateY(40px); }
             100% { opacity: 1; transform: translateY(0); }
         }
 
+        /* 🌟 CINEMATIC DASHBOARD TRANSITION IN 🌟 */
+        #app-wrapper { 
+            display: flex; width: 100%; min-height: 100vh;
+            opacity: 0; transform: scale(0.95); filter: blur(10px); 
+            transition: all 1.2s cubic-bezier(0.85, 0, 0.15, 1); 
+        }
+        #app-wrapper.app-active { opacity: 1; transform: scale(1); filter: blur(0); }
+
         /* SIDEBAR & CUSTOM LOGO */
         .sidebar { width: 260px; border-right: 1px solid var(--border-main); padding: 40px 20px; background: var(--bg-sidebar); position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; display: flex; flex-direction: column; transition: 0.3s; }
-        
         .logo-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 30px; }
         .brand-logo { max-width: 170px; height: auto; display: block; transition: 0.3s; }
         [data-theme="dark"] .brand-logo { background: rgba(255, 255, 255, 0.95); padding: 8px 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        
         .logo-sub { font-size: 0.65rem; color: var(--text-muted); font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 10px; }
         
         .nav-group { display: flex; flex-direction: column; gap: 8px; width: 100%; flex: 1; }
@@ -267,15 +287,17 @@
 <body class="no-scroll">
 
     <div id="introPage" class="intro-overlay">
-        <div class="intro-ambient-1"></div>
-        <div class="intro-ambient-2"></div>
+        <div class="orb-container">
+            <div class="orb orb-1"></div>
+            <div class="orb orb-2"></div>
+            <div class="orb orb-3"></div>
+        </div>
+        <div class="intro-glassmorphism"></div>
+        
         <div class="intro-content">
             <img src="AdTechinno.png" alt="AdTechinno" class="intro-logo">
-            
             <h1 class="intro-title">Creative Request.</h1>
-            
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
-            
             <div class="intro-btn-wrapper">
                 <button class="intro-btn" onclick="startApp()">
                     Start Now <i data-lucide="arrow-right" style="width: 20px;"></i>
@@ -284,192 +306,193 @@
         </div>
     </div>
 
-    <div class="sidebar">
-        <div class="logo-container">
-            <img src="AdTechinno.png" alt="AdTechinno" class="brand-logo">
-            <span class="logo-sub">Creative Request</span>
+    <div id="app-wrapper">
+        <div class="sidebar">
+            <div class="logo-container">
+                <img src="AdTechinno.png" alt="AdTechinno" class="brand-logo">
+                <span class="logo-sub">Creative Request</span>
+            </div>
+            <div class="nav-group">
+                <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')"><i data-lucide="layout-dashboard"></i> Dashboard</div>
+                <div class="nav-item" id="btn-workload" onclick="showPage('workload')"><i data-lucide="kanban-square"></i> Request Status</div>
+                <div class="nav-item" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> Done Tasks</div>
+                <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> New Request</div>
+            </div>
+            <div class="bottom-actions">
+                <button id="themeBtn" class="action-btn" onclick="toggleTheme()"><i data-lucide="moon"></i> Dark Mode</button>
+                <button id="adminBtn" class="action-btn" onclick="toggleAdmin()"><i data-lucide="lock"></i> Admin Access</button>
+            </div>
         </div>
-        <div class="nav-group">
-            <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')"><i data-lucide="layout-dashboard"></i> Dashboard</div>
-            <div class="nav-item" id="btn-workload" onclick="showPage('workload')"><i data-lucide="kanban-square"></i> Request Status</div>
-            <div class="nav-item" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> Done Tasks</div>
-            <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> New Request</div>
-        </div>
-        <div class="bottom-actions">
-            <button id="themeBtn" class="action-btn" onclick="toggleTheme()"><i data-lucide="moon"></i> Dark Mode</button>
-            <button id="adminBtn" class="action-btn" onclick="toggleAdmin()"><i data-lucide="lock"></i> Admin Access</button>
+
+        <div class="main-content">
+            <div id="dashboard" class="page active">
+                <div class="welcome-banner">
+                    <div>
+                        <h1 id="greetingMsg">Good day.</h1>
+                        <p>Here is what's happening with your creative requests.</p>
+                    </div>
+                    <div class="date-badge">
+                        <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+                        <span id="currentDateDisplay">Date</span>
+                    </div>
+                </div>
+
+                <div class="stat-banner">
+                    <div class="stat-box" style="border-top: 4px solid #3b82f6;">
+                        <div class="stat-header"><h4>Total Jobs</h4><i data-lucide="folder-open"></i></div>
+                        <p id="total-val">0</p>
+                    </div>
+                    <div class="stat-box" style="border-top: 4px solid var(--orange);">
+                        <div class="stat-header"><h4>Awaiting Approval</h4><i data-lucide="clock"></i></div>
+                        <p id="pending-val">0</p>
+                    </div>
+                    <div class="stat-box" style="border-top: 4px solid var(--green);">
+                        <div class="stat-header"><h4>In Progress (Active)</h4><i data-lucide="activity"></i></div>
+                        <p id="active-val">0</p>
+                    </div>
+                </div>
+                <div class="dash-grid-top">
+                    <div class="dash-card">
+                        <h3>5 Latest Requests</h3>
+                        <div class="table-responsive">
+                            <table class="recent-table">
+                                <thead><tr><th>Job ID</th><th>Client / Title</th><th>Deadline</th><th>Status</th></tr></thead>
+                                <tbody id="recent-list">
+                                    <tr><td colspan="4"><div class="empty-state"><i data-lucide="loader-2" class="spin"></i><p>Syncing data...</p></div></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="dash-card">
+                        <h3>
+                            <span style="display:flex; align-items:center; gap:8px;"><i data-lucide="alert-circle" style="color:var(--orange); width:18px;"></i> Urgent Deadlines</span> 
+                            <span style="font-size:0.75rem; font-weight:500; color:var(--text-muted); background:var(--bg-box); padding:4px 8px; border-radius:4px;">Next 7 Days</span>
+                        </h3>
+                        <div id="urgent-list">
+                            <div class="empty-state"><i data-lucide="loader-2" class="spin"></i></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="dash-grid-bottom" id="radarContainer">
+                    <div class="dash-card">
+                        <h3>Team Capacity Radar (Active Jobs)</h3>
+                        <div class="workload-grid" id="team-workload">Loading data...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="workload" class="page">
+                <h1 style="margin-bottom: 5px;">Request Status Board</h1>
+                <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Track progress. Only Admins can update details and work status.</p>
+                
+                <div class="controls-container">
+                    <div class="search-box">
+                        <i data-lucide="search"></i>
+                        <input type="text" id="searchWorkload" placeholder="Search Client Name or Job ID..." onkeyup="renderBoards()">
+                    </div>
+                </div>
+
+                <div id="projectList">
+                    <div class="empty-state"><i data-lucide="loader-2" class="spin"></i><p>Syncing data...</p></div>
+                </div>
+            </div>
+
+            <div id="done" class="page">
+                <h1 style="margin-bottom: 5px;">Done Tasks</h1>
+                <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Archive of completed creative requests.</p>
+                
+                <div class="controls-container">
+                    <div class="search-box">
+                        <i data-lucide="search"></i>
+                        <input type="text" id="searchDone" placeholder="Search Client Name or Job ID..." onkeyup="renderBoards()">
+                    </div>
+                    <button onclick="exportToCSV()" class="export-btn"><i data-lucide="download"></i> Export Data (CSV)</button>
+                </div>
+
+                <div id="doneList">
+                    <div class="empty-state"><i data-lucide="loader-2" class="spin"></i><p>Syncing data...</p></div>
+                </div>
+            </div>
+
+            <div id="request" class="page">
+                <h1 style="margin-bottom: 20px;">Create New Request</h1>
+                <div class="card" style="border-left: 1px solid var(--border-main); padding-left: 35px;">
+                    <h3 class="section-title">1. Requester Information</h3>
+                    <div class="form-row">
+                        <div class="input-group">
+                            <label>Requester Name</label>
+                            <select id="requesterName">
+                                <option value="">-- Select Name --</option>
+                                <optgroup label="Malaysia">
+                                    <option>MY - Ain Sabrina</option><option>MY - Ammelia</option><option>MY - Angie Ng</option><option>MY - Bernice Mah</option>
+                                    <option>MY - Boon Jie Xin</option><option>MY - Chong Jia Jun</option><option>MY - Dillon Frederick Kugan</option>
+                                    <option>MY - Darren (Boo Hwa Chian)</option><option>MY - Hao Yun</option><option>MY - Joanne Yap</option>
+                                    <option>MY - Joseph Chong</option><option>MY - Kevin Tan</option><option>MY - Lina Leong</option>
+                                    <option>MY - Nurul Iman Natasha</option><option>MY - Syaheerah Atiqah</option><option>MY - Wilson Ng Guan De</option>
+                                    <option>MY - Xuan Lee</option><option>MY - Zulkarnain Mustapa</option><option>MY - Faiz Shamsul</option>
+                                </optgroup>
+                                <optgroup label="Indonesia">
+                                    <option>ID - Angelina</option><option>ID - Annisya Y.</option><option>ID - Arbaasya D.F.</option><option>ID - Areta G.P.</option>
+                                    <option>ID - Ashley Karamoy</option><option>ID - Avira P.P.</option><option>ID - Ayu Aprillia</option><option>ID - Fadhil Zuhayr</option>
+                                    <option>ID - Fajar Abhirama</option><option>ID - Jap Hetty</option><option>ID - Joanne Chan</option><option>ID - Lutfan Allen R.</option>
+                                    <option>ID - Marlina S.</option><option>ID - Miftahul Fikri</option><option>ID - Moh. Reza P.</option><option>ID - Naufal Hilmy</option>
+                                    <option>ID - Tiffani Y.</option><option>ID - Verincia T.</option><option>ID - Youke Yap</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="input-group"><label>Manual Name (If not in list)</label><input type="text" id="manualName" placeholder="Type name here"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="input-group">
+                            <label>Office / Region</label>
+                            <select id="pRegion">
+                                <option>Malaysia</option><option>Hong Kong</option><option>Singapore</option><option>Indonesia</option>
+                                <option>Vietnam</option><option>Japan</option><option>China</option>
+                            </select>
+                        </div>
+                    </div>
+                    <h3 class="section-title" style="margin-top: 10px;">2. Project Details</h3>
+                    <div class="form-row">
+                        <div class="input-group"><label>Client Name</label><input type="text" id="pClient" placeholder="e.g. Adtechinno"></div>
+                        <div class="input-group"><label>Project Title</label><input type="text" id="pTitle" placeholder="e.g. Raya Assets"></div>
+                    </div>
+                    <h3 class="section-title" style="margin-top: 10px;">3. Job Specifications</h3>
+                    <div class="input-group" style="margin-bottom: 20px;">
+                        <label>Job Type (Select all that apply)</label>
+                        <div class="selection-box" id="jobTypes">
+                            <label class="check-item"><input type="checkbox" value="Poster/Graphic"> Poster/Graphic</label>
+                            <label class="check-item"><input type="checkbox" value="Video Production"> Video Production</label>
+                            <label class="check-item"><input type="checkbox" value="Copywriting/Article"> Copywriting/Article</label>
+                            <label class="check-item"><input type="checkbox" value="Presentation Deck"> Presentation Deck</label>
+                            <label class="check-item"><input type="checkbox" value="Monthly Content Plan"> Monthly Content Plan</label>
+                        </div>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 20px;"><label>Monthly Content Plan Details (if applicable)</label><textarea id="pMonthlyPlan" rows="3" placeholder="Paste plan here..."></textarea></div>
+                    <h3 class="section-title" style="margin-top: 10px;">4. Creative Brief & Timeline</h3>
+                    <div class="input-group" style="margin-bottom: 20px;">
+                        <label>Objective</label>
+                        <div class="selection-box radio-box">
+                            <label class="check-item"><input type="radio" name="obj" value="Traffic"> Traffic</label>
+                            <label class="check-item"><input type="radio" name="obj" value="Awareness"> Awareness</label>
+                            <label class="check-item"><input type="radio" name="obj" value="Sales"> Sales</label>
+                        </div>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 20px;"><label>Creative Brief (Important Points / Pitch Deck)</label><textarea id="pBrief" rows="4" placeholder="What needs to be done?"></textarea></div>
+                    <div class="form-row">
+                        <div class="input-group"><label>Deadline (Min. 3 working days)</label><input type="date" id="pDeadline"></div>
+                        <div class="input-group"><label>Reference/Moodboard (Google Slides Link)</label><input type="text" id="pRefLink" placeholder="Paste URL here"></div>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
+                    <button class="btn-submit" id="submitBtn" onclick="submitRequest()">
+                        <i data-lucide="send"></i> Submit Request
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="main-content">
-        <div id="dashboard" class="page active">
-            
-            <div class="welcome-banner">
-                <div>
-                    <h1 id="greetingMsg">Good day.</h1>
-                    <p>Here is what's happening with your creative requests.</p>
-                </div>
-                <div class="date-badge">
-                    <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
-                    <span id="currentDateDisplay">Date</span>
-                </div>
-            </div>
-
-            <div class="stat-banner">
-                <div class="stat-box" style="border-top: 4px solid #3b82f6;">
-                    <div class="stat-header"><h4>Total Jobs</h4><i data-lucide="folder-open"></i></div>
-                    <p id="total-val">0</p>
-                </div>
-                <div class="stat-box" style="border-top: 4px solid var(--orange);">
-                    <div class="stat-header"><h4>Awaiting Approval</h4><i data-lucide="clock"></i></div>
-                    <p id="pending-val">0</p>
-                </div>
-                <div class="stat-box" style="border-top: 4px solid var(--green);">
-                    <div class="stat-header"><h4>In Progress (Active)</h4><i data-lucide="activity"></i></div>
-                    <p id="active-val">0</p>
-                </div>
-            </div>
-            <div class="dash-grid-top">
-                <div class="dash-card">
-                    <h3>5 Latest Requests</h3>
-                    <div class="table-responsive">
-                        <table class="recent-table">
-                            <thead><tr><th>Job ID</th><th>Client / Title</th><th>Deadline</th><th>Status</th></tr></thead>
-                            <tbody id="recent-list">
-                                <tr><td colspan="4"><div class="empty-state"><i data-lucide="loader-2" class="spin"></i><p>Syncing data...</p></div></td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="dash-card">
-                    <h3>
-                        <span style="display:flex; align-items:center; gap:8px;"><i data-lucide="alert-circle" style="color:var(--orange); width:18px;"></i> Urgent Deadlines</span> 
-                        <span style="font-size:0.75rem; font-weight:500; color:var(--text-muted); background:var(--bg-box); padding:4px 8px; border-radius:4px;">Next 7 Days</span>
-                    </h3>
-                    <div id="urgent-list">
-                        <div class="empty-state"><i data-lucide="loader-2" class="spin"></i></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="dash-grid-bottom" id="radarContainer">
-                <div class="dash-card">
-                    <h3>Team Capacity Radar (Active Jobs)</h3>
-                    <div class="workload-grid" id="team-workload">Loading data...</div>
-                </div>
-            </div>
-        </div>
-
-        <div id="workload" class="page">
-            <h1 style="margin-bottom: 5px;">Request Status Board</h1>
-            <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Track progress. Only Admins can update details and work status.</p>
-            
-            <div class="controls-container">
-                <div class="search-box">
-                    <i data-lucide="search"></i>
-                    <input type="text" id="searchWorkload" placeholder="Search Client Name or Job ID..." onkeyup="renderBoards()">
-                </div>
-            </div>
-
-            <div id="projectList">
-                <div class="empty-state"><i data-lucide="loader-2" class="spin"></i><p>Syncing data...</p></div>
-            </div>
-        </div>
-
-        <div id="done" class="page">
-            <h1 style="margin-bottom: 5px;">Done Tasks</h1>
-            <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Archive of completed creative requests.</p>
-            
-            <div class="controls-container">
-                <div class="search-box">
-                    <i data-lucide="search"></i>
-                    <input type="text" id="searchDone" placeholder="Search Client Name or Job ID..." onkeyup="renderBoards()">
-                </div>
-                <button onclick="exportToCSV()" class="export-btn"><i data-lucide="download"></i> Export Data (CSV)</button>
-            </div>
-
-            <div id="doneList">
-                <div class="empty-state"><i data-lucide="loader-2" class="spin"></i><p>Syncing data...</p></div>
-            </div>
-        </div>
-
-        <div id="request" class="page">
-            <h1 style="margin-bottom: 20px;">Create New Request</h1>
-            <div class="card" style="border-left: 1px solid var(--border-main); padding-left: 35px;">
-                <h3 class="section-title">1. Requester Information</h3>
-                <div class="form-row">
-                    <div class="input-group">
-                        <label>Requester Name</label>
-                        <select id="requesterName">
-                            <option value="">-- Select Name --</option>
-                            <optgroup label="Malaysia">
-                                <option>MY - Ain Sabrina</option><option>MY - Ammelia</option><option>MY - Angie Ng</option><option>MY - Bernice Mah</option>
-                                <option>MY - Boon Jie Xin</option><option>MY - Chong Jia Jun</option><option>MY - Dillon Frederick Kugan</option>
-                                <option>MY - Darren (Boo Hwa Chian)</option><option>MY - Hao Yun</option><option>MY - Joanne Yap</option>
-                                <option>MY - Joseph Chong</option><option>MY - Kevin Tan</option><option>MY - Lina Leong</option>
-                                <option>MY - Nurul Iman Natasha</option><option>MY - Syaheerah Atiqah</option><option>MY - Wilson Ng Guan De</option>
-                                <option>MY - Xuan Lee</option><option>MY - Zulkarnain Mustapa</option><option>MY - Faiz Shamsul</option>
-                            </optgroup>
-                            <optgroup label="Indonesia">
-                                <option>ID - Angelina</option><option>ID - Annisya Y.</option><option>ID - Arbaasya D.F.</option><option>ID - Areta G.P.</option>
-                                <option>ID - Ashley Karamoy</option><option>ID - Avira P.P.</option><option>ID - Ayu Aprillia</option><option>ID - Fadhil Zuhayr</option>
-                                <option>ID - Fajar Abhirama</option><option>ID - Jap Hetty</option><option>ID - Joanne Chan</option><option>ID - Lutfan Allen R.</option>
-                                <option>ID - Marlina S.</option><option>ID - Miftahul Fikri</option><option>ID - Moh. Reza P.</option><option>ID - Naufal Hilmy</option>
-                                <option>ID - Tiffani Y.</option><option>ID - Verincia T.</option><option>ID - Youke Yap</option>
-                            </optgroup>
-                        </select>
-                    </div>
-                    <div class="input-group"><label>Manual Name (If not in list)</label><input type="text" id="manualName" placeholder="Type name here"></div>
-                </div>
-                <div class="form-row">
-                    <div class="input-group">
-                        <label>Office / Region</label>
-                        <select id="pRegion">
-                            <option>Malaysia</option><option>Hong Kong</option><option>Singapore</option><option>Indonesia</option>
-                            <option>Vietnam</option><option>Japan</option><option>China</option>
-                        </select>
-                    </div>
-                </div>
-                <h3 class="section-title" style="margin-top: 10px;">2. Project Details</h3>
-                <div class="form-row">
-                    <div class="input-group"><label>Client Name</label><input type="text" id="pClient" placeholder="e.g. Adtechinno"></div>
-                    <div class="input-group"><label>Project Title</label><input type="text" id="pTitle" placeholder="e.g. Raya Assets"></div>
-                </div>
-                <h3 class="section-title" style="margin-top: 10px;">3. Job Specifications</h3>
-                <div class="input-group" style="margin-bottom: 20px;">
-                    <label>Job Type (Select all that apply)</label>
-                    <div class="selection-box" id="jobTypes">
-                        <label class="check-item"><input type="checkbox" value="Poster/Graphic"> Poster/Graphic</label>
-                        <label class="check-item"><input type="checkbox" value="Video Production"> Video Production</label>
-                        <label class="check-item"><input type="checkbox" value="Copywriting/Article"> Copywriting/Article</label>
-                        <label class="check-item"><input type="checkbox" value="Presentation Deck"> Presentation Deck</label>
-                        <label class="check-item"><input type="checkbox" value="Monthly Content Plan"> Monthly Content Plan</label>
-                    </div>
-                </div>
-                <div class="input-group" style="margin-bottom: 20px;"><label>Monthly Content Plan Details (if applicable)</label><textarea id="pMonthlyPlan" rows="3" placeholder="Paste plan here..."></textarea></div>
-                <h3 class="section-title" style="margin-top: 10px;">4. Creative Brief & Timeline</h3>
-                <div class="input-group" style="margin-bottom: 20px;">
-                    <label>Objective</label>
-                    <div class="selection-box radio-box">
-                        <label class="check-item"><input type="radio" name="obj" value="Traffic"> Traffic</label>
-                        <label class="check-item"><input type="radio" name="obj" value="Awareness"> Awareness</label>
-                        <label class="check-item"><input type="radio" name="obj" value="Sales"> Sales</label>
-                    </div>
-                </div>
-                <div class="input-group" style="margin-bottom: 20px;"><label>Creative Brief (Important Points / Pitch Deck)</label><textarea id="pBrief" rows="4" placeholder="What needs to be done?"></textarea></div>
-                <div class="form-row">
-                    <div class="input-group"><label>Deadline (Min. 3 working days)</label><input type="date" id="pDeadline"></div>
-                    <div class="input-group"><label>Reference/Moodboard (Google Slides Link)</label><input type="text" id="pRefLink" placeholder="Paste URL here"></div>
-                </div>
-                <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
-                <button class="btn-submit" id="submitBtn" onclick="submitRequest()">
-                    <i data-lucide="send"></i> Submit Request
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <div id="editModal" class="modal-overlay">
+    <div id="editModal" class="modal-overlay" style="z-index: 3000;">
         <div class="modal-content">
             <div class="modal-header">
                 <h3>Edit Request Details</h3>
@@ -509,17 +532,6 @@
             lucide.createIcons();
         }
 
-        // INTRO MOUSE TRACKING LOGIC
-        document.addEventListener('mousemove', (e) => {
-            const intro = document.getElementById('introPage');
-            if(intro && intro.style.display !== 'none' && !intro.classList.contains('hide-intro')) {
-                const x = (e.clientX / window.innerWidth) * 100;
-                const y = (e.clientY / window.innerHeight) * 100;
-                intro.style.setProperty('--mouse-x', `${x}%`);
-                intro.style.setProperty('--mouse-y', `${y}%`);
-            }
-        });
-
         function setGreetingAndDate() {
             const hour = new Date().getHours();
             let greeting = "Good evening.";
@@ -531,13 +543,18 @@
             document.getElementById('currentDateDisplay').innerText = new Date().toLocaleDateString('en-US', dateOptions);
         }
 
+        // 🌟 CINEMATIC TRANSITION LOGIC 🌟
         function startApp() {
             const intro = document.getElementById('introPage');
+            const appWrapper = document.getElementById('app-wrapper');
+            
             intro.classList.add('hide-intro');
+            appWrapper.classList.add('app-active');
+            
             setTimeout(() => {
                 intro.style.display = 'none';
                 document.body.classList.remove('no-scroll');
-            }, 800);
+            }, 1000); // Waits for the animation to finish before removing from DOM
         }
 
         function formatDate(dateStr) {
