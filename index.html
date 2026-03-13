@@ -3,57 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Ops v13</title>
+    <title>Adtechinno | Creative Engine v14</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
-        :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-border: #e6e6e6; }
-        body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; flex-direction: row; min-height: 100vh; }
+        :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-border: #e6e6e6; --accent: #000; }
+        body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; min-height: 100vh; }
         
-        /* Sidebar Navigation */
-        .sidebar { width: 260px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; }
+        /* Sidebar */
+        .sidebar { width: 260px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; }
         .logo { font-weight: 700; letter-spacing: 3px; margin-bottom: 40px; font-size: 1.1rem; text-align: center; }
-        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #888; border-radius: 6px; margin-bottom: 5px; transition: 0.2s; }
+        
+        .nav-group { display: flex; flex-direction: column; gap: 8px; }
+        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #888; border-radius: 8px; transition: 0.2s; display: flex; align-items: center; gap: 10px; }
         .nav-item:hover, .nav-item.active { background: #f5f5f5; color: #000; font-weight: 600; }
+        
+        .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; justify-content: center; font-weight: 600; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .btn-new-request:hover { background: #333; transform: translateY(-2px); }
 
-        /* Main Content Area */
+        /* Main Content */
         .main-content { margin-left: 260px; padding: 40px; width: 100%; box-sizing: border-box; }
-        .page { display: none; max-width: 850px; margin: 0 auto; }
+        .page { display: none; max-width: 1000px; margin: 0 auto; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
 
-        /* UI Components */
-        .card { background: white; border: 1px solid var(--muji-border); padding: 30px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.03); }
+        /* Dashboard Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 40px; }
+        .stat-card { background: #fff; padding: 25px; border-radius: 12px; border: 1px solid var(--muji-border); text-align: center; }
+        .stat-card h4 { margin: 0; font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-card p { margin: 10px 0 0; font-size: 2rem; font-weight: 600; }
+
+        /* Forms & Cards */
+        .card { background: white; border: 1px solid var(--muji-border); padding: 30px; border-radius: 12px; margin-bottom: 20px; }
         .form-section { border-bottom: 1px solid #f0f0f0; padding-bottom: 20px; margin-bottom: 25px; }
-        .form-section h3 { font-size: 0.85rem; margin-bottom: 15px; color: #000; border-left: 3px solid #000; padding-left: 12px; text-transform: uppercase; }
+        .form-section h3 { font-size: 0.85rem; margin-bottom: 15px; border-left: 3px solid #000; padding-left: 12px; text-transform: uppercase; }
         
-        label { display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 8px; color: #666; text-transform: uppercase; }
         input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--muji-border); border-radius: 6px; font-size: 0.9rem; margin-bottom: 15px; box-sizing: border-box; font-family: inherit; }
+        
+        .checkbox-group { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 15px; }
+        .checkbox-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; cursor: pointer; }
+        .checkbox-item input { width: 18px; height: 18px; margin: 0; }
 
-        /* FIXED CHECKBOX GROUP (v13 Update) */
-        .checkbox-group {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            background: #f9f9f9;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-        }
-        .checkbox-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            line-height: 1.2;
-        }
-        .checkbox-item input {
-            width: 18px;
-            height: 18px;
-            margin: 0;
-            cursor: pointer;
-        }
+        .btn-submit { background: #000; color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; }
 
-        .btn-submit { background: #000; color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 0.9rem; }
+        /* Badges */
         .badge { font-size: 0.65rem; padding: 4px 10px; border-radius: 12px; font-weight: 600; text-transform: uppercase; }
         .status-pending { background: #fff7ed; color: #9a3412; }
         .status-approved { background: #f0fdf4; color: #166534; }
@@ -62,6 +53,7 @@
             body { flex-direction: column; }
             .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; }
             .main-content { margin-left: 0; padding: 20px; }
+            .stats-grid { grid-template-columns: 1fr; }
             .checkbox-group { grid-template-columns: 1fr; }
         }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -71,186 +63,172 @@
 
     <div class="sidebar">
         <div class="logo">ADTECHINNO</div>
-        <div class="nav-container">
-            <div class="nav-item active" id="btn-workload" onclick="showPage('workload')">Workload Board</div>
-            <div class="nav-item" id="btn-request" onclick="showPage('request')">New Request</div>
+        <div class="nav-group">
+            <div class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard')">📊 Dashboard</div>
+            <div class="nav-item" id="nav-workload" onclick="showPage('workload')">📋 Request Status</div>
+            <div class="nav-item btn-new-request" id="nav-request" onclick="showPage('request')">+ New Request</div>
         </div>
     </div>
 
     <div class="main-content">
-        <div id="workload" class="page active">
-            <h1>Creative Workload</h1>
-            <div id="projectList">Loading data from Google Sheets...</div>
+        <div id="dashboard" class="page active">
+            <h1>Executive Dashboard</h1>
+            <div class="stats-grid">
+                <div class="stat-card"><h4>Total Requests</h4><p id="stat-total">0</p></div>
+                <div class="stat-card" style="border-top: 4px solid #f97316;"><h4>Pending</h4><p id="stat-pending">0</p></div>
+                <div class="stat-card" style="border-top: 4px solid #22c55e;"><h4>Approved</h4><p id="stat-approved">0</p></div>
+            </div>
+            <div class="card">
+                <h3>Recent Activity</h3>
+                <div id="recentActivity">Loading summary...</div>
+            </div>
+        </div>
+
+        <div id="workload" class="page">
+            <h1>Request Status</h1>
+            <div id="projectList">Loading data...</div>
         </div>
 
         <div id="request" class="page">
-            <h1>Creative Request Form</h1>
+            <h1>Create New Request</h1>
             <div class="card">
                 <div class="form-section">
-                    <h3>1. Requester Details</h3>
-                    <label>Your Name</label>
+                    <h3>1. Requester</h3>
                     <select id="requesterName">
                         <option value="">-- Select Your Name --</option>
-                        <optgroup label="Malaysia">
-                            <option>MY - Ain Sabrina</option><option>MY - Ammelia</option><option>MY - Angie Ng</option>
-                            <option>MY - Bernice Mah</option><option>MY - Boon Jie Xin</option><option>MY - Chong Jia Jun</option>
-                            <option>MY - Dillon Frederick Kugan</option><option>MY - Darren (Boo Hwa Chian)</option>
-                            <option>MY - Hao Yun</option><option>MY - Joanne Yap</option><option>MY - Joseph Chong</option>
-                            <option>MY - Kevin Tan</option><option>MY - Lina Leong</option><option>MY - Nurul Iman Natasha</option>
-                            <option>MY - Syaheerah Atiqah</option><option>MY - Wilson Ng Guan De</option><option>MY - Xuan Lee</option>
-                            <option>MY - Zulkarnain Mustapa</option><option>MY - Faiz Shamsul</option>
-                        </optgroup>
-                        <optgroup label="Indonesia">
-                            <option>ID - Angelina</option><option>ID - Annisya Y.</option><option>ID - Arbaasya D.F.</option>
-                            <option>ID - Areta G.P.</option><option>ID - Ashley Karamoy</option><option>ID - Avira P.P.</option>
-                            <option>ID - Ayu Aprillia</option><option>ID - Fadhil Zuhayr</option><option>ID - Fajar Abhirama</option>
-                            <option>ID - Jap Hetty</option><option>ID - Joanne Chan</option><option>ID - Lutfan Allen R.</option>
-                            <option>ID - Marlina S.</option><option>ID - Miftahul Fikri</option><option>ID - Moh. Reza P.</option>
-                            <option>ID - Naufal Hilmy</option><option>ID - Tiffani Y.</option><option>ID - Verincia T.</option>
-                            <option>ID - Youke Yap</option>
-                        </optgroup>
+                        <optgroup label="Malaysia"><option>MY - Faiz Shamsul</option><option>MY - Ain Sabrina</option><option>MY - Angie Ng</option></optgroup>
+                        <optgroup label="Indonesia"><option>ID - Miftahul Fikri</option><option>ID - Youke Yap</option></optgroup>
                     </select>
-                    <label>Office/Region</label>
-                    <select id="pRegion">
-                        <option>Malaysia</option><option>Indonesia</option><option>Singapore</option>
-                        <option>Hong Kong</option><option>Vietnam</option><option>Japan</option><option>China</option>
-                    </select>
+                    <label>Region</label>
+                    <select id="pRegion"><option>Malaysia</option><option>Indonesia</option><option>Singapore</option></select>
                 </div>
 
                 <div class="form-section">
                     <h3>2. Project Details</h3>
-                    <label>Client Name</label><input type="text" id="pClient" placeholder="e.g. Adtechinno">
-                    <label>Project Title</label><input type="text" id="pTitle" placeholder="e.g. Social Media Raya Assets">
+                    <label>Client</label><input type="text" id="pClient" placeholder="e.g. Cagamas">
+                    <label>Project Title</label><input type="text" id="pTitle" placeholder="e.g. KOL Campaign Assets">
                 </div>
 
                 <div class="form-section">
-                    <h3>3. Job Type (Select all that apply)</h3>
+                    <h3>3. Job Type</h3>
                     <div class="checkbox-group" id="jobTypes">
-                        <label class="checkbox-item"><input type="checkbox" value="Poster/Graphic"> <span>Poster/Graphic</span></label>
-                        <label class="checkbox-item"><input type="checkbox" value="Video Production"> <span>Video Production</span></label>
-                        <label class="checkbox-item"><input type="checkbox" value="Copywriting/Article"> <span>Copywriting/Article</span></label>
-                        <label class="checkbox-item"><input type="checkbox" value="Presentation Deck"> <span>Presentation Deck</span></label>
-                        <label class="checkbox-item"><input type="checkbox" value="Monthly Content Plan"> <span>Monthly Content Plan</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Poster/Graphic"><span>Poster/Graphic</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Video Production"><span>Video Production</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Copywriting"><span>Copywriting</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Presentation Deck"><span>Presentation Deck</span></label>
                     </div>
                 </div>
 
                 <div class="form-section">
                     <h3>4. Briefing</h3>
-                    <label>Objective</label>
-                    <select id="pObjective"><option>Traffic</option><option>Awareness</option><option>Sales</option><option>Other</option></select>
-                    <label>Key Briefing Points</label><textarea id="pBrief" rows="4" placeholder="Brief details here..."></textarea>
-                    <label>Ref/Moodboard Link</label><input type="text" id="pRefLink" placeholder="Google Drive/Slides link">
                     <label>Deadline</label><input type="date" id="pDeadline">
-                    <label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea>
+                    <label>Moodboard / Ref Link</label><input type="text" id="pRefLink">
+                    <label>Additional Brief</label><textarea id="pBrief" rows="4"></textarea>
                 </div>
-                <button class="btn-submit" onclick="submitRequest()">Submit Request</button>
+                <button class="btn-submit" onclick="submitRequest()">🚀 Submit & Notify Telegram</button>
             </div>
         </div>
     </div>
 
     <script>
-        // YOUR API URL
         const SHEETDB_API = 'https://sheetdb.io/api/v1/v1fao9lzfm9u7';
         
-        const myTeam = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Steven", "MY-Aaron", "MY-Faiz"];
-        const idTeam = ["ID-Miftahul Fikri", "ID-Youke Yap", "ID-Annisya Ninis"];
+        // TELEGRAM CONFIG (MASUKKAN INFO KAU DI SINI)
+        const TELEGRAM_BOT_TOKEN = 'TOKEN_BOT_KAU';
+        const TELEGRAM_CHAT_ID = 'CHAT_ID_KAU';
+
+        const myTeam = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Faiz"];
+        const idTeam = ["ID-Miftahul Fikri", "ID-Youke Yap"];
 
         function showPage(id) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.getElementById(id).classList.add('active');
-            document.getElementById('btn-' + id).classList.add('active');
-            if(id === 'workload') fetchAndRender();
+            document.getElementById('nav-' + id).classList.add('active');
+            if(id === 'workload' || id === 'dashboard') fetchAndRender();
+        }
+
+        async function sendTelegramNotification(jobData) {
+            const message = `🔔 *New Creative Request!*%0A%0A*Job ID:* ${jobData.job_id}%0A*Client:* ${jobData.client_name}%0A*Project:* ${jobData.project_title}%0A*By:* ${jobData.requester_name}%0A*Deadline:* ${jobData.deadline}%0A%0A🚀 Check Vercel Dashboard for details.`;
+            try {
+                await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${message}&parse_mode=Markdown`);
+            } catch (e) { console.error("Telegram error", e); }
         }
 
         async function submitRequest() {
             const requester = document.getElementById('requesterName').value;
             const client = document.getElementById('pClient').value;
             const deadline = document.getElementById('pDeadline').value;
-            if(!requester || !client || !deadline) return alert("Please fill in required fields (Name, Client, Deadline)!");
+            if(!requester || !client || !deadline) return alert("Fill in required fields!");
 
             const selectedTypes = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
             const jobID = `AT26-${Math.floor(Date.now() / 1000).toString().slice(-3)}`;
 
             const payload = {
                 data: [{
-                    job_id: jobID,
-                    requester_name: requester,
-                    region: document.getElementById('pRegion').value,
-                    client_name: client,
-                    project_title: document.getElementById('pTitle').value,
-                    job_type: selectedTypes,
-                    objective: document.getElementById('pObjective').value,
-                    brief: document.getElementById('pBrief').value,
-                    ref_link: document.getElementById('pRefLink').value,
-                    deadline: deadline,
-                    remarks: document.getElementById('pRemarks').value,
-                    status: 'pending',
-                    assignee: 'Unassigned'
+                    job_id: jobID, requester_name: requester, region: document.getElementById('pRegion').value,
+                    client_name: client, project_title: document.getElementById('pTitle').value,
+                    job_type: selectedTypes, deadline: deadline, brief: document.getElementById('pBrief').value,
+                    ref_link: document.getElementById('pRefLink').value, status: 'pending', assignee: 'Unassigned'
                 }]
             };
 
             try {
-                const response = await fetch(SHEETDB_API, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                if(response.ok) {
-                    alert("Success! Request sent to Google Sheets.");
-                    showPage('workload');
-                    // Reset form
-                    document.getElementById('pClient').value = "";
-                    document.getElementById('pTitle').value = "";
-                    document.querySelectorAll('#jobTypes input').forEach(c => c.checked = false);
+                const res = await fetch(SHEETDB_API, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                if(res.ok) {
+                    await sendTelegramNotification(payload.data[0]);
+                    alert("Request Submitted & Telegram Notified!");
+                    showPage('dashboard');
                 }
-            } catch (err) { alert("Error: " + err.message); }
-        }
-
-        async function assignWork(jobID) {
-            const designer = document.getElementById('assign-' + jobID).value;
-            if(designer === 'Unassigned') return alert("Select a designer!");
-
-            try {
-                const response = await fetch(`${SHEETDB_API}/job_id/${jobID}`, {
-                    method: 'PATCH',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        data: { assignee: designer, status: 'approved' }
-                    })
-                });
-                if(response.ok) {
-                    alert("Designer Assigned!");
-                    fetchAndRender();
-                }
-            } catch (err) { alert("Assign failed: " + err.message); }
+            } catch (err) { alert(err.message); }
         }
 
         async function fetchAndRender() {
             try {
-                const response = await fetch(SHEETDB_API);
-                const data = await response.json();
+                const res = await fetch(SHEETDB_API);
+                const data = await res.json();
                 
-                document.getElementById('projectList').innerHTML = data.length ? data.reverse().map(item => `
+                // Dashboard Stats
+                document.getElementById('stat-total').innerText = data.length;
+                document.getElementById('stat-pending').innerText = data.filter(d => d.status === 'pending').length;
+                document.getElementById('stat-approved').innerText = data.filter(d => d.status === 'approved').length;
+
+                // Render List
+                const listHtml = data.reverse().map(item => `
                     <div class="card">
                         <div style="display:flex; justify-content:space-between;">
                             <div><small>${item.job_id}</small><h3>${item.client_name}: ${item.project_title}</h3></div>
                             <span class="badge status-${item.status}">${item.status}</span>
                         </div>
-                        <p style="font-size:0.8rem; color:#666;">By: ${item.requester_name} | Type: ${item.job_type} | Due: ${item.deadline}</p>
+                        <p style="font-size:0.8rem; color:#666;">By: ${item.requester_name} | Due: ${item.deadline}</p>
                         ${item.status === 'pending' ? `
                             <div style="margin-top:10px;">
-                                <select id="assign-${item.job_id}" style="padding:10px; font-size:0.8rem; width:auto; display:inline-block; margin-right:5px;">
-                                    <option value="Unassigned">-- Assign Designer --</option>
-                                    <optgroup label="Malaysia">${myTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
-                                    <optgroup label="Indonesia">${idTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
+                                <select id="assign-${item.job_id}" style="padding:8px; font-size:0.8rem; width:auto;">
+                                    <option value="Unassigned">-- Assign --</option>
+                                    <optgroup label="MY">${myTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
+                                    <optgroup label="ID">${idTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
                                 </select>
-                                <button onclick="assignWork('${item.job_id}')" style="padding:10px 15px; font-size:0.8rem; background:#000; color:#fff; border:none; border-radius:6px; cursor:pointer;">Approve</button>
+                                <button onclick="assignWork('${item.job_id}')" style="padding:8px 15px; font-size:0.8rem; background:#000; color:#fff; border:none; border-radius:4px; cursor:pointer;">Approve</button>
                             </div>
-                        ` : `<p style="font-size:0.8rem; background:#f9f9f9; padding:12px; border-radius:6px; border-left:4px solid #000;"><strong>Assigned to:</strong> ${item.assignee}</p>`}
+                        ` : `<p style="font-size:0.8rem;"><strong>Designer:</strong> ${item.assignee}</p>`}
                     </div>
-                `).join('') : '<p>No active projects found.</p>';
-            } catch (err) { document.getElementById('projectList').innerHTML = "Could not fetch data. Check API URL."; }
+                `).join('');
+                
+                document.getElementById('projectList').innerHTML = listHtml;
+                document.getElementById('recentActivity').innerHTML = data.length ? "Latest job for: " + data[0].client_name : "No activity";
+
+            } catch (err) { console.error(err); }
+        }
+
+        async function assignWork(jobID) {
+            const designer = document.getElementById('assign-' + jobID).value;
+            if(designer === 'Unassigned') return alert("Select designer!");
+            await fetch(`${SHEETDB_API}/job_id/${jobID}`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ data: { assignee: designer, status: 'approved' } })
+            });
+            fetchAndRender();
         }
 
         window.onload = fetchAndRender;
