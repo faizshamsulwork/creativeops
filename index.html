@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Engine v28</title>
+    <title>Adtechinno | Creative Engine v29</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root { --muji-bg: #f8f9fa; --muji-text: #2d3748; --muji-border: #e2e8f0; --accent: #0f172a; --red: #ef4444; --green: #10b981; --orange: #f59e0b; }
@@ -19,7 +19,6 @@
         .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; justify-content: center; text-align: center; }
         .btn-new-request:hover { background: #334155; }
 
-        /* Admin Toggle moved to bottom left */
         .admin-toggle { margin-top: auto; padding: 12px 18px; background: #fff; border: 1px solid var(--muji-border); color: #64748b; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); width: 100%; text-align: center; }
         .admin-toggle:hover { border-color: #cbd5e1; color: var(--accent); }
         .admin-toggle.unlocked { background: var(--green); color: #fff; border-color: var(--green); }
@@ -58,7 +57,7 @@
         .wl-fill { height: 100%; border-radius: 4px; transition: width 1s ease-in-out; }
 
         /* Forms & Cards */
-        .card { background: white; border: 1px solid var(--muji-border); padding: 35px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); transition: 0.2s; }
+        .card { background: white; border: 1px solid var(--muji-border); padding: 35px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); transition: 0.2s; position: relative; }
         .section-title { font-size: 1.1rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-top: 0; margin-bottom: 20px; font-weight: 600; }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 20px; }
         .input-group { display: flex; flex-direction: column; gap: 8px; }
@@ -72,10 +71,15 @@
         .btn-submit { background: var(--accent); color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; transition: 0.2s; margin-top: 10px; }
         .btn-submit:hover:not(:disabled) { background: #1e293b; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 
-        /* Board Detailed UI */
-        .job-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        /* 🌟 NEW: COLLAPSIBLE CARD UI 🌟 */
+        .card-summary { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+        .card-body { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px dashed #e2e8f0; }
+        .card.expanded .card-body { display: block; animation: fadeIn 0.3s ease; }
+        .expand-icon { transition: transform 0.3s ease; font-size: 1rem; color: #94a3b8; }
+        .card.expanded .expand-icon { transform: rotate(180deg); }
+
         .job-id { font-size: 0.75rem; font-weight: 600; color: #94a3b8; letter-spacing: 1px; }
-        .job-title { margin: 5px 0 0 0; font-size: 1.2rem; font-weight: 600; color: var(--accent); }
+        .job-title { margin: 3px 0 5px 0; font-size: 1.15rem; font-weight: 600; color: var(--accent); }
         .badge { font-size: 0.7rem; padding: 5px 12px; border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; white-space: nowrap; }
         .status-pending { background: #ffedd5; color: #c2410c; }
         .status-approved { background: #dcfce7; color: #15803d; }
@@ -88,7 +92,6 @@
         .brief-box p { margin: 0 0 10px 0; }
         .brief-box p:last-child { margin: 0; }
         
-        /* 🌟 WORK STATUS STYLES 🌟 */
         .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: fit-content; }
         .ws-select:hover { filter: brightness(0.9); }
         .ws-not-started { background: #64748b; color: white; }
@@ -121,9 +124,10 @@
             .stat-banner { grid-template-columns: 1fr; gap: 15px; }
             .dash-grid-top, .dash-grid-bottom, .form-row { grid-template-columns: 1fr; gap: 15px; }
             .selection-box, .radio-box { grid-template-columns: 1fr; }
-            .card { padding: 20px; }
+            .card { padding: 25px 20px; }
+            .card-summary { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .card-summary > div:last-child { width: 100%; justify-content: space-between; }
             h1 { font-size: 1.5rem; text-align: center; }
-            .job-header { flex-direction: column; }
             .action-buttons { flex-direction: column; }
             .btn-action { width: 100%; margin-left: 0; }
         }
@@ -179,7 +183,7 @@
 
         <div id="workload" class="page">
             <h1 style="margin-bottom: 5px;">Request Status Board</h1>
-            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">Track progress. Only Lead can update Work Status. 'Done' tasks move to archive.</p>
+            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">Click on a task to expand details. Only Lead can update Work Status.</p>
             <div id="projectList">Loading data...</div>
         </div>
 
@@ -438,89 +442,100 @@
             alert("Message copied to clipboard! Ready to paste.");
         }
 
-        // 🔥 MODIFIED: Color Signal & Locked Dropdown Logic 🔥
+        // 🔥 MODIFIED: COLLAPSIBLE CARD WITH MINIMALIST COLOR STRIP 🔥
         function generateJobCard(item, isDoneTab = false) {
             const ws = item.work_status || 'Not started';
             const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
             
-            // Minimalist Color Border Logic
-            const borderColors = { 'Not started': '#64748b', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
+            const borderColors = { 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
             const borderColor = borderColors[ws] || '#cbd5e1';
             
             return `
-                <div class="card" style="border-left: 6px solid ${borderColor}; padding-left: 29px;">
-                    <div class="job-header">
-                        <div><div class="job-id">${item.job_id}</div><h3 class="job-title">${item.client_name}: ${item.project_title}</h3></div>
-                        <span class="badge status-${item.status}">${item.status === 'pending' ? 'PENDING' : 'APPROVED'}</span>
+                <div class="card" style="border-left: 6px solid ${borderColor}; padding-left: 29px; padding-top: 25px; padding-bottom: 25px;">
+                    
+                    <div class="card-summary" onclick="this.closest('.card').classList.toggle('expanded')">
+                        <div style="flex: 1;">
+                            <div class="job-id">${item.job_id}</div>
+                            <h3 class="job-title">${item.client_name}: ${item.project_title}</h3>
+                            <div style="font-size: 0.8rem; color: #64748b; font-weight: 500;">By: ${item.requester_name}</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <span class="badge status-${item.status}">${item.status === 'pending' ? 'PENDING' : 'APPROVED'}</span>
+                            <span class="expand-icon">▼</span>
+                        </div>
                     </div>
-                    <div class="job-details">
-                        <div class="detail-item"><span>Requester</span><strong>${item.requester_name} (${item.region})</strong></div>
-                        <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
-                        <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${item.deadline}</strong></div>
-                        <div class="detail-item">
-                            <span>Work Status</span>
-                            ${item.status === 'pending' ? '<strong>-</strong>' : `
-                                ${isLeadAdmin && !isDoneTab ? `
-                                    <select onchange="updateWorkStatus('${item.job_id}', this.value)" class="ws-select ${wsClass}">
-                                        <option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option>
-                                        <option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option>
-                                        <option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option>
-                                        <option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option>
-                                        <option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option>
-                                    </select>
-                                ` : `
-                                    <strong class="ws-badge ${wsClass}">${ws}</strong>
+
+                    <div class="card-body">
+                        <div class="job-details">
+                            <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
+                            <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${item.deadline}</strong></div>
+                            <div class="detail-item">
+                                <span>Work Status</span>
+                                ${item.status === 'pending' ? '<strong>-</strong>' : `
+                                    ${isLeadAdmin && !isDoneTab ? `
+                                        <select onchange="updateWorkStatus('${item.job_id}', this.value)" class="ws-select ${wsClass}">
+                                            <option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option>
+                                            <option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option>
+                                            <option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option>
+                                            <option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option>
+                                            <option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option>
+                                        </select>
+                                    ` : `
+                                        <strong class="ws-badge ${wsClass}">${ws}</strong>
+                                    `}
                                 `}
+                            </div>
+                        </div>
+                        
+                        <div class="brief-box">
+                            <p><strong>📝 Creative Brief & Plan:</strong><br>${item.brief ? item.brief.replace(/\n/g, '<br>') : 'No brief provided.'}</p>
+                            ${item.ref_link ? `<p><strong>🔗 Reference:</strong> <a href="${item.ref_link}" target="_blank" style="color: #0284c7; text-decoration: none; word-break: break-all;">Click to view reference</a></p>` : ''}
+                            ${item.remarks ? `<p><strong>📌 Remarks:</strong> ${item.remarks}</p>` : ''}
+                        </div>
+
+                        ${item.status === 'pending' ? `
+                            ${isLeadAdmin ? `
+                                <div class="assign-area">
+                                    <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block;">1. Select Creative Team (Multiple Allowed):</label>
+                                    <div class="designer-grid">
+                                        ${designersMY.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
+                                        ${designersID.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
+                                    </div>
+                                    <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block;">2. Paste Creative Playbook Link here:</label>
+                                    <input type="text" id="playbook-${item.job_id}" placeholder="https://docs.google.com/presentation/d/..." style="margin-bottom: 15px; border: 1px dashed #94a3b8; background: #f8fafc;">
+                                    <div class="action-buttons">
+                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve">✅ Approve & Assign</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
+                                    </div>
+                                </div>
+                            ` : `
+                                <div class="locked-msg">⏳ Status: Reviewing requirements. Awaiting Creative Lead Assignment.</div>
                             `}
-                        </div>
-                    </div>
-                    <div class="brief-box">
-                        <p><strong>📝 Creative Brief & Plan:</strong><br>${item.brief ? item.brief.replace(/\n/g, '<br>') : 'No brief provided.'}</p>
-                        ${item.ref_link ? `<p><strong>🔗 Reference:</strong> <a href="${item.ref_link}" target="_blank" style="color: #0284c7; text-decoration: none; word-break: break-all;">Click to view reference</a></p>` : ''}
-                        ${item.remarks ? `<p><strong>📌 Remarks:</strong> ${item.remarks}</p>` : ''}
-                    </div>
-                    ${item.status === 'pending' ? `
-                        ${isLeadAdmin ? `
-                            <div class="assign-area">
-                                <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block;">1. Select Creative Team (Multiple Allowed):</label>
-                                <div class="designer-grid">
-                                    ${designersMY.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
-                                    ${designersID.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
-                                </div>
-                                <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block;">2. Paste Creative Playbook Link here:</label>
-                                <input type="text" id="playbook-${item.job_id}" placeholder="https://docs.google.com/presentation/d/..." style="margin-bottom: 15px; border: 1px dashed #94a3b8; background: #f8fafc;">
-                                <div class="action-buttons">
-                                    <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve">✅ Approve & Assign</button>
-                                    <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
-                                </div>
-                            </div>
                         ` : `
-                            <div class="locked-msg">⏳ Status: Reviewing requirements. Awaiting Creative Lead Assignment.</div>
-                        `}
-                    ` : `
-                        <div class="assign-area">
-                            <div class="job-details" style="background: transparent; border: none; padding: 0; margin-bottom: 15px;">
-                                <div class="detail-item"><span>Assigned Team</span><strong>${item.assignee}</strong></div>
-                                <div class="detail-item"><span>Playbook Link</span><strong><a href="${item.playbook_link || '#'}" target="_blank" style="color:#0284c7; word-break: break-all;">Open Playbook Slides</a></strong></div>
+                            <div class="assign-area">
+                                <div class="job-details" style="background: transparent; border: none; padding: 0; margin-bottom: 15px;">
+                                    <div class="detail-item"><span>Assigned Team</span><strong>${item.assignee}</strong></div>
+                                    <div class="detail-item"><span>Playbook Link</span><strong><a href="${item.playbook_link || '#'}" target="_blank" style="color:#0284c7; word-break: break-all;">Open Playbook Slides</a></strong></div>
+                                </div>
+                                ${isLeadAdmin && !isDoneTab ? `
+                                    <div class="action-buttons">
+                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Msg for Requester</button>
+                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Msg for Team</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
+                                    </div>
+                                ` : ``}
+                                ${isLeadAdmin && isDoneTab ? `
+                                    <div class="action-buttons">
+                                        <select onchange="updateWorkStatus('${item.job_id}', this.value)" class="ws-select" style="background:#475569;">
+                                            <option value="">Undo Status...</option>
+                                            <option value="Client Review">Move back to Review</option>
+                                        </select>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:auto;">🗑️ Delete Record</button>
+                                    </div>
+                                ` : ``}
                             </div>
-                            ${isLeadAdmin && !isDoneTab ? `
-                                <div class="action-buttons">
-                                    <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Msg for Requester</button>
-                                    <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Msg for Team</button>
-                                    <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
-                                </div>
-                            ` : ``}
-                            ${isLeadAdmin && isDoneTab ? `
-                                <div class="action-buttons">
-                                    <select onchange="updateWorkStatus('${item.job_id}', this.value)" class="ws-select" style="background:#475569;">
-                                        <option value="">Undo Status...</option>
-                                        <option value="Client Review">Move back to Review</option>
-                                    </select>
-                                    <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:auto;">🗑️ Delete Record</button>
-                                </div>
-                            ` : ``}
-                        </div>
-                    `}
+                        `}
+                    </div>
                 </div>
             `;
         }
