@@ -33,30 +33,36 @@
             --mesh-1: rgba(56, 189, 248, 0.2); --mesh-2: rgba(139, 92, 246, 0.2); --mesh-3: rgba(16, 185, 129, 0.15); --mesh-bg: #0f172a;
         }
 
-        /* 🌟 CUSTOM CURSOR EFFECTS 🌟 */
-        @media (pointer: fine) {
-            body { cursor: none; }
-            a, button, input, select, textarea, .card-summary { cursor: none !important; }
-            
-            .cursor-dot {
-                position: fixed; top: 0; left: 0; width: 6px; height: 6px; 
-                background: var(--accent); border-radius: 50%; pointer-events: none; 
-                z-index: 10000; transform: translate(-50%, -50%); transition: opacity 0.2s;
-            }
-            .cursor-outline {
-                position: fixed; top: 0; left: 0; width: 34px; height: 34px; 
-                border: 1px solid var(--accent); border-radius: 50%; pointer-events: none; 
-                z-index: 9999; transform: translate(-50%, -50%); 
-                transition: width 0.2s, height 0.2s, background-color 0.2s, opacity 0.2s; opacity: 0.6;
-            }
-            .cursor-outline.hover {
-                width: 50px; height: 50px; background-color: rgba(15, 23, 42, 0.05); opacity: 0.8;
-            }
-            [data-theme="dark"] .cursor-outline.hover { background-color: rgba(56, 189, 248, 0.1); }
-        }
-
         body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; min-height: 100vh; transition: background 0.3s, color 0.3s; overflow-x: hidden; }
         body.no-scroll { overflow: hidden; }
+
+        /* 🌟 NOISE / GRAIN OVERLAY 🌟 */
+        .noise-overlay {
+            position: fixed; top: -50%; left: -50%; width: 200%; height: 200%;
+            pointer-events: none; z-index: 9998; opacity: 0.04;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            animation: noiseAnim 8s steps(10) infinite;
+        }
+        [data-theme="dark"] .noise-overlay { opacity: 0.03; }
+        @keyframes noiseAnim {
+            0% { transform: translate(0,0); } 10% { transform: translate(-5%, -5%); }
+            20% { transform: translate(-10%, 5%); } 30% { transform: translate(5%, -10%); }
+            40% { transform: translate(-5%, 15%); } 50% { transform: translate(-10%, 5%); }
+            60% { transform: translate(15%, 0); } 70% { transform: translate(0, 10%); }
+            80% { transform: translate(-15%, 0); } 90% { transform: translate(10%, 5%); }
+            100% { transform: translate(5%, 0); }
+        }
+
+        /* 🌟 LIQUID / GOOEY TRANSITION 🌟 */
+        .liquid-bg {
+            position: fixed; bottom: -20vh; left: 0; width: 100%; height: 140vh;
+            background: var(--text-strong); z-index: 2500;
+            border-radius: 50% 50% 0 0; transform: translateY(100%);
+            pointer-events: none;
+        }
+
+        /* MAGNETIC CLASS FOR BUTTONS */
+        .magnetic { display: inline-block; will-change: transform; }
 
         /* INTRO PAGE */
         .intro-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background-color: var(--mesh-bg); z-index: 9999; display: flex; justify-content: center; align-items: center; overflow: hidden; transition: opacity 1s cubic-bezier(0.85, 0, 0.15, 1); }
@@ -81,8 +87,8 @@
         .intro-input { text-align: center; }
 
         .intro-btn-wrapper { opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.6s forwards; }
-        .intro-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--text-strong); color: var(--bg-main); border: none; padding: 16px 30px; border-radius: 30px; font-size: 1.05rem; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .intro-btn:hover { transform: scale(1.03); box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
+        .intro-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--text-strong); color: var(--bg-main); border: none; padding: 16px 30px; border-radius: 30px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .intro-btn:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
         .hide-intro { opacity: 0; pointer-events: none; }
         .hide-intro .intro-content { transform: scale(1.3) translateY(-30px); opacity: 0; filter: blur(15px); }
         @keyframes slideUpFade { 0% { opacity: 0; transform: translateY(40px); } 100% { opacity: 1; transform: translateY(0); } }
@@ -99,18 +105,19 @@
         .logo-sub { font-size: 0.65rem; color: var(--text-muted); font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 10px; }
         
         .nav-group { display: flex; flex-direction: column; gap: 8px; width: 100%; flex: 1; }
-        .nav-item { padding: 12px 15px; font-size: 0.85rem; color: var(--text-muted); border-radius: 8px; transition: 0.2s; display: flex; align-items: center; font-weight: 500; gap: 12px; }
+        .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); border-radius: 8px; transition: 0.2s; display: flex; align-items: center; font-weight: 500; gap: 12px; }
         .nav-item i { width: 18px; height: 18px; }
         .nav-item:hover, .nav-item.active { background: var(--bg-box); color: var(--accent); font-weight: 600; }
         .btn-new-request { background: var(--accent); color: var(--accent-text) !important; margin-top: 20px; justify-content: center; }
-        .btn-new-request:hover { background: var(--accent-hover); transform: translateY(-2px); box-shadow: var(--shadow); }
+        .btn-new-request:hover { background: var(--accent-hover); box-shadow: var(--shadow); }
+        
         .bottom-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; width: 100%; }
-        .action-btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; background: var(--bg-card); border: 1px solid var(--border-main); color: var(--text-muted); border-radius: 8px; font-size: 0.85rem; font-weight: 600; transition: 0.2s; box-shadow: var(--shadow); width: 100%; }
+        .action-btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; background: var(--bg-card); border: 1px solid var(--border-main); color: var(--text-muted); border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: var(--shadow); width: 100%; }
         .action-btn i { width: 16px; height: 16px; }
         .action-btn:hover { border-color: var(--text-muted); color: var(--text-strong); }
         .action-btn.unlocked { background: var(--green); color: #fff; border-color: var(--green); }
         
-        /* MAIN CONTENT & GREETING BANNER */
+        /* MAIN CONTENT */
         .main-content { margin-left: 260px; padding: 40px; width: calc(100% - 260px); box-sizing: border-box; }
         .page { display: none; max-width: 1050px; margin: 0 auto; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
@@ -121,8 +128,8 @@
         .welcome-text p { margin: 0; color: var(--text-muted); font-size: 0.95rem; }
         .welcome-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .date-badge { display: flex; align-items: center; gap: 6px; background: var(--bg-box); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border-main); }
-        .shortcut-btn { display: flex; align-items: center; gap: 6px; background: var(--accent); color: var(--accent-text); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; border: none; transition: 0.2s; }
-        .shortcut-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .shortcut-btn { display: flex; align-items: center; gap: 6px; background: var(--accent); color: var(--accent-text); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; border: none; cursor: pointer; transition: 0.2s; }
+        .shortcut-btn:hover { background: var(--accent-hover); }
         .shortcut-btn i { width: 14px; height: 14px; }
         
         /* DASHBOARD COMPONENTS */
@@ -172,12 +179,13 @@
         .search-box i { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted); }
         .search-box input { width: 100%; padding: 12px 15px 12px 40px; border: 1px solid var(--border-main); border-radius: 8px; font-size: 0.9rem; background: var(--bg-card); color: var(--text-main); transition: 0.2s; box-sizing: border-box; }
         .search-box input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
-        .export-btn { display: flex; align-items: center; gap: 8px; background: var(--bg-card); color: var(--text-strong); border: 1px solid var(--border-main); padding: 12px 20px; border-radius: 8px; font-weight: 600; transition: 0.2s; font-size: 0.9rem; }
+        .export-btn { display: flex; align-items: center; gap: 8px; background: var(--bg-card); color: var(--text-strong); border: 1px solid var(--border-main); padding: 12px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 0.9rem; }
         .export-btn i { width: 16px; height: 16px; }
-        .export-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow); }
+        .export-btn:hover { border-color: var(--accent); color: var(--accent); box-shadow: var(--shadow); }
 
         /* 🌟 PROGRESSIVE DISCLOSURE FORM 🌟 */
         .card { background: var(--bg-card); border: 1px solid var(--border-main); padding: 30px; border-radius: 12px; margin-bottom: 15px; box-shadow: var(--shadow); transition: 0.3s; position: relative; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.06); }
         
         .form-progress { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; position: relative; }
         .form-progress::before { content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: var(--border-main); z-index: 0; transform: translateY(-50%); }
@@ -200,21 +208,21 @@
         input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
         .selection-box { background: var(--bg-box); border: 1px solid var(--border-main); padding: 20px; border-radius: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .radio-box { grid-template-columns: repeat(3, 1fr); }
-        .check-item { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: var(--text-main); }
-        .check-item input { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
+        .check-item { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer; color: var(--text-main); }
+        .check-item input { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; }
         
         .form-navigation { display: flex; justify-content: space-between; align-items: center; margin-top: 30px; border-top: 1px solid var(--border-main); padding-top: 20px; }
-        .btn-nav { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; transition: 0.2s; }
+        .btn-nav { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: 0.2s; }
         .btn-prev { background: var(--bg-box); color: var(--text-strong); border: 1px solid var(--border-main); }
         .btn-prev:hover { border-color: var(--text-muted); }
         .btn-next { background: var(--accent); color: var(--accent-text); border: none; }
-        .btn-next:hover { background: var(--accent-hover); transform: translateY(-2px); box-shadow: var(--shadow); }
+        .btn-next:hover { background: var(--accent-hover); box-shadow: var(--shadow); }
         .btn-submit { background: var(--green); color: white; border: none; }
-        .btn-submit:hover { filter: brightness(0.9); transform: translateY(-2px); box-shadow: var(--shadow); }
-        .btn-submit:disabled { background: var(--text-muted); transform: none; box-shadow: none; cursor: not-allowed !important; }
+        .btn-submit:hover { filter: brightness(0.9); box-shadow: var(--shadow); }
+        .btn-submit:disabled { background: var(--text-muted); cursor: not-allowed !important; }
         
         /* CARD COLLAPSIBLE */
-        .card-summary { display: flex; justify-content: space-between; align-items: center; user-select: none; }
+        .card-summary { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
         .card-body { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px dashed var(--border-main); }
         .card.expanded .card-body { display: block; animation: fadeIn 0.3s ease; }
         .expand-icon { transition: transform 0.3s ease; width: 18px; height: 18px; color: var(--text-muted); }
@@ -230,7 +238,7 @@
         .playbook-pill:hover { background: var(--link-color); color: #fff; border-color: var(--link-color); }
         .rev-badge { display: inline-block; background: #fee2e2; color: #b91c1c; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; border: 1px solid #fca5a5; }
         .rev-badge.high-rev { background: #7f1d1d; color: #fca5a5; border-color: #450a0a; } 
-        .rev-btn { border: 1px solid var(--border-main); background: var(--bg-card); color: var(--text-main); border-radius: 4px; padding: 2px 8px; transition: 0.2s; font-weight:bold; }
+        .rev-btn { border: 1px solid var(--border-main); background: var(--bg-card); color: var(--text-main); border-radius: 4px; padding: 2px 8px; cursor: pointer; transition: 0.2s; font-weight:bold; }
         .rev-btn:hover { background: var(--border-main); }
 
         .job-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 15px; font-size: 0.85rem; align-items: center; }
@@ -242,7 +250,7 @@
         .brief-box p:last-child { margin: 0; }
         .brief-box a { color: var(--link-color); text-decoration: none; font-weight: 500; }
         
-        .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: fit-content; }
+        .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: fit-content; }
         .ws-select:hover { filter: brightness(0.9); }
         .ws-not-started { background: #64748b; color: white; }
         .ws-drafting { background: #f59e0b; color: white; }
@@ -255,7 +263,7 @@
         .assign-area { border-top: 1px solid var(--border-main); padding-top: 20px; }
         .designer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 15px; }
         .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
-        .btn-action { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 15px; font-size: 0.8rem; border-radius: 6px; font-weight: 600; border: 1px solid transparent; transition: 0.2s; flex: 1; min-width: 120px; }
+        .btn-action { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 15px; font-size: 0.8rem; border-radius: 6px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: 0.2s; flex: 1; min-width: 120px; }
         .btn-action i { width: 14px; height: 14px; }
         .btn-approve { background: var(--accent); color: var(--accent-text); }
         .btn-approve:hover { background: var(--accent-hover); }
@@ -269,17 +277,15 @@
         .month-group-badge { font-size: 0.75rem; background: var(--bg-box); padding: 5px 12px; border-radius: 20px; color: var(--text-muted); border: 1px solid var(--border-main); font-weight: 600; }
 
         /* EDIT MODAL */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 3000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
         .modal-content { background: var(--bg-card); padding: 35px; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: var(--shadow); border: 1px solid var(--border-main); }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-light); padding-bottom: 15px; }
         .modal-header h3 { margin: 0; color: var(--text-strong); }
-        .close-btn { background: none; border: none; color: var(--text-muted); display:flex; align-items:center; justify-content:center; }
+        .close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; display:flex; align-items:center; justify-content:center; }
         
         /* 📱 MOBILE OVERRIDES */
         @media (max-width: 768px) {
-            body { flex-direction: column; cursor: auto; } /* Disable custom cursor on mobile */
-            .cursor-dot, .cursor-outline { display: none !important; }
-            a, button, input, select, textarea, .card-summary { cursor: auto !important; }
+            body { flex-direction: column; } 
             
             .intro-logo { max-width: 180px; }
             .intro-title { font-size: 2.2rem; }
@@ -318,8 +324,9 @@
 </head>
 <body class="no-scroll">
 
-    <div class="cursor-dot"></div>
-    <div class="cursor-outline"></div>
+    <div class="noise-overlay"></div>
+
+    <div id="liquid-overlay" class="liquid-bg"></div>
 
     <div id="introPage" class="intro-overlay">
         <div class="orb-container">
@@ -335,7 +342,7 @@
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
             
             <div class="intro-form-wrapper">
-                <select id="introNameSelect" class="intro-field" onchange="toggleIntroManualInput()">
+                <select id="introNameSelect" class="intro-field magnetic" onchange="toggleIntroManualInput()">
                     <option value="">Select your name...</option>
                     <optgroup label="Malaysia">
                         <option>MY - Ain Sabrina</option><option>MY - Ammelia</option><option>MY - Angie Ng</option><option>MY - Bernice Mah</option>
@@ -358,7 +365,7 @@
             </div>
 
             <div class="intro-btn-wrapper">
-                <button class="intro-btn" onclick="startApp()">
+                <button class="intro-btn magnetic" onclick="startApp()">
                     Start Now <i data-lucide="arrow-right" style="width: 20px;"></i>
                 </button>
             </div>
@@ -367,19 +374,19 @@
 
     <div id="app-wrapper">
         <div class="sidebar">
-            <div class="logo-container">
+            <div class="logo-container magnetic">
                 <img src="AdTechinno.png" alt="AdTechinno" class="brand-logo">
                 <span class="logo-sub">Creative Request</span>
             </div>
             <div class="nav-group">
-                <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')"><i data-lucide="layout-dashboard"></i> <span>Dashboard</span></div>
-                <div class="nav-item" id="btn-workload" onclick="showPage('workload')"><i data-lucide="kanban-square"></i> <span>Request Status</span></div>
-                <div class="nav-item" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> <span>Done Tasks</span></div>
-                <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
+                <div class="nav-item magnetic active" id="btn-dashboard" onclick="showPage('dashboard')"><i data-lucide="layout-dashboard"></i> <span>Dashboard</span></div>
+                <div class="nav-item magnetic" id="btn-workload" onclick="showPage('workload')"><i data-lucide="kanban-square"></i> <span>Request Status</span></div>
+                <div class="nav-item magnetic" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> <span>Done Tasks</span></div>
+                <div class="nav-item btn-new-request magnetic" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
             </div>
             <div class="bottom-actions">
-                <button id="themeBtn" class="action-btn" onclick="toggleTheme()"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
-                <button id="adminBtn" class="action-btn" onclick="toggleAdmin()"><i data-lucide="lock"></i> <span>Admin Access</span></button>
+                <button id="themeBtn" class="action-btn magnetic" onclick="toggleTheme()"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
+                <button id="adminBtn" class="action-btn magnetic" onclick="toggleAdmin()"><i data-lucide="lock"></i> <span>Admin Access</span></button>
             </div>
         </div>
 
@@ -391,8 +398,8 @@
                         <p>Here is what's happening with your creative requests.</p>
                     </div>
                     <div class="welcome-actions">
-                        <button class="shortcut-btn" onclick="viewMyRequests()"><i data-lucide="search"></i> My Past Requests</button>
-                        <div class="date-badge">
+                        <button class="shortcut-btn magnetic" onclick="viewMyRequests()"><i data-lucide="search"></i> My Past Requests</button>
+                        <div class="date-badge magnetic">
                             <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
                             <span id="currentDateDisplay">Date</span>
                         </div>
@@ -469,7 +476,7 @@
                         <i data-lucide="search"></i>
                         <input type="text" id="searchDone" placeholder="Search Client Name or Job ID..." onkeyup="renderBoards()">
                     </div>
-                    <button onclick="exportToCSV()" class="export-btn"><i data-lucide="download"></i> Export Data (CSV)</button>
+                    <button onclick="exportToCSV()" class="export-btn magnetic"><i data-lucide="download"></i> Export Data (CSV)</button>
                 </div>
 
                 <div id="doneList">
@@ -533,7 +540,7 @@
                             </div>
                         </div>
                         <div class="form-navigation" style="justify-content: flex-end;">
-                            <button class="btn-nav btn-next" onclick="goToStep(2)">Next Step <i data-lucide="arrow-right"></i></button>
+                            <button class="btn-nav btn-next magnetic" onclick="goToStep(2)">Next Step <i data-lucide="arrow-right"></i></button>
                         </div>
                     </div>
 
@@ -559,8 +566,8 @@
                             <textarea id="pMonthlyPlan" rows="3" placeholder="Paste plan here..."></textarea>
                         </div>
                         <div class="form-navigation">
-                            <button class="btn-nav btn-prev" onclick="goToStep(1)"><i data-lucide="arrow-left"></i> Back</button>
-                            <button class="btn-nav btn-next" onclick="goToStep(3)">Next Step <i data-lucide="arrow-right"></i></button>
+                            <button class="btn-nav btn-prev magnetic" onclick="goToStep(1)"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn-nav btn-next magnetic" onclick="goToStep(3)">Next Step <i data-lucide="arrow-right"></i></button>
                         </div>
                     </div>
 
@@ -582,8 +589,8 @@
                         <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
                         
                         <div class="form-navigation">
-                            <button class="btn-nav btn-prev" onclick="goToStep(2)"><i data-lucide="arrow-left"></i> Back</button>
-                            <button class="btn-nav btn-submit" id="submitBtn" onclick="submitRequest()"><i data-lucide="send"></i> Submit Request</button>
+                            <button class="btn-nav btn-prev magnetic" onclick="goToStep(2)"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn-nav btn-submit magnetic" id="submitBtn" onclick="submitRequest()"><i data-lucide="send"></i> Submit Request</button>
                         </div>
                     </div>
 
@@ -614,7 +621,7 @@
                 <label>Deadline</label>
                 <input type="date" id="editDeadline">
             </div>
-            <button class="btn-submit" id="saveEditBtn" onclick="saveEdit()" style="margin-top:20px;">Update Request</button>
+            <button class="btn-submit magnetic" id="saveEditBtn" onclick="saveEdit()" style="margin-top:20px; width:100%;">Update Request</button>
         </div>
     </div>
 
@@ -632,52 +639,40 @@
             lucide.createIcons();
         }
 
-        // 🌟 CUSTOM CURSOR LOGIC 🌟
-        const cursorDot = document.querySelector('.cursor-dot');
-        const cursorOutline = document.querySelector('.cursor-outline');
-        let mouseX = 0, mouseY = 0, outlineX = 0, outlineY = 0;
+        // 🌟 MAGNETIC BUTTONS LOGIC 🌟
+        function initMagnetic() {
+            document.querySelectorAll('.magnetic').forEach(btn => {
+                btn.addEventListener('mousemove', e => {
+                    const rect = btn.getBoundingClientRect();
+                    const x = e.clientX - rect.left - rect.width / 2;
+                    const y = e.clientY - rect.top - rect.height / 2;
+                    btn.style.transform = `translate(${x * 0.15}px, ${y * 0.15}px)`;
+                    btn.style.transition = 'none';
+                });
+                btn.addEventListener('mouseleave', () => {
+                    btn.style.transition = 'transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)';
+                    btn.style.transform = `translate(0px, 0px)`;
+                });
+            });
+        }
 
-        window.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX; mouseY = e.clientY;
-            if(cursorDot) cursorDot.style.transform = `translate(${mouseX}px, ${mouseY}px)`;
-            
-            // Intro Parallax
+        // INTRO MOUSE TRACKING LOGIC (For Ambient Orbs only now)
+        document.addEventListener('mousemove', (e) => {
             const intro = document.getElementById('introPage');
             if(intro && intro.style.display !== 'none' && !intro.classList.contains('hide-intro')) {
-                const x = (mouseX / window.innerWidth) * 100;
-                const y = (mouseY / window.innerHeight) * 100;
+                const x = (e.clientX / window.innerWidth) * 100;
+                const y = (e.clientY / window.innerHeight) * 100;
                 intro.style.setProperty('--mouse-x', `${x}%`);
                 intro.style.setProperty('--mouse-y', `${y}%`);
             }
         });
 
-        function animateCursor() {
-            let distX = mouseX - outlineX;
-            let distY = mouseY - outlineY;
-            outlineX += distX * 0.15; // Smooth trailing delay
-            outlineY += distY * 0.15;
-            if(cursorOutline) cursorOutline.style.transform = `translate(${outlineX}px, ${outlineY}px)`;
-            requestAnimationFrame(animateCursor);
-        }
-        animateCursor();
-
-        // Cursor Hover Effects (Dynamic binding via mutation observer or delegating to document)
-        document.addEventListener('mouseover', (e) => {
-            const target = e.target.closest('button, a, select, input, .card-summary');
-            if(target && cursorOutline) cursorOutline.classList.add('hover');
-        });
-        document.addEventListener('mouseout', (e) => {
-            const target = e.target.closest('button, a, select, input, .card-summary');
-            if(target && cursorOutline) cursorOutline.classList.remove('hover');
-        });
-
         // 🌟 PROGRESSIVE DISCLOSURE LOGIC 🌟
         function goToStep(step) {
-            // Validation
             if (step === 2) {
                 const n1 = document.getElementById('requesterName').value;
                 const n2 = document.getElementById('manualName').value;
-                if (!n1 && !n2) return alert("Please tell us your name.");
+                if (!n1 && !n2) return alert("Please tell us your name before proceeding.");
             }
             if (step === 3) {
                 const c = document.getElementById('pClient').value;
@@ -685,16 +680,13 @@
                 if (!c || !t) return alert("Please fill in Client Name and Project Title.");
             }
 
-            // Hide all steps, un-active indicators
             document.querySelectorAll('.form-step').forEach(el => el.classList.remove('active'));
             document.getElementById('step' + step).classList.add('active');
 
-            // Update Progress Bar
             document.getElementById('ind-1').className = 'step-indicator ' + (step >= 1 ? (step > 1 ? 'completed' : 'active') : '');
             document.getElementById('ind-2').className = 'step-indicator ' + (step >= 2 ? (step > 2 ? 'completed' : 'active') : '');
             document.getElementById('ind-3').className = 'step-indicator ' + (step >= 3 ? 'active' : '');
             
-            // Re-render icons if any were inside
             refreshIcons();
         }
 
@@ -874,22 +866,62 @@
             }
         }
 
+        // 🌟 LIQUID TRANSITION FOR NEW REQUEST TAB 🌟
+        let isAnimating = false;
         function showPage(id) {
-            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-            
-            let navItem;
-            if(id === 'request') navItem = document.getElementById('btn-request');
-            else if(id === 'dashboard') navItem = document.getElementById('btn-dashboard');
-            else if(id === 'workload') navItem = document.getElementById('btn-workload');
-            else if(id === 'done') navItem = document.getElementById('btn-done');
-            if(navItem) navItem.classList.add('active');
-            
-            // Reset wizard when opening request form
-            if (id === 'request') goToStep(1);
+            if(isAnimating) return;
+            const currentActive = document.querySelector('.page.active');
+            if(currentActive && currentActive.id === id) return;
 
-            if(globalData.length > 0) renderBoards(); 
+            if (id === 'request') {
+                isAnimating = true;
+                const liquid = document.getElementById('liquid-overlay');
+                
+                // Reset liquid state
+                liquid.style.transition = 'none';
+                liquid.style.transform = 'translateY(100%)';
+                liquid.style.borderRadius = '50% 50% 0 0';
+                
+                // Force reflow
+                void liquid.offsetWidth;
+                
+                // Animate Up
+                liquid.style.transition = 'transform 0.6s cubic-bezier(0.65, 0, 0.35, 1), border-radius 0.6s cubic-bezier(0.65, 0, 0.35, 1)';
+                liquid.style.transform = 'translateY(0)';
+                liquid.style.borderRadius = '0';
+
+                setTimeout(() => {
+                    // Switch pages behind the liquid
+                    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                    document.getElementById(id).classList.add('active');
+                    
+                    let navItem = document.getElementById('btn-request');
+                    if(navItem) navItem.classList.add('active');
+
+                    goToStep(1); // Reset form wizard
+                    if(globalData.length > 0) renderBoards();
+
+                    // Animate liquid away
+                    liquid.style.transform = 'translateY(-140%)';
+                    liquid.style.borderRadius = '0 0 50% 50%';
+
+                    setTimeout(() => { isAnimating = false; }, 600);
+                }, 600);
+
+            } else {
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                document.getElementById(id).classList.add('active');
+                
+                let navItem;
+                if(id === 'dashboard') navItem = document.getElementById('btn-dashboard');
+                else if(id === 'workload') navItem = document.getElementById('btn-workload');
+                else if(id === 'done') navItem = document.getElementById('btn-done');
+                if(navItem) navItem.classList.add('active');
+                
+                if(globalData.length > 0) renderBoards(); 
+            }
         }
 
         async function gasPost(payload) {
@@ -1025,7 +1057,7 @@
                 const payload = { action: 'update', pin: securePin, data: { job_id: jobID, revision: newRev } };
                 const res = await gasPost(payload);
                 if(res.status !== "success") throw new Error(res.message);
-            } catch(e) { alert("Error updating revision."); job.revision = oldRev; renderBoards(); }
+            } catch(e) { alert("Error updating revision: " + e.message); job.revision = oldRev; renderBoards(); }
         }
 
         async function deleteJob(jobID) {
@@ -1118,6 +1150,7 @@
                         <div class="job-details">
                             <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
                             <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${formatDate(item.deadline)}</strong></div>
+                            
                             <div class="detail-item">
                                 <span>Work Status</span>
                                 ${item.status === 'pending' ? '<strong>-</strong>' : `
@@ -1133,6 +1166,7 @@
                                     ` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}
                                 `}
                             </div>
+
                             <div class="detail-item">
                                 <span>Revision Count</span>
                                 ${securePin && !isDoneTab ? `
@@ -1143,6 +1177,7 @@
                                     </div>
                                 ` : `<strong>${item.revision || 0}</strong>`}
                             </div>
+
                         </div>
                         
                         <div class="brief-box">
@@ -1162,9 +1197,9 @@
                                     <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block; color: var(--text-main);">2. Paste Creative Playbook Link here:</label>
                                     <input type="text" id="playbook-${item.job_id}" placeholder="https://docs.google.com/presentation/d/..." style="margin-bottom: 15px; border-style: dashed;">
                                     <div class="action-buttons">
-                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve"><i data-lucide="check"></i> Approve & Assign</button>
-                                        <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit Request</button>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button>
+                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve magnetic"><i data-lucide="check"></i> Approve & Assign</button>
+                                        <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy magnetic"><i data-lucide="edit-2"></i> Edit Request</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete magnetic"><i data-lucide="trash-2"></i> Delete</button>
                                     </div>
                                 </div>
                             ` : `<div class="locked-msg"><i data-lucide="lock"></i> Status: Reviewing requirements. Awaiting Admin Assignment.</div>`}
@@ -1176,11 +1211,15 @@
                                 </div>
                                 ${securePin && !isDoneTab ? `
                                     <div class="action-buttons">
-                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Requester</button>
-                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Team</button>
-                                        ${item.work_status === 'Client Review' ? `<button onclick="copyText('review', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}', '${item.requester_name}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}
-                                        <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit</button>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button>
+                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy magnetic"><i data-lucide="copy"></i> Msg: Requester</button>
+                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy magnetic"><i data-lucide="copy"></i> Msg: Team</button>
+                                        
+                                        ${item.work_status === 'Client Review' ? `
+                                            <button onclick="copyText('review', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}', '${item.requester_name}')" class="btn-action magnetic" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>
+                                        ` : ''}
+
+                                        <button onclick="openEditModal('${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.deadline}')" class="btn-action btn-copy magnetic"><i data-lucide="edit-2"></i> Edit</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete magnetic"><i data-lucide="trash-2"></i> Delete</button>
                                     </div>
                                 ` : ``}
                                 ${securePin && isDoneTab ? `
@@ -1189,7 +1228,7 @@
                                             <option value="">Undo Status...</option>
                                             <option value="Client Review">Move back to Review</option>
                                         </select>
-                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:auto;"><i data-lucide="trash-2"></i> Delete Record</button>
+                                        <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete magnetic" style="margin-left:auto;"><i data-lucide="trash-2"></i> Delete Record</button>
                                     </div>
                                 ` : ``}
                             </div>
@@ -1317,9 +1356,11 @@
                 document.getElementById('doneList').innerHTML = doneHtml;
             }
             refreshIcons();
+            initMagnetic(); // Re-bind magnetic effect to new dynamic buttons
         }
 
         window.onload = () => {
+            initMagnetic();
             checkSavedName();
             setGreetingAndDate();
             checkAdminUI();
