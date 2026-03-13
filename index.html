@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Engine v23</title>
+    <title>Adtechinno | Creative Engine v24</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         :root { --muji-bg: #f8f9fa; --muji-text: #2d3748; --muji-border: #e2e8f0; --accent: #0f172a; --red: #ef4444; --green: #10b981; --orange: #f59e0b; }
         body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; min-height: 100vh; position: relative; }
         
-        /* Sidebar */
         .sidebar { width: 260px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; z-index: 1000; }
         .logo { font-weight: 700; letter-spacing: 3px; margin-bottom: 40px; font-size: 1.1rem; text-align: center; color: var(--accent); }
         .nav-group { display: flex; flex-direction: column; gap: 8px; }
@@ -18,17 +17,14 @@
         .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; justify-content: center; }
         .btn-new-request:hover { background: #334155; }
 
-        /* Admin Toggle */
         .admin-toggle { position: absolute; top: 20px; right: 40px; padding: 10px 18px; background: #fff; border: 1px solid var(--muji-border); color: #64748b; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); z-index: 100; }
         .admin-toggle:hover { border-color: #cbd5e1; color: var(--accent); }
         .admin-toggle.unlocked { background: var(--green); color: #fff; border-color: var(--green); }
 
-        /* Main Content */
         .main-content { margin-left: 260px; padding: 40px; width: 100%; box-sizing: border-box; }
         .page { display: none; max-width: 1050px; margin: 0 auto; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
 
-        /* Dashboard UI (OPTIMIZED) */
         .stat-banner { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
         .stat-box { background: #fff; padding: 25px; border-radius: 12px; border: 1px solid var(--muji-border); display: flex; flex-direction: column; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
         .stat-box h4 { margin: 0; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -38,14 +34,12 @@
         .dash-card { background: #fff; border: 1px solid var(--muji-border); border-radius: 12px; padding: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
         .dash-card h3 { margin-top: 0; font-size: 1rem; color: var(--accent); border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 15px; }
         
-        /* Dashboard Table */
         .recent-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .recent-table th { text-align: left; padding: 12px 10px; color: #64748b; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
         .recent-table td { padding: 15px 10px; border-bottom: 1px solid #f1f5f9; color: #334155; }
         .recent-table tr:last-child td { border-bottom: none; }
         .td-client { font-weight: 600; color: var(--accent); }
 
-        /* General Forms & Cards */
         .card { background: white; border: 1px solid var(--muji-border); padding: 35px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
         .section-title { font-size: 1.1rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-top: 0; margin-bottom: 20px; font-weight: 600; }
         
@@ -64,7 +58,6 @@
         .btn-submit { background: var(--accent); color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 1rem; transition: 0.2s; margin-top: 10px; }
         .btn-submit:hover { background: #1e293b; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 
-        /* Board Detailed UI */
         .job-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
         .job-id { font-size: 0.75rem; font-weight: 600; color: #94a3b8; letter-spacing: 1px; }
         .job-title { margin: 5px 0 0 0; font-size: 1.2rem; font-weight: 600; color: var(--accent); }
@@ -72,22 +65,27 @@
         .status-pending { background: #ffedd5; color: #c2410c; }
         .status-approved { background: #dcfce7; color: #15803d; }
         
-        .job-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.85rem; border: 1px solid #e2e8f0; }
+        .job-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; font-size: 0.85rem; }
         .detail-item { display: flex; flex-direction: column; gap: 4px; }
         .detail-item span { color: #64748b; font-size: 0.75rem; text-transform: uppercase; font-weight: 600; }
         .detail-item strong { color: #334155; }
 
-        /* Assign Grid & Actions */
+        /* Request Brief Box (NEW - To show clear details) */
+        .brief-box { background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px; border-radius: 8px; margin-bottom: 20px; font-size: 0.85rem; color: #334155; line-height: 1.6; }
+        .brief-box p { margin: 0 0 10px 0; }
+        .brief-box p:last-child { margin: 0; }
+
         .assign-area { border-top: 1px solid #e2e8f0; padding-top: 20px; }
         .designer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 15px; }
         .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
         .btn-action { padding: 10px 15px; font-size: 0.8rem; border-radius: 6px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; transition: 0.2s; }
         .btn-approve { background: var(--accent); color: white; }
+        .btn-approve:hover { background: #334155; }
         .btn-copy { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+        .btn-copy:hover { background: #e2e8f0; color: #0f172a; }
         .btn-delete { color: #ef4444; background: transparent; border: none; padding: 10px; margin-left: auto; }
         .btn-delete:hover { text-decoration: underline; background: #fef2f2; }
         
-        /* Non-Admin View */
         .locked-msg { padding: 15px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center; color: #64748b; font-size: 0.85rem; font-weight: 500; }
 
         @media (max-width: 768px) {
@@ -115,13 +113,11 @@
     <div class="main-content">
         <div id="dashboard" class="page active">
             <h1 style="margin-bottom: 30px;">Creative Overview</h1>
-            
             <div class="stat-banner">
                 <div class="stat-box" style="border-top: 4px solid #3b82f6;"><h4>Total Jobs</h4><p id="total-val">0</p></div>
                 <div class="stat-box" style="border-top: 4px solid var(--orange);"><h4>Awaiting Approval</h4><p id="pending-val">0</p></div>
                 <div class="stat-box" style="border-top: 4px solid var(--green);"><h4>In Progress</h4><p id="active-val">0</p></div>
             </div>
-            
             <div class="dash-grid">
                 <div class="dash-card">
                     <h3>🕒 5 Latest Requests</h3>
@@ -134,8 +130,7 @@
                     <h3>⚙️ System Notifications</h3>
                     <div style="font-size: 0.85rem; color: #475569; line-height: 1.6;">
                         <p><strong>Assignment Control:</strong> Only users with 'Lead Access' unlocked can assign designers or delete jobs.</p>
-                        <p><strong>Automation Active:</strong> Playbooks are auto-generated upon assignment.</p>
-                        <p><strong>Messaging:</strong> Quick copy-paste briefs available in the Request Status board once a job is approved.</p>
+                        <p><strong>Smart Messaging:</strong> Paste your Playbook Link during approval to auto-generate ready-to-send WhatsApp/Telegram messages.</p>
                     </div>
                 </div>
             </div>
@@ -143,7 +138,7 @@
 
         <div id="workload" class="page">
             <h1 style="margin-bottom: 5px;">Request Status Board</h1>
-            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">Track progress and assign team members.</p>
+            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">View full details, paste Playbook links, and assign team members.</p>
             <div id="projectList">Loading data...</div>
         </div>
 
@@ -254,12 +249,11 @@
         const SHEETDB_API = 'https://sheetdb.io/api/v1/v1fao9lzfm9u7';
         const TG_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
         const TG_CHAT = '5964232885';
-        const PLAYBOOK_MASTER = 'https://docs.google.com/presentation/d/1pd63VK-tqOfVlfLSJs3KRLAAdSdOVjNvpSuZFbxoEYo/copy';
         
         const designersMY = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Steven", "MY-Faiz"];
         const designersID = ["ID-Miftahul", "ID-Youke", "ID-Annisya"];
 
-        // Access Control Logic
+        // Lead Access Logic
         let isLeadAdmin = localStorage.getItem('adtech_lead_access') === 'true';
 
         function checkAdminUI() {
@@ -283,7 +277,7 @@
                 if(pin === "2026") {
                     localStorage.setItem('adtech_lead_access', 'true');
                     isLeadAdmin = true;
-                    alert("Welcome Lead! You can now assign jobs and delete requests.");
+                    alert("Welcome Lead! You can now assign jobs, paste playbooks, and delete requests.");
                 } else {
                     alert("Incorrect PIN.");
                 }
@@ -310,20 +304,27 @@
             const types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
             const objective = document.querySelector('input[name="obj"]:checked')?.value || 'N/A';
             const jobID = `AT26-${Math.floor(Date.now() / 1000).toString().slice(-3)}`;
+            
+            // Combine Brief & Monthly Plan so it fits perfectly without needing new columns
+            let fullBrief = document.getElementById('pBrief').value;
+            const monthlyPlan = document.getElementById('pMonthlyPlan').value;
+            if(monthlyPlan) fullBrief += "\n\n[Monthly Plan Details]:\n" + monthlyPlan;
 
             const payload = { data: [{
                 job_id: jobID, requester_name: name, region: document.getElementById('pRegion').value,
                 client_name: client, project_title: document.getElementById('pTitle').value,
-                job_type: types, objective: objective, brief: document.getElementById('pBrief').value,
+                job_type: types, objective: objective, brief: fullBrief,
                 deadline: deadline, ref_link: document.getElementById('pRefLink').value,
-                remarks: document.getElementById('pRemarks').value, status: 'pending', assignee: 'Unassigned'
+                remarks: document.getElementById('pRemarks').value, status: 'pending', assignee: 'Unassigned',
+                playbook_link: '' // Initialized empty
             }]};
 
             const res = await fetch(SHEETDB_API, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
             if(res.ok) {
                 await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=🚀 *NEW REQUEST*%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
                 alert("Request Submitted Successfully!");
-                document.querySelectorAll('input, textarea, select').forEach(el => el.value = ''); 
+                document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
+                document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
                 showPage('dashboard');
             }
         }
@@ -332,14 +333,18 @@
             const selectedDesigners = Array.from(document.querySelectorAll(`.cb-${jobID}:checked`)).map(cb => cb.value).join(', ');
             if(!selectedDesigners) return alert("Please select at least one designer!");
 
+            const playbookLink = document.getElementById(`playbook-${jobID}`).value.trim();
+            if(!playbookLink) return alert("Please paste the generated Creative Playbook link first!");
+
             try {
                 await fetch(`${SHEETDB_API}/job_id/${jobID}`, { 
                     method: 'PATCH', 
                     headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({data: {assignee: selectedDesigners, status: 'approved'}})
+                    body: JSON.stringify({data: {assignee: selectedDesigners, status: 'approved', playbook_link: playbookLink}})
                 });
-                await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=✅ *APPROVED*%0AJob: ${jobID}%0AClient: ${client}%0APIC: ${selectedDesigners}&parse_mode=Markdown`);
-                alert("Job Approved! Playbook generating...");
+                
+                await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=✅ *APPROVED*%0AJob: ${jobID}%0AClient: ${client}%0APIC: ${selectedDesigners}%0APlaybook: ${playbookLink}&parse_mode=Markdown`);
+                alert("Job Approved & Messages Ready! You can now copy the updates for the team.");
                 fetchAndRender();
             } catch(e) { alert("Error: " + e.message); }
         }
@@ -350,26 +355,30 @@
             fetchAndRender();
         }
 
-        function copyText(type, jobID, client, title, assignee, deadline, link) {
+        function copyText(type, jobID, client, title, assignee, deadline, playbookLink) {
             let msg = "";
-            const finalLink = link || PLAYBOOK_MASTER;
-            if(type === 'requester') msg = `Hi! 👋 Your creative request has been *APPROVED*.\n\n*Job ID:* ${jobID}\n*Project:* ${client} - ${title}\n*Deadline:* ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${finalLink}`;
-            else if (type === 'team') msg = `🚨 *NEW ASSIGNED JOB*\n\n*Team:* ${assignee}\n*Job ID:* ${jobID}\n*Client:* ${client} - ${title}\n*Deadline:* ${deadline}\n\nPlease check the brief in the Playbook: ${finalLink}`;
+            const link = playbookLink || 'Link not provided';
+            
+            if(type === 'requester') {
+                msg = `Hi! 👋 Your creative request has been *APPROVED*.\n\n*Job ID:* ${jobID}\n*Project:* ${client} - ${title}\n*Deadline:* ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
+            } else if (type === 'team') {
+                msg = `🚨 *NEW ASSIGNED JOB*\n\n*Team:* ${assignee}\n*Job ID:* ${jobID}\n*Client:* ${client} - ${title}\n*Deadline:* ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions!`;
+            }
+            
             navigator.clipboard.writeText(msg);
-            alert("Message copied to clipboard!");
+            alert("Message copied to clipboard! Ready to paste in WhatsApp/Telegram.");
         }
 
         async function fetchAndRender() {
             const res = await fetch(SHEETDB_API);
             const rawData = await res.json();
-            const data = rawData.reverse(); // Newest first
+            const data = rawData.reverse();
             
-            // Populate Dashboard Stats
+            // Dashboard Stats
             document.getElementById('total-val').innerText = data.length;
             document.getElementById('pending-val').innerText = data.filter(d => d.status === 'pending').length;
             document.getElementById('active-val').innerText = data.filter(d => d.status === 'approved').length;
 
-            // Populate Dashboard Table (Latest 5)
             const recent5 = data.slice(0, 5);
             document.getElementById('recent-list').innerHTML = recent5.length ? recent5.map(d => `
                 <tr>
@@ -380,7 +389,7 @@
                 </tr>
             `).join('') : '<tr><td colspan="4" style="text-align:center;">No requests yet.</td></tr>';
 
-            // Populate Workload Board
+            // Workload Board
             if(document.getElementById('workload').classList.contains('active')) {
                 document.getElementById('projectList').innerHTML = data.map(item => `
                     <div class="card">
@@ -390,37 +399,48 @@
                         </div>
                         
                         <div class="job-details">
-                            <div class="detail-item"><span>Requester</span><strong>${item.requester_name}</strong></div>
+                            <div class="detail-item"><span>Requester</span><strong>${item.requester_name} (${item.region})</strong></div>
                             <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
-                            <div class="detail-item"><span>Deadline</span><strong>${item.deadline}</strong></div>
+                            <div class="detail-item"><span>Objective</span><strong>${item.objective || 'N/A'}</strong></div>
+                            <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${item.deadline}</strong></div>
+                        </div>
+
+                        <div class="brief-box">
+                            <p><strong>📝 Creative Brief & Plan:</strong><br>${item.brief ? item.brief.replace(/\n/g, '<br>') : 'No brief provided.'}</p>
+                            ${item.ref_link ? `<p><strong>🔗 Reference:</strong> <a href="${item.ref_link}" target="_blank" style="color: #0284c7; text-decoration: none;">Click to view reference</a></p>` : ''}
+                            ${item.remarks ? `<p><strong>📌 Remarks:</strong> ${item.remarks}</p>` : ''}
                         </div>
 
                         ${item.status === 'pending' ? `
                             ${isLeadAdmin ? `
                                 <div class="assign-area">
-                                    <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block;">Assign Creative Team:</label>
+                                    <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block;">1. Select Creative Team (Multiple Allowed):</label>
                                     <div class="designer-grid">
                                         ${designersMY.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
                                         ${designersID.map(d => `<label class="check-item"><input type="checkbox" value="${d}" class="cb-${item.job_id}"> ${d}</label>`).join('')}
                                     </div>
+
+                                    <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block;">2. Paste Creative Playbook Link here:</label>
+                                    <input type="text" id="playbook-${item.job_id}" placeholder="https://docs.google.com/presentation/d/..." style="margin-bottom: 15px; border: 1px dashed #94a3b8; background: #f8fafc;">
+
                                     <div class="action-buttons">
-                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve">✅ Approve & Assign</button>
+                                        <button onclick="approveJob('${item.job_id}', '${item.client_name}', '${item.project_title}')" class="btn-action btn-approve">✅ Approve, Assign & Save Link</button>
                                         <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
                                     </div>
                                 </div>
                             ` : `
-                                <div class="locked-msg">⏳ Status: Awaiting Creative Lead Assignment.</div>
+                                <div class="locked-msg">⏳ Status: Reviewing requirements. Awaiting Creative Lead Assignment.</div>
                             `}
                         ` : `
                             <div class="assign-area">
                                 <div class="job-details" style="background: transparent; border: none; padding: 0; margin-bottom: 15px;">
                                     <div class="detail-item"><span>Assigned Team</span><strong>${item.assignee}</strong></div>
-                                    <div class="detail-item"><span>Playbook Link</span><strong><a href="${item.link_to_slides || PLAYBOOK_MASTER}" target="_blank" style="color:#0284c7;">View Slides</a></strong></div>
+                                    <div class="detail-item"><span>Playbook Link</span><strong><a href="${item.playbook_link || '#'}" target="_blank" style="color:#0284c7;">Open Playbook Slides</a></strong></div>
                                 </div>
                                 ${isLeadAdmin ? `
                                     <div class="action-buttons">
-                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.link_to_slides}')" class="btn-action btn-copy">📋 Msg Requester</button>
-                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.link_to_slides}')" class="btn-action btn-copy">📋 Msg Team</button>
+                                        <button onclick="copyText('requester', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Copy Msg for Requester</button>
+                                        <button onclick="copyText('team', '${item.job_id}', '${item.client_name}', '${item.project_title}', '${item.assignee}', '${item.deadline}', '${item.playbook_link}')" class="btn-action btn-copy">📋 Copy Msg for Team</button>
                                         <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete">🗑️ Delete</button>
                                     </div>
                                 ` : ``}
