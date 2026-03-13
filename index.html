@@ -41,7 +41,7 @@
         body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; display: flex; min-height: 100vh; position: relative; transition: background 0.3s, color 0.3s; overflow-x: hidden; }
         body.no-scroll { overflow: hidden; }
 
-        /* APPLE-STYLE DYNAMIC INTRO PAGE */
+        /* 🌟 APPLE-STYLE DYNAMIC INTRO PAGE (STAGGERED ANIMATION) 🌟 */
         .intro-overlay { 
             position: fixed; top: 0; left: 0; width: 100%; height: 100vh; 
             background-color: var(--bg-main); 
@@ -58,21 +58,30 @@
             100% { transform: translate(10%, 15%) scale(1.1); }
         }
 
-        .intro-content { position: relative; z-index: 1; text-align: center; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; opacity: 0; transform: translateY(40px); padding: 20px; }
-        .intro-badge { display: inline-block; padding: 6px 16px; border-radius: 30px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; background: transparent; color: var(--text-muted); border: 1px solid var(--border-main); margin-bottom: 25px; backdrop-filter: blur(5px); }
-        .intro-title { font-size: 4.5rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text-strong); margin: 0 0 15px 0; line-height: 1.1; }
-        .intro-subtitle { font-size: 1.3rem; color: var(--text-muted); font-weight: 400; margin: 0 0 50px 0; letter-spacing: -0.01em; }
+        .intro-content { position: relative; z-index: 1; text-align: center; padding: 20px; }
+        
+        /* Staggered Elements */
+        .intro-logo { max-width: 260px; height: auto; margin: 0 auto 25px auto; display: block; opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; transition: 0.3s; }
+        [data-theme="dark"] .intro-logo { background: rgba(255, 255, 255, 0.95); padding: 15px 30px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
+        
+        .intro-title { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text-strong); margin: 0 0 10px 0; line-height: 1.1; opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s forwards; }
+        .intro-subtitle { font-size: 1.2rem; color: var(--text-muted); font-weight: 400; margin: 0 0 40px 0; letter-spacing: -0.01em; opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s forwards; }
+        .intro-btn-wrapper { opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.45s forwards; }
+        
         .intro-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--text-strong); color: var(--bg-main); border: none; padding: 18px 45px; border-radius: 40px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         .intro-btn:hover { transform: scale(1.05); box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
         .hide-intro { opacity: 0; transform: scale(1.03); pointer-events: none; }
-        @keyframes slideUpFade { to { opacity: 1; transform: translateY(0); } }
+        
+        @keyframes slideUpFade {
+            0% { opacity: 0; transform: translateY(40px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
 
         /* SIDEBAR & CUSTOM LOGO */
         .sidebar { width: 260px; border-right: 1px solid var(--border-main); padding: 40px 20px; background: var(--bg-sidebar); position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; display: flex; flex-direction: column; transition: 0.3s; }
         
         .logo-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 30px; }
         .brand-logo { max-width: 170px; height: auto; display: block; transition: 0.3s; }
-        /* Dynamic Dark Mode Fix for Logo with black text */
         [data-theme="dark"] .brand-logo { background: rgba(255, 255, 255, 0.95); padding: 8px 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
         
         .logo-sub { font-size: 0.65rem; color: var(--text-muted); font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 10px; }
@@ -233,8 +242,9 @@
         
         @media (max-width: 768px) {
             body { flex-direction: column; }
-            .intro-title { font-size: 2.8rem; }
-            .intro-subtitle { font-size: 1.1rem; }
+            .intro-logo { max-width: 200px; }
+            .intro-title { font-size: 2.5rem; }
+            .intro-subtitle { font-size: 1.05rem; }
             .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; border-bottom: 1px solid var(--border-main); z-index: 10; }
             .main-content { margin-left: 0; padding: 20px; width: 100%; }
             .bottom-actions { margin-top: 20px; flex-direction: row; }
@@ -260,12 +270,17 @@
         <div class="intro-ambient-1"></div>
         <div class="intro-ambient-2"></div>
         <div class="intro-content">
-            <div class="intro-badge">System 2.0</div>
-            <h1 class="intro-title">Adtechinno Creative.</h1>
+            <img src="AdTechinno.png" alt="AdTechinno" class="intro-logo">
+            
+            <h1 class="intro-title">Creative Request.</h1>
+            
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
-            <button class="intro-btn" onclick="startApp()">
-                Start Now <i data-lucide="arrow-right" style="width: 20px;"></i>
-            </button>
+            
+            <div class="intro-btn-wrapper">
+                <button class="intro-btn" onclick="startApp()">
+                    Start Now <i data-lucide="arrow-right" style="width: 20px;"></i>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -494,7 +509,7 @@
             lucide.createIcons();
         }
 
-        // 🌟 INTRO MOUSE TRACKING LOGIC 🌟
+        // INTRO MOUSE TRACKING LOGIC
         document.addEventListener('mousemove', (e) => {
             const intro = document.getElementById('introPage');
             if(intro && intro.style.display !== 'none' && !intro.classList.contains('hide-intro')) {
