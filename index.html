@@ -66,7 +66,7 @@
         .stat-box h4 { margin: 0; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
         .stat-box p { margin: 10px 0 0; font-size: 2.2rem; font-weight: 600; color: var(--text-strong); }
         .dash-grid-top { display: grid; grid-template-columns: 2fr 1fr; gap: 25px; margin-bottom: 25px; }
-        .dash-grid-bottom { display: grid; grid-template-columns: 1fr; gap: 25px; display: none; /* Hidden by default */ }
+        .dash-grid-bottom { display: grid; grid-template-columns: 1fr; gap: 25px; display: none; }
         .dash-card { background: var(--bg-card); border: 1px solid var(--border-main); border-radius: 12px; padding: 25px; box-shadow: var(--shadow); overflow: hidden; transition: 0.3s; }
         .dash-card h3 { margin-top: 0; font-size: 1rem; color: var(--text-strong); border-bottom: 1px solid var(--border-main); padding-bottom: 15px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
         .table-responsive { overflow-x: auto; width: 100%; }
@@ -147,6 +147,10 @@
         .btn-delete:hover { background: rgba(239, 68, 68, 0.1); }
         .locked-msg { padding: 15px; background: var(--bg-box); border: 1px dashed var(--border-main); border-radius: 8px; text-align: center; color: var(--text-muted); font-size: 0.85rem; font-weight: 500; }
         
+        /* MONTHLY GROUPING STYLES */
+        .month-group-header { margin-top: 35px; margin-bottom: 15px; color: var(--text-strong); border-bottom: 2px solid var(--border-main); padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 1.15rem; font-weight: 700; }
+        .month-group-badge { font-size: 0.75rem; background: var(--bg-box); padding: 5px 12px; border-radius: 20px; color: var(--text-muted); border: 1px solid var(--border-main); font-weight: 600; }
+
         /* EDIT MODAL */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
         .modal-content { background: var(--bg-card); padding: 35px; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: var(--shadow); border: 1px solid var(--border-main); }
@@ -183,7 +187,7 @@
     <div id="introPage" class="intro-overlay">
         <div class="intro-content">
             <div class="intro-badge">System 2.0</div>
-            <h1 class="intro-title">Adtechinno Creative Engine.</h1>
+            <h1 class="intro-title">Creative Engine.</h1>
             <p class="intro-subtitle">Streamlining the creative workflow.</p>
             <button class="intro-btn" onclick="startApp()">Start Now</button>
         </div>
@@ -423,12 +427,12 @@
             if(securePin) { 
                 btn.innerHTML = 'Admin Unlocked'; 
                 btn.classList.add('unlocked'); 
-                if(radar) radar.style.display = 'grid'; // Show Radar
+                if(radar) radar.style.display = 'grid';
             } 
             else { 
                 btn.innerHTML = 'Admin Access'; 
                 btn.classList.remove('unlocked'); 
-                if(radar) radar.style.display = 'none'; // Hide Radar
+                if(radar) radar.style.display = 'none';
             }
         }
 
@@ -806,6 +810,7 @@
             } catch (err) { console.error("Error loading data:", err); }
         }
 
+        // 🌟 MONTHLY GROUPING LOGIC 🌟
         function renderBoards() {
             if(!globalData || globalData.length === 0) return;
 
@@ -828,8 +833,44 @@
                 const workloadJobs = [...pendingData, ...activeData];
                 document.getElementById('projectList').innerHTML = workloadJobs.length ? workloadJobs.map(item => generateJobCard(item, false)).join('') : '<p style="color:var(--text-muted);">No matching requests found.</p>';
             }
+            
             if(document.getElementById('done').classList.contains('active')) {
-                document.getElementById('doneList').innerHTML = doneData.length ? doneData.map(item => generateJobCard(item, true)).join('') : '<p style="color:var(--text-muted);">No matching tasks found.</p>';
+                if (doneData.length === 0) {
+                    document.getElementById('doneList').innerHTML = '<p style="color:var(--text-muted);">No matching tasks found.</p>';
+                } else {
+                    const groupedDone = {};
+                    doneData.forEach(item => {
+                        let sortKey = "0000-00";
+                        let displayLabel = "No Date";
+                        if(item.deadline) {
+                            const d = new Date(item.deadline);
+                            if(!isNaN(d)) {
+                                sortKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
+                                const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                                displayLabel = `${months[d.getMonth()]} ${d.getFullYear()}`;
+                            }
+                        }
+                        if(!groupedDone[sortKey]) groupedDone[sortKey] = { label: displayLabel, tasks: [] };
+                        groupedDone[sortKey].tasks.push(item);
+                    });
+
+                    // Sort so newest month is at the top
+                    const sortedKeys = Object.keys(groupedDone).sort((a, b) => b.localeCompare(a));
+                    
+                    let doneHtml = '';
+                    sortedKeys.forEach(key => {
+                        const group = groupedDone[key];
+                        doneHtml += `
+                            <h3 class="month-group-header">
+                                ${group.label} 
+                                <span class="month-group-badge">${group.tasks.length} Tasks</span>
+                            </h3>
+                        `;
+                        doneHtml += group.tasks.map(item => generateJobCard(item, true)).join('');
+                    });
+                    
+                    document.getElementById('doneList').innerHTML = doneHtml;
+                }
             }
         }
 
