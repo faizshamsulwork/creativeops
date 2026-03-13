@@ -3,30 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Ops v12</title>
+    <title>Adtechinno | Creative Ops v13</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         :root { --muji-bg: #fdfcfb; --muji-text: #3c3c3c; --muji-border: #e6e6e6; }
         body { font-family: 'Inter', sans-serif; background: var(--muji-bg); color: var(--muji-text); margin: 0; display: flex; flex-direction: row; min-height: 100vh; }
+        
+        /* Sidebar Navigation */
         .sidebar { width: 260px; border-right: 1px solid var(--muji-border); padding: 40px 20px; background: #fff; position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; }
         .logo { font-weight: 700; letter-spacing: 3px; margin-bottom: 40px; font-size: 1.1rem; text-align: center; }
         .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #888; border-radius: 6px; margin-bottom: 5px; transition: 0.2s; }
         .nav-item:hover, .nav-item.active { background: #f5f5f5; color: #000; font-weight: 600; }
+
+        /* Main Content Area */
         .main-content { margin-left: 260px; padding: 40px; width: 100%; box-sizing: border-box; }
         .page { display: none; max-width: 850px; margin: 0 auto; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
+
+        /* UI Components */
         .card { background: white; border: 1px solid var(--muji-border); padding: 30px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.03); }
         .form-section { border-bottom: 1px solid #f0f0f0; padding-bottom: 20px; margin-bottom: 25px; }
         .form-section h3 { font-size: 0.85rem; margin-bottom: 15px; color: #000; border-left: 3px solid #000; padding-left: 12px; text-transform: uppercase; }
+        
         label { display: block; font-size: 0.75rem; font-weight: 600; margin-bottom: 8px; color: #666; text-transform: uppercase; }
         input, select, textarea { width: 100%; padding: 12px; border: 1px solid var(--muji-border); border-radius: 6px; font-size: 0.9rem; margin-bottom: 15px; box-sizing: border-box; font-family: inherit; }
-        .checkbox-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; }
+
+        /* FIXED CHECKBOX GROUP (v13 Update) */
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            line-height: 1.2;
+        }
+        .checkbox-item input {
+            width: 18px;
+            height: 18px;
+            margin: 0;
+            cursor: pointer;
+        }
+
         .btn-submit { background: #000; color: #fff; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 0.9rem; }
         .badge { font-size: 0.65rem; padding: 4px 10px; border-radius: 12px; font-weight: 600; text-transform: uppercase; }
         .status-pending { background: #fff7ed; color: #9a3412; }
         .status-approved { background: #f0fdf4; color: #166534; }
-        @media (max-width: 768px) { body { flex-direction: column; } .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; } .main-content { margin-left: 0; padding: 20px; } }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; }
+            .main-content { margin-left: 0; padding: 20px; }
+            .checkbox-group { grid-template-columns: 1fr; }
+        }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
@@ -82,18 +119,18 @@
 
                 <div class="form-section">
                     <h3>2. Project Details</h3>
-                    <label>Client Name</label><input type="text" id="pClient">
-                    <label>Project Title</label><input type="text" id="pTitle">
+                    <label>Client Name</label><input type="text" id="pClient" placeholder="e.g. Adtechinno">
+                    <label>Project Title</label><input type="text" id="pTitle" placeholder="e.g. Social Media Raya Assets">
                 </div>
 
                 <div class="form-section">
-                    <h3>3. Job Type</h3>
+                    <h3>3. Job Type (Select all that apply)</h3>
                     <div class="checkbox-group" id="jobTypes">
-                        <label class="checkbox-item"><input type="checkbox" value="Poster/Graphic"> Poster/Graphic</label>
-                        <label class="checkbox-item"><input type="checkbox" value="Video Production"> Video Production</label>
-                        <label class="checkbox-item"><input type="checkbox" value="Copywriting/Article"> Copywriting/Article</label>
-                        <label class="checkbox-item"><input type="checkbox" value="Presentation Deck"> Presentation Deck</label>
-                        <label class="checkbox-item"><input type="checkbox" value="Monthly Content Plan"> Monthly Content Plan</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Poster/Graphic"> <span>Poster/Graphic</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Video Production"> <span>Video Production</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Copywriting/Article"> <span>Copywriting/Article</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Presentation Deck"> <span>Presentation Deck</span></label>
+                        <label class="checkbox-item"><input type="checkbox" value="Monthly Content Plan"> <span>Monthly Content Plan</span></label>
                     </div>
                 </div>
 
@@ -101,10 +138,10 @@
                     <h3>4. Briefing</h3>
                     <label>Objective</label>
                     <select id="pObjective"><option>Traffic</option><option>Awareness</option><option>Sales</option><option>Other</option></select>
-                    <label>Key Briefing Points</label><textarea id="pBrief" rows="4"></textarea>
-                    <label>Ref/Moodboard Link</label><input type="text" id="pRefLink">
+                    <label>Key Briefing Points</label><textarea id="pBrief" rows="4" placeholder="Brief details here..."></textarea>
+                    <label>Ref/Moodboard Link</label><input type="text" id="pRefLink" placeholder="Google Drive/Slides link">
                     <label>Deadline</label><input type="date" id="pDeadline">
-                    <label>Remarks</label><textarea id="pRemarks" rows="2"></textarea>
+                    <label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea>
                 </div>
                 <button class="btn-submit" onclick="submitRequest()">Submit Request</button>
             </div>
@@ -112,6 +149,7 @@
     </div>
 
     <script>
+        // YOUR API URL
         const SHEETDB_API = 'https://sheetdb.io/api/v1/v1fao9lzfm9u7';
         
         const myTeam = ["MY-Abel", "MY-Simon", "MY-Alya", "MY-Steven", "MY-Aaron", "MY-Faiz"];
@@ -129,7 +167,7 @@
             const requester = document.getElementById('requesterName').value;
             const client = document.getElementById('pClient').value;
             const deadline = document.getElementById('pDeadline').value;
-            if(!requester || !client || !deadline) return alert("Please fill required fields!");
+            if(!requester || !client || !deadline) return alert("Please fill in required fields (Name, Client, Deadline)!");
 
             const selectedTypes = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
             const jobID = `AT26-${Math.floor(Date.now() / 1000).toString().slice(-3)}`;
@@ -161,13 +199,17 @@
                 if(response.ok) {
                     alert("Success! Request sent to Google Sheets.");
                     showPage('workload');
+                    // Reset form
+                    document.getElementById('pClient').value = "";
+                    document.getElementById('pTitle').value = "";
+                    document.querySelectorAll('#jobTypes input').forEach(c => c.checked = false);
                 }
             } catch (err) { alert("Error: " + err.message); }
         }
 
         async function assignWork(jobID) {
             const designer = document.getElementById('assign-' + jobID).value;
-            if(designer === 'Unassigned') return alert("Select designer!");
+            if(designer === 'Unassigned') return alert("Select a designer!");
 
             try {
                 const response = await fetch(`${SHEETDB_API}/job_id/${jobID}`, {
@@ -198,17 +240,17 @@
                         <p style="font-size:0.8rem; color:#666;">By: ${item.requester_name} | Type: ${item.job_type} | Due: ${item.deadline}</p>
                         ${item.status === 'pending' ? `
                             <div style="margin-top:10px;">
-                                <select id="assign-${item.job_id}" style="padding:8px; font-size:0.8rem; width:auto; display:inline-block; margin-right:5px;">
+                                <select id="assign-${item.job_id}" style="padding:10px; font-size:0.8rem; width:auto; display:inline-block; margin-right:5px;">
                                     <option value="Unassigned">-- Assign Designer --</option>
                                     <optgroup label="Malaysia">${myTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
                                     <optgroup label="Indonesia">${idTeam.map(t => `<option value="${t}">${t}</option>`).join('')}</optgroup>
                                 </select>
-                                <button onclick="assignWork('${item.job_id}')" style="padding:8px 15px; font-size:0.8rem; background:#000; color:#fff; border:none; border-radius:5px; cursor:pointer;">Assign</button>
+                                <button onclick="assignWork('${item.job_id}')" style="padding:10px 15px; font-size:0.8rem; background:#000; color:#fff; border:none; border-radius:6px; cursor:pointer;">Approve</button>
                             </div>
-                        ` : `<p style="font-size:0.8rem; background:#f9f9f9; padding:10px; border-radius:5px;"><strong>Assigned to:</strong> ${item.assignee}</p>`}
+                        ` : `<p style="font-size:0.8rem; background:#f9f9f9; padding:12px; border-radius:6px; border-left:4px solid #000;"><strong>Assigned to:</strong> ${item.assignee}</p>`}
                     </div>
                 `).join('') : '<p>No active projects found.</p>';
-            } catch (err) { document.getElementById('projectList').innerHTML = "Check connection or API URL."; }
+            } catch (err) { document.getElementById('projectList').innerHTML = "Could not fetch data. Check API URL."; }
         }
 
         window.onload = fetchAndRender;
