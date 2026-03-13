@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adtechinno | Creative Engine v27</title>
+    <title>Adtechinno | Creative Engine v28</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root { --muji-bg: #f8f9fa; --muji-text: #2d3748; --muji-border: #e2e8f0; --accent: #0f172a; --red: #ef4444; --green: #10b981; --orange: #f59e0b; }
@@ -13,13 +13,14 @@
         .logo { font-weight: 800; letter-spacing: 2px; margin-bottom: 30px; font-size: 1.2rem; text-align: center; color: var(--accent); line-height: 1.2; }
         .logo-sub { display: block; font-size: 0.65rem; color: #64748b; font-weight: 600; letter-spacing: 1px; margin-top: 4px; text-transform: uppercase; }
         
-        .nav-group { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+        .nav-group { display: flex; flex-direction: column; gap: 8px; width: 100%; flex: 1; }
         .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: #64748b; border-radius: 8px; transition: 0.2s; display: flex; align-items: center; font-weight: 500; }
         .nav-item:hover, .nav-item.active { background: #f1f5f9; color: var(--accent); font-weight: 600; }
         .btn-new-request { background: var(--accent); color: #fff !important; margin-top: 20px; justify-content: center; text-align: center; }
         .btn-new-request:hover { background: #334155; }
 
-        .admin-toggle { position: absolute; top: 20px; right: 40px; padding: 10px 18px; background: #fff; border: 1px solid var(--muji-border); color: #64748b; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); z-index: 100; }
+        /* Admin Toggle moved to bottom left */
+        .admin-toggle { margin-top: auto; padding: 12px 18px; background: #fff; border: 1px solid var(--muji-border); color: #64748b; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02); width: 100%; text-align: center; }
         .admin-toggle:hover { border-color: #cbd5e1; color: var(--accent); }
         .admin-toggle.unlocked { background: var(--green); color: #fff; border-color: var(--green); }
 
@@ -57,7 +58,7 @@
         .wl-fill { height: 100%; border-radius: 4px; transition: width 1s ease-in-out; }
 
         /* Forms & Cards */
-        .card { background: white; border: 1px solid var(--muji-border); padding: 35px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
+        .card { background: white; border: 1px solid var(--muji-border); padding: 35px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); transition: 0.2s; }
         .section-title { font-size: 1.1rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-top: 0; margin-bottom: 20px; font-weight: 600; }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 20px; }
         .input-group { display: flex; flex-direction: column; gap: 8px; }
@@ -87,14 +88,14 @@
         .brief-box p { margin: 0 0 10px 0; }
         .brief-box p:last-child { margin: 0; }
         
-        /* 🌟 WORK STATUS DROPDOWN STYLES 🌟 */
-        .ws-select { padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: center; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        /* 🌟 WORK STATUS STYLES 🌟 */
+        .ws-select { padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; text-align: left; color: white; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: fit-content; }
         .ws-select:hover { filter: brightness(0.9); }
-        .ws-not-started { background: #404040; color: white; }
-        .ws-drafting { background: #fde68a; color: #92400e; }
-        .ws-internal-review { background: #bae6fd; color: #0369a1; }
-        .ws-client-review { background: #5b21b6; color: white; }
-        .ws-done { background: #15803d; color: white; }
+        .ws-not-started { background: #64748b; color: white; }
+        .ws-drafting { background: #f59e0b; color: white; }
+        .ws-internal-review { background: #0ea5e9; color: white; }
+        .ws-client-review { background: #8b5cf6; color: white; }
+        .ws-done { background: #10b981; color: white; }
         .ws-badge { display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; text-align: center; }
 
         .assign-area { border-top: 1px solid #e2e8f0; padding-top: 20px; }
@@ -113,7 +114,7 @@
             body { flex-direction: column; }
             .sidebar { width: 100%; height: auto; position: relative; padding: 20px; border-right: none; border-bottom: 1px solid var(--muji-border); }
             .main-content { margin-left: 0; padding: 20px; width: 100%; }
-            .admin-toggle { position: relative; top: 0; right: 0; width: 100%; margin-bottom: 20px; text-align: center; }
+            .admin-toggle { margin-top: 20px; }
             .nav-group { flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
             .nav-item { flex: 1; min-width: 100px; padding: 10px; margin: 0; font-size: 0.8rem; justify-content: center; }
             .btn-new-request { margin-top: 0; width: 100%; flex: 100%; }
@@ -132,7 +133,6 @@
 <body>
 
     <div class="sidebar">
-        <button id="adminBtn" class="admin-toggle" onclick="toggleAdmin()">🔒 Lead Access</button>
         <div class="logo">
             Adtechinno
             <span class="logo-sub">Creative Request</span>
@@ -143,6 +143,7 @@
             <div class="nav-item" id="btn-done" onclick="showPage('done')">✅ Done Tasks</div>
             <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')">+ New Request</div>
         </div>
+        <button id="adminBtn" class="admin-toggle" onclick="toggleAdmin()">🔒 Lead Access</button>
     </div>
 
     <div class="main-content">
@@ -178,7 +179,7 @@
 
         <div id="workload" class="page">
             <h1 style="margin-bottom: 5px;">Request Status Board</h1>
-            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">Track progress. Change Work Status to 'Done' to move jobs to the Done tab.</p>
+            <p style="color: #64748b; margin-bottom: 30px; font-size: 0.9rem;">Track progress. Only Lead can update Work Status. 'Done' tasks move to archive.</p>
             <div id="projectList">Loading data...</div>
         </div>
 
@@ -320,13 +321,13 @@
                 if(pin === "2026") {
                     localStorage.setItem('adtech_lead_access', 'true');
                     isLeadAdmin = true;
-                    alert("Welcome Lead! You can now manage assignments.");
+                    alert("Welcome Lead! You can now manage assignments and update work status.");
                 } else {
                     alert("Incorrect PIN.");
                 }
             }
             checkAdminUI();
-            fetchAndRender(); // Re-render to show/hide buttons
+            fetchAndRender(); 
         }
         checkAdminUI();
 
@@ -410,7 +411,6 @@
             } catch(e) { alert("Error: " + e.message); }
         }
 
-        // 🔥 NEW: Update Work Status Logic 🔥
         async function updateWorkStatus(jobID, newStatus) {
             try {
                 await fetch(`${SHEETDB_API}/job_id/${jobID}`, { 
@@ -418,7 +418,7 @@
                     headers: {'Content-Type': 'application/json'}, 
                     body: JSON.stringify({data: {work_status: newStatus}})
                 });
-                if(newStatus === 'Done') alert("Job marked as Done! It has been moved to the Done Tasks tab.");
+                if(newStatus === 'Done') alert("Job marked as Done! Moved to the Done Tasks tab.");
                 fetchAndRender();
             } catch(e) { alert("Error updating status: " + e.message); }
         }
@@ -438,13 +438,17 @@
             alert("Message copied to clipboard! Ready to paste.");
         }
 
-        // Generator for Job Cards to avoid repeating code
+        // 🔥 MODIFIED: Color Signal & Locked Dropdown Logic 🔥
         function generateJobCard(item, isDoneTab = false) {
             const ws = item.work_status || 'Not started';
             const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
             
+            // Minimalist Color Border Logic
+            const borderColors = { 'Not started': '#64748b', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
+            const borderColor = borderColors[ws] || '#cbd5e1';
+            
             return `
-                <div class="card">
+                <div class="card" style="border-left: 6px solid ${borderColor}; padding-left: 29px;">
                     <div class="job-header">
                         <div><div class="job-id">${item.job_id}</div><h3 class="job-title">${item.client_name}: ${item.project_title}</h3></div>
                         <span class="badge status-${item.status}">${item.status === 'pending' ? 'PENDING' : 'APPROVED'}</span>
@@ -456,13 +460,17 @@
                         <div class="detail-item">
                             <span>Work Status</span>
                             ${item.status === 'pending' ? '<strong>-</strong>' : `
-                                <select onchange="updateWorkStatus('${item.job_id}', this.value)" class="ws-select ${wsClass}">
-                                    <option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option>
-                                    <option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option>
-                                    <option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option>
-                                    <option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option>
-                                    <option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option>
-                                </select>
+                                ${isLeadAdmin && !isDoneTab ? `
+                                    <select onchange="updateWorkStatus('${item.job_id}', this.value)" class="ws-select ${wsClass}">
+                                        <option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option>
+                                        <option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option>
+                                        <option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option>
+                                        <option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option>
+                                        <option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option>
+                                    </select>
+                                ` : `
+                                    <strong class="ws-badge ${wsClass}">${ws}</strong>
+                                `}
                             `}
                         </div>
                     </div>
@@ -503,7 +511,13 @@
                                 </div>
                             ` : ``}
                             ${isLeadAdmin && isDoneTab ? `
-                                <div class="action-buttons"><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:0;">🗑️ Delete Record</button></div>
+                                <div class="action-buttons">
+                                    <select onchange="updateWorkStatus('${item.job_id}', this.value)" class="ws-select" style="background:#475569;">
+                                        <option value="">Undo Status...</option>
+                                        <option value="Client Review">Move back to Review</option>
+                                    </select>
+                                    <button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="margin-left:auto;">🗑️ Delete Record</button>
+                                </div>
                             ` : ``}
                         </div>
                     `}
@@ -516,7 +530,6 @@
             const rawData = await res.json();
             const data = rawData.reverse();
             
-            // Separate Data Logic
             const pendingData = data.filter(d => d.status === 'pending');
             const activeData = data.filter(d => d.status === 'approved' && d.work_status !== 'Done');
             const doneData = data.filter(d => d.status === 'approved' && d.work_status === 'Done');
