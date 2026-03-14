@@ -35,7 +35,7 @@
             --overlay-bg: rgba(15, 23, 42, 0.85);
         }
 
-        /* THEME MORPH VIEW TRANSITIONS */
+        /* 🌟 THEME MORPH VIEW TRANSITIONS 🌟 */
         ::view-transition-old(root),
         ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
         ::view-transition-old(root) { z-index: 1; }
@@ -44,26 +44,24 @@
         body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; min-height: 100vh; overflow-x: hidden; }
         body.no-scroll { overflow: hidden; }
 
-        /* 🌟 APPLE SUCCESS ANIMATION OVERLAY 🌟 */
+        /* 🌟 APPLE NOTIFICATION OVERLAY (LIQUID GLASS) 🌟 */
         #successOverlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--overlay-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            background: var(--overlay-bg); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
             z-index: 10000; display: none; flex-direction: column; justify-content: center; align-items: center;
-            opacity: 0; transition: opacity 0.4s ease;
+            opacity: 0; transition: opacity 0.3s ease;
         }
         #successOverlay.show { display: flex; opacity: 1; }
         
         .success-icon-wrapper {
             width: 80px; height: 80px; border-radius: 50%; background: var(--green); 
-            display: flex; justify-content: center; align-items: center;
+            display: flex; justify-content: center; align-items: center; color: white;
             box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
             transform: scale(0);
         }
         #successOverlay.show .success-icon-wrapper { animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
         
-        .check-anim polyline {
-            stroke-dasharray: 24; stroke-dashoffset: 24;
-        }
+        .check-anim polyline { stroke-dasharray: 24; stroke-dashoffset: 24; }
         #successOverlay.show .check-anim polyline { animation: drawCheck 0.5s ease 0.3s forwards; }
         
         .success-text { margin-top: 25px; font-size: 1.5rem; font-weight: 800; color: var(--text-strong); letter-spacing: -0.02em; opacity: 0; transform: translateY(10px); }
@@ -100,7 +98,7 @@
 
         .intro-btn-wrapper { opacity: 0; animation: slideUpFade 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.6s forwards; }
         .intro-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; background: var(--text-strong); color: var(--bg-main); border: none; padding: 16px 30px; border-radius: 30px; font-size: 1.05rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .intro-btn:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); }
+        .intro-btn:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.15); background: var(--accent-hover); color: var(--accent-text); transform: scale(1.02); }
         .hide-intro { opacity: 0; pointer-events: none; }
         .hide-intro .intro-content { transform: scale(1.3) translateY(-30px); opacity: 0; filter: blur(15px); }
         @keyframes slideUpFade { 0% { opacity: 0; transform: translateY(40px); } 100% { opacity: 1; transform: translateY(0); } }
@@ -120,7 +118,10 @@
         .nav-item { padding: 12px 15px; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); border-radius: 8px; transition: 0.2s; display: flex; align-items: center; font-weight: 500; gap: 12px; }
         .nav-item i { width: 18px; height: 18px; }
         .nav-item:hover, .nav-item.active { background: var(--bg-box); color: var(--accent); font-weight: 600; }
+        
+        /* 🌟 FIX: NEW REQUEST BUTTON VISIBILITY 🌟 */
         .btn-new-request { background: var(--accent); color: var(--accent-text) !important; margin-top: 20px; justify-content: center; }
+        .btn-new-request.active { background: var(--accent-hover) !important; color: var(--accent-text) !important; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); }
         .btn-new-request:hover { background: var(--accent-hover); box-shadow: var(--shadow); }
         
         .bottom-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; width: 100%; }
@@ -159,7 +160,7 @@
         .stat-box p { margin: 15px 0 0; font-size: 2.5rem; font-weight: 700; color: var(--text-strong); line-height: 1; }
         
         .dash-grid-top { display: grid; grid-template-columns: 2fr 1fr; gap: 25px; margin-bottom: 25px; }
-        .dash-grid-bottom { display: grid; grid-template-columns: 1fr; gap: 25px; display: none; }
+        .dash-grid-bottom { display: grid; grid-template-columns: 1fr; gap: 25px; }
         .dash-card { background: var(--bg-card); border: 1px solid var(--border-main); border-radius: 12px; padding: 25px; box-shadow: var(--shadow); transition: 0.3s; }
         .dash-card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.04); }
         .dash-card h3 { margin-top: 0; font-size: 1rem; color: var(--text-strong); border-bottom: 1px solid var(--border-main); padding-bottom: 15px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
@@ -341,12 +342,12 @@
 
     <div id="successOverlay">
         <div class="success-icon-wrapper">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="check-anim">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="check-anim">
                 <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
         </div>
-        <div class="success-text">Request Submitted</div>
-        <div class="success-subtext" id="successJobId">Job ID</div>
+        <div class="success-text" id="successMainText">Request Submitted</div>
+        <div class="success-subtext" id="successSubText">Job ID</div>
     </div>
 
     <div id="introPage" class="intro-overlay">
@@ -467,7 +468,9 @@
                 <div class="dash-grid-bottom" id="radarContainer">
                     <div class="dash-card">
                         <h3>Team Capacity Radar (Active Jobs)</h3>
-                        <div class="workload-grid" id="team-workload">Loading data...</div>
+                        <div class="workload-grid" id="team-workload">
+                            <div class="empty-state"><i data-lucide="loader-2" class="spin"></i></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -690,6 +693,24 @@
             } catch (e) {
                 console.log("Audio not supported or blocked.");
             }
+        }
+
+        // 🌟 APPLE GLASS NOTIFICATION SYSTEM 🌟
+        let notifTimeout;
+        function showNotification(title, subtitle, callback) {
+            playSuccessSound();
+            const overlay = document.getElementById('successOverlay');
+            document.getElementById('successMainText').innerText = title;
+            document.getElementById('successSubText').innerText = subtitle || '';
+            document.getElementById('successSubText').style.display = subtitle ? 'block' : 'none';
+            
+            overlay.classList.add('show');
+            
+            clearTimeout(notifTimeout);
+            notifTimeout = setTimeout(() => {
+                overlay.classList.remove('show');
+                if (callback) setTimeout(callback, 400); // Wait for fade out
+            }, 2000);
         }
 
         document.addEventListener('mousemove', (e) => {
@@ -920,7 +941,7 @@
             if(securePin) {
                 localStorage.removeItem('adtech_lead_pin');
                 securePin = null;
-                alert("Admin Access locked. View-only mode active.");
+                showNotification('Admin Locked', 'View-only mode active');
                 checkAdminUI();
                 renderBoards();
             } else {
@@ -932,7 +953,7 @@
                     if(res.status === "success") {
                         localStorage.setItem('adtech_lead_pin', pin);
                         securePin = pin;
-                        alert("Welcome Admin! You can now manage assignments and update work status.");
+                        showNotification('Admin Unlocked', 'You can now manage assignments');
                         checkAdminUI();
                         renderBoards();
                     } else {
@@ -1020,13 +1041,6 @@
                 const res = await gasPost(payload);
                 if(res.status === "success") {
                     
-                    // 🌟 TRIGGER SUCCESS ANIMATION & SOUND 🌟
-                    playSuccessSound();
-                    document.getElementById('successJobId').innerText = `Job ID: ${jobID}`;
-                    const overlay = document.getElementById('successOverlay');
-                    overlay.classList.add('show');
-
-                    // Fire telegram silently
                     fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[NEW REQUEST]%0AID: ${jobID}%0AClient: ${client}%0ABy: ${name}&parse_mode=Markdown`);
                     
                     // Clear the form in the background
@@ -1045,17 +1059,14 @@
                         if (!found) document.getElementById('manualName').value = savedName;
                     }
 
-                    // Wait 2.5s, then hide overlay and go to dashboard
-                    setTimeout(() => {
-                        overlay.classList.remove('show');
-                        setTimeout(() => {
-                            showPage('dashboard');
-                            fetchAndRender();
-                            submitBtn.innerHTML = originalText;
-                            submitBtn.disabled = false;
-                            refreshIcons();
-                        }, 400); // Wait for fade out
-                    }, 2500);
+                    // Show Apple Style Notification & Redirect
+                    showNotification('Request Submitted', `Job ID: ${jobID}`, () => {
+                        showPage('dashboard');
+                        fetchAndRender(); 
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.disabled = false;
+                        refreshIcons();
+                    });
 
                 } else { throw new Error(res.message); }
             } catch(e) { 
@@ -1081,7 +1092,7 @@
                 if(res.status !== "success") throw new Error(res.message);
 
                 await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=[APPROVED]%0AJob: ${jobID}%0AClient: ${client}%0APIC: ${selectedDesigners}%0APlaybook: ${playbookLink}&parse_mode=Markdown`);
-                alert("Job Approved & Messages Ready.");
+                showNotification('Job Approved', 'Ready for production');
                 fetchAndRender();
             } catch(e) { alert("Error: " + e.message); }
         }
@@ -1090,6 +1101,9 @@
             const job = globalData.find(d => d.job_id === jobID);
             const oldStatus = job ? job.work_status : 'Not started';
             if (job) { job.work_status = newStatus; renderBoards(); renderDashboard(); }
+            
+            showNotification('Status Updated', newStatus);
+
             try {
                 const payload = { action: 'update', pin: securePin, data: { job_id: jobID, work_status: newStatus } };
                 const res = await gasPost(payload);
@@ -1108,6 +1122,7 @@
             if (newRev < 0) newRev = 0;
             const oldRev = job.revision;
             job.revision = newRev; renderBoards();
+            
             try {
                 const payload = { action: 'update', pin: securePin, data: { job_id: jobID, revision: newRev } };
                 const res = await gasPost(payload);
@@ -1153,7 +1168,7 @@
                 const payload = { action: 'update', pin: securePin, data: { job_id: jobID, client_name: client, project_title: title, deadline: deadline } };
                 const res = await gasPost(payload);
                 if(res.status !== "success") throw new Error(res.message);
-                alert("Request details updated successfully.");
+                showNotification('Request Updated', '');
                 closeEditModal(); fetchAndRender(); 
             } catch(e) { alert("Error updating: " + e.message); } 
             finally { btn.innerHTML = 'Update Request'; btn.disabled = false; }
@@ -1176,7 +1191,9 @@
             if (type === 'requester') msg = `Hi! Your creative request has been APPROVED.\n\nJob ID: ${jobID}\nProject: ${client} - ${title}\nDeadline: ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
             else if (type === 'team') msg = `[NEW ASSIGNED JOB]\n\nTeam: ${assignee}\nJob ID: ${jobID}\nClient: ${client} - ${title}\nDeadline: ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions.`;
             else if (type === 'review') msg = `[CREATIVE READY FOR REVIEW]\n\nClient: ${client}\nProject: ${title}\n\nHi ${requesterName}, the creatives are now ready for your review. You can check the drafts via the link below:\n${link}\n\nPlease let us know if there are any further amendments or if we can proceed to final. Thank you!`;
-            navigator.clipboard.writeText(msg); alert("Message copied to clipboard.");
+            
+            navigator.clipboard.writeText(msg); 
+            showNotification('Message Copied', 'Clipboard updated');
         }
 
         function generateJobCard(item, isDoneTab = false) {
