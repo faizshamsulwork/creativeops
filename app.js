@@ -604,12 +604,17 @@ function renderDashboard() {
     
     document.getElementById('total-val').innerText = data.length; document.getElementById('pending-val').innerText = pendingData.length; document.getElementById('active-val').innerText = activeData.length;
 
-    const maxRecent = window.innerWidth <= 992 ? 3 : 5; const recent5 = data.slice(0, maxRecent);
-    document.getElementById('recent-list').innerHTML = recent5.length ? recent5.map((d, index) => `<tr onclick="if(typeof openDetailModal === 'function') openDetailModal('${d.job_id}')" class="clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" title="Click to view details"><td><span class="job-id-pill">${d.job_id} ${getFlag(d.region)}</span></td><td><div class="td-client">${d.client_name}</div><div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;">${d.project_title}</div></td><td>${formatDate(d.deadline)}</td><td style="text-align:center;"><div style="font-size:1.2rem; cursor:help;" title="${String(d.status || '').toUpperCase()}">${String(d.status || '').toLowerCase() === 'pending' ? '⏳' : '✅'}</div></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px;"><i data-lucide="inbox"></i><p>No requests yet.</p></div></td></tr>';
-
+    const maxRecent = window.innerWidth <= 992 ? 3 : 5; 
+    // TAMBAHAN BARU: Susun data ikut tarikh dicipta (atau deadline) sebelum dipotong
+    const sortedData = [...data].sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+        const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+        return dateB - dateA; // Susunan menurun (paling baru di atas)
+    });
+    const recent5 = sortedData.slice(0, maxRecent);
     const today = new Date(); today.setHours(0,0,0,0); const nextWeek = new Date(today); nextWeek.setDate(today.getDate() + 7);
     const urgentJobs = activeData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); return dDate >= today && dDate <= nextWeek; }).sort((a,b) => new Date(a.deadline) - new Date(b.deadline));
-    document.getElementById('urgent-list').innerHTML = urgentJobs.length ? urgentJobs.map((u, index) => `<div class="urgent-item clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${u.job_id}')" title="Click to view details"><div style="flex:1; overflow:hidden; padding-right:10px;"><div class="urgent-client">${u.client_name}</div><div class="urgent-meta"><span class="job-id-pill" style="padding: 2px 6px; font-size: 0.65rem;">${u.job_id} ${getFlag(u.region)}</span> • ${u.assignee}</div></div><div class="urgent-date">${formatDate(u.deadline)}</div></div>`).join('') : '<div class="empty-state" style="padding:20px;"><i data-lucide="coffee"></i><p>Relax, no urgent deadlines.</p></div>';
+    document.getElementById('urgent-list').innerHTML = urgentJobs.length ? urgentJobs.map((u, index) => `<div class="urgent-item clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${u.job_id}')" title="Click to view details"><div style="flex:1; overflow:hidden; padding-right:10px;"><div class="urgent-client">${u.client_name}</div><div class="urgent-meta"><span class="job-id-pill" style="padding: 2px 6px; font-size: 0.65rem;">${u.job_id} ${getFlag(u.region)}</span> • ...${u.assignee && u.assignee !== 'null' ? u.assignee : 'Unassigned'}</div></div>...<div class="urgent-date">${formatDate(u.deadline)}</div></div>`).join('') : '<div class="empty-state" style="padding:20px;"><i data-lucide="coffee"></i><p>Relax, no urgent deadlines.</p></div>';
 
     let currentPicList = []; if (finalRegion === 'Malaysia') currentPicList = дизайнериMY; else if (finalRegion === 'Indonesia') currentPicList = дизайнериID; else currentPicList = PIC_LIST; 
     document.getElementById('team-workload').innerHTML = currentPicList.map((pic, index) => {
@@ -729,7 +734,7 @@ function generateJobCard(item, isDoneTab = false, index = 0) {
         <div class="kanban-card stagger-card" style="border-left-color: ${borderColor}; animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${item.job_id}')">
             <div class="kb-header"><span class="kb-id">[${item.job_id}] ${getFlag(item.region)}</span><strong class="ws-badge ${wsClass}">${ws}</strong></div>
             <div class="kb-title">${item.client_name}: ${item.project_title} ${monthlyBadge}</div>
-            <div class="kb-footer"><div class="kb-pic"><i data-lucide="user"></i> ${item.assignee}</div><div class="kb-date"><i data-lucide="calendar"></i> ${formatDate(item.deadline)}</div></div>
+            <div class="kb-pic"><i data-lucide="user"></i> ${item.assignee && item.assignee !== 'null' ? item.assignee : 'Unassigned'}</div><div class="kb-date"><i data-lucide="calendar"></i> ${formatDate(item.deadline)}</div></div>
         </div>
     `;
 }
@@ -956,9 +961,12 @@ function openDetailModal(jobID, isUpdate = false) {
 
         const safeClient = String(item.client_name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
         const safeTitle = String(item.project_title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
-        const safeAssignee = String(item.assignee || '').replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
-        const safeRequester = String(item.requester_name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        // Bersihkan "null" awal-awal
+        const actualAssignee = (item.assignee && item.assignee !== 'null') ? item.assignee : 'Unassigned';
+        const actualRequester = (item.requester_name && item.requester_name !== 'null') ? item.requester_name : 'Unknown';
 
+        const safeAssignee = String(actualAssignee).replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
+        const safeRequester = String(actualRequester).replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const ws = String(item.work_status || 'Not started'); 
         const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`; 
         const isDoneTab = String(item.status).toLowerCase() === 'approved' && String(item.work_status).toLowerCase() === 'done'; 
@@ -979,7 +987,7 @@ function openDetailModal(jobID, isUpdate = false) {
             ${playbookBtnHtml}
             <div class="job-details">
                 <div class="detail-item"><span>Region</span><strong>${getFlag(item.region)} ${item.region || 'Malaysia'}</strong></div>
-                <div class="detail-item"><span>Requester</span><strong>${item.requester_name}</strong></div>
+                <div class="detail-item"><span>Requester</span><strong>${actualRequester}</strong></div>
                 <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
                 <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${formatDate(item.deadline)}</strong></div>
                 <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option><option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option><option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option><option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option><option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>
