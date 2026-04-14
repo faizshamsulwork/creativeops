@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Beta | Creative Engine 2.0</title>
+    <link rel="icon" type="image/png" href="AdTechinno-globe.png">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Adtechinno Creative Engine 2.0">
+    <link rel="apple-touch-icon" href="AdTechinno-globe.png">
+    <link rel="manifest" href="manifest.json">
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="soft-refresh-overlay" class="show">
+        <img src="AdTechinno.png" alt="Loading" style="max-width:130px; animation: pulse 1.5s infinite ease-in-out;">
+        <div style="margin-top:15px; font-size: 0.9rem; font-weight:600; color:var(--text-strong); display:flex; align-items:center; gap:8px;">
+            <i data-lucide="loader-2" class="spin" style="width:18px;height:18px;"></i>
+            Refreshing Workspace...
+        </div>
+    </div>
+
+    <div id="successOverlay">
+        <div class="success-icon-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="check-anim">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        </div>
+        <div class="success-text" id="successMainText">Request Submitted</div>
+        <div class="success-subtext" id="successSubText">Job ID</div>
+    </div>
+
+    <div id="appleAlert" class="apple-alert-overlay" onclick="if(event.target === this) closeAppleAlert()">
+        <div class="apple-alert-box">
+            <div class="apple-alert-content">
+                <div class="apple-alert-title" id="alertTitle">Title</div>
+                <div class="apple-alert-msg" id="alertMsg">Message content here.</div>
+            </div>
+            <button class="apple-alert-btn" onclick="closeAppleAlert()">OK</button>
+        </div>
+    </div>
+
+    <div id="calDayModal" class="detail-modal-overlay" onclick="if(event.target === this) closeCalModal()">
+        <div class="detail-modal" style="max-width: 400px; margin: auto;">
+            <div class="dm-mobile-handle"><div class="pill"></div></div>
+            <div class="dm-header">
+                <h3 class="dm-title" id="calDayTitle">Date</h3>
+                <button class="dm-close" onclick="closeCalModal()"><i data-lucide="x" style="width: 20px; height: 20px;"></i></button>
+            </div>
+            <div class="dm-body" id="calDayBody" style="padding-bottom: 40px;"></div>
+        </div>
+    </div>
+
+    <div id="iosPrompt" class="ios-prompt-overlay">
+        <div class="ios-prompt-box">
+            <h4 class="ios-prompt-title" id="iosPromptTitle">Title</h4>
+            <p class="ios-prompt-desc" id="iosPromptDesc">Description</p>
+            <div class="ios-prompt-input-wrapper">
+                <input type="password" id="iosPromptInput" class="ios-prompt-input" autocomplete="off" placeholder="PIN / Passcode">
+            </div>
+            <div class="ios-prompt-buttons">
+                <button class="ios-prompt-btn cancel" id="iosPromptCancel">Cancel</button>
+                <button class="ios-prompt-btn confirm" id="iosPromptConfirm">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="globalDetailModal" class="detail-modal-overlay" onclick="if(event.target === this) closeDetailModal()">
+        <div class="detail-modal">
+            <div class="dm-mobile-handle"><div class="pill"></div></div>
+            <div class="dm-header">
+                <div class="dm-header-left">
+                    <span class="dm-id" id="dm-jobid">ID</span>
+                    <h3 class="dm-title" id="dm-title">Project Title</h3>
+                </div>
+                <button class="dm-close" onclick="closeDetailModal()"><i data-lucide="x" style="width: 20px; height: 20px;"></i></button>
+            </div>
+            <div class="dm-body" id="dm-body-content"></div>
+            <div class="dm-footer" id="dm-footer-content"></div>
+        </div>
+    </div>
+
+    <div id="archiveModal" class="detail-modal-overlay">
+        <div class="detail-modal" style="max-width:400px; padding:30px; margin: auto;">
+            <h3 style="margin-top:0; color:var(--text-strong);">Archive Done Tasks</h3>
+            <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.4;">Select date range of completed tasks to securely move to the Archive database.</p>
+            <div style="display:flex; flex-direction:column; gap:15px; margin-top: 20px;">
+                <div class="input-group"><label>Start Date</label><input type="date" id="arch-start"></div>
+                <div class="input-group"><label>End Date</label><input type="date" id="arch-end"></div>
+            </div>
+            <div style="margin-top:25px; display:flex; gap:10px;">
+                <button onclick="closeArchiveModal()" style="flex:1; padding:12px; border-radius:8px; border:1px solid var(--border-main); background:var(--bg-box); color:var(--text-strong); font-weight:600; cursor:pointer;">Cancel</button>
+                <button onclick="runArchive()" id="btnConfirmArchive" style="flex:1; padding:12px; border-radius:8px; background:var(--orange); color:white; border:none; font-weight:700; cursor:pointer;"><i data-lucide="archive" style="width:16px; margin-right:5px; vertical-align:text-bottom;"></i> Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="editModal" class="modal-overlay" style="z-index: 7000;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Request Details</h3>
+                <button class="close-btn" onclick="closeEditModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label>Job ID</label><input type="text" id="editJobId" disabled style="background: var(--bg-box); color: var(--text-muted);">
+            </div>
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label>Client Name</label><input type="text" id="editClient">
+            </div>
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label>Project Title</label><input type="text" id="editTitle">
+            </div>
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label>Creative PIC</label>
+                <select id="editAssignee">
+                    <option value="Unassigned">-- Unassigned --</option>
+                    <optgroup label="Malaysia"><option value="Abel">Abel</option><option value="Aaron">Aaron</option><option value="Simon">Simon</option><option value="Alya">Alya</option><option value="Steven">Steven</option><option value="Faiz Shamsul">Faiz Shamsul</option></optgroup>
+                    <optgroup label="Indonesia"><option value="Miftahul Fikri">Miftahul Fikri</option><option value="Youke Yap">Youke Yap</option><option value="Annisya Y.">Annisya Y.</option></optgroup>
+                </select>
+            </div>
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label>Deadline</label><input type="date" id="editDeadline">
+            </div>
+            <button class="btn-submit" id="saveEditBtn" onclick="saveEdit()" style="margin-top:20px; width:100%;">Update Request</button>
+        </div>
+    </div>
+
+    <div id="introPage" class="intro-overlay">
+        <div class="intro-content" id="introBox">
+            <img src="AdTechinno.png" alt="Logo" class="intro-logo">
+            
+            <div id="countrySelectStep">
+                <h2 style="color: var(--text-strong); font-weight: 800; letter-spacing: -0.02em;">Select Region</h2>
+                <div class="country-grid">
+                    <div class="country-btn" onclick="chooseCountry('Malaysia')"><span>🇲🇾</span><label>Malaysia</label></div>
+                    <div class="country-btn" onclick="chooseCountry('Indonesia')"><span>🇮🇩</span><label>Indonesia</label></div>
+                    <div class="country-btn" onclick="chooseCountry('Global')" style="grid-column: 1 / -1; flex-direction: row; padding: 15px; margin-top: -5px;">
+                        <span style="font-size: 1.8rem;">🌐</span><label style="font-size: 1rem;">Other Regions</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="nameSelectStep" style="display: none;">
+                <button onclick="backToRegion()" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 5px; margin: 0 auto 15px auto; font-size: 0.85rem; font-weight: 600; transition: 0.2s;">
+                    <i data-lucide="arrow-left" style="width: 16px;"></i> Change Region
+                </button>
+
+                <h3 id="welcomeTitle" style="color: var(--text-strong); margin-bottom: 20px; font-weight: 800; letter-spacing: -0.02em;"></h3>
+                <select id="userNameSelect" class="intro-field" onchange="toggleIntroManualInput()"></select>
+                <select id="globalRegionSelect" class="intro-field" style="display:none;">
+                    <option value="">Select your Country...</option><option value="Japan">Japan</option><option value="Singapore">Singapore</option><option value="Hong Kong">Hong Kong</option><option value="China">China</option><option value="Vietnam">Vietnam</option><option value="Others">Others</option>
+                </select>
+                <input type="text" id="introManualName" class="intro-field intro-input" placeholder="Type your name here..." style="display: none;">
+                <button class="intro-btn" onclick="startApp()">Start Now <i data-lucide="arrow-right" style="width: 20px;"></i></button>
+            </div>
+            
+            <div id="syncStep" style="display: none;">
+                <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-strong); margin-top: 20px; letter-spacing: -0.02em;" id="syncMsg"></div>
+                <span style="font-size: 0.95rem; color: var(--text-muted); font-weight: 600; margin-top: 15px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i data-lucide="loader-2" class="spin" style="width:18px;height:18px;"></i> Syncing workspace...
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-wrapper">
+        <div class="sidebar">
+            <div class="logo-container">
+                <img src="AdTechinno.png" alt="AdTechinno" class="brand-logo">
+                <span class="logo-sub">Creative Request</span>
+            </div>
+            <div class="nav-group">
+                <div class="nav-item active" id="btn-dashboard" onclick="showPage('dashboard')"><i data-lucide="layout-dashboard"></i> <span>Dashboard</span></div>
+                <div class="nav-item" id="btn-workload" onclick="showPage('workload')">
+                    <i data-lucide="kanban-square"></i> <span>Request Status</span>
+                    <span id="pending-badge" class="nav-badge" style="display: none;">0</span>
+                </div>
+                <div class="nav-item" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> <span>Done Tasks</span></div>
+                <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
+                <div class="nav-item btn-creative-leave" id="btn-leave" onclick="showPage('leave')"><i data-lucide="user-minus"></i> <span>Creative Team Leave</span></div>
+            </div>
+            <div class="bottom-actions">
+                <button id="themeBtn" class="action-btn" onclick="toggleTheme(event)"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
+                <button id="adminBtn" class="action-btn" onclick="toggleAdmin()"><i data-lucide="lock"></i> <span>Admin Access</span></button>
+                <button class="action-btn btn-danger" onclick="signOutApp()" style="margin-top: 5px;"><i data-lucide="log-out"></i> <span>Sign Out</span></button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            
+            <div id="dashboard" class="page active">
+                <div class="welcome-banner">
+                    <div class="welcome-text">
+                        <h1 id="greetingMsg">Good day.</h1>
+                        <p id="subGreetingMsg">Here is what's happening with your creative requests.</p>
+                    </div>
+                    <div class="welcome-actions">
+                        <div id="superAdminControls" class="admin-toggle-wrap">
+                            <button class="toggle-btn active" id="t-all" onclick="filterByRegion('all')">🌏 All</button>
+                            <button class="toggle-btn" id="t-my" onclick="filterByRegion('Malaysia')">🇲🇾 MY</button>
+                            <button class="toggle-btn" id="t-id" onclick="filterByRegion('Indonesia')">🇮🇩 ID</button>
+                            <button class="toggle-btn" id="t-gb" onclick="filterByRegion('Global')">🌐 Global</button>
+                        </div>
+                        <button id="btnArchive" class="shortcut-btn" style="display:none; background:var(--orange);" onclick="openArchiveModal()">
+                            <i data-lucide="archive"></i> Archive Data
+                        </button>
+                        <button class="shortcut-btn" onclick="viewMyRequests()"><i data-lucide="search"></i> My Past Requests</button>
+                        <div class="date-badge">
+                            <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+                            <span id="currentDateDisplay">Date</span>
+                            <span style="opacity:0.3; margin: 0 4px;">|</span>
+                            <span id="currentTimeDisplay" style="font-weight: 800; color: var(--text-strong);">--:--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-banner">
+                    <div class="stat-box" style="border-top: 4px solid #3b82f6;">
+                        <div class="stat-header"><h4>Total Jobs</h4><i data-lucide="folder-open"></i></div>
+                        <p id="total-val">0</p>
+                    </div>
+                    <div class="stat-box" style="border-top: 4px solid var(--orange);">
+                        <div class="stat-header"><h4>Awaiting Approval</h4><i data-lucide="clock"></i></div>
+                        <p id="pending-val">0</p>
+                    </div>
+                    <div class="stat-box" style="border-top: 4px solid var(--green);">
+                        <div class="stat-header"><h4>In Progress (Active)</h4><i data-lucide="activity"></i></div>
+                        <p id="active-val">0</p>
+                    </div>
+                </div>
+
+                <div class="mobile-dash-tabs">
+                    <button class="dash-tab-btn active" id="btn-tab-recent" onclick="switchDashTab('recent')"><i data-lucide="clock"></i> Latest</button>
+                    <button class="dash-tab-btn" id="btn-tab-cal" onclick="switchDashTab('cal')"><i data-lucide="calendar"></i> Calendar</button>
+                    <button class="dash-tab-btn" id="btn-tab-radar" onclick="switchDashTab('radar')"><i data-lucide="activity"></i> Radar</button>
+                </div>
+
+                <div id="section-recent" class="dash-section active-section">
+                    <div class="dash-grid-top">
+                        <div class="dash-card">
+                            <h3>5 Latest Requests</h3>
+                            <div class="table-responsive">
+                                <table class="recent-table">
+                                    <thead><tr><th>Job ID</th><th>Client / Title</th><th>Deadline</th><th style="text-align:center;">Status</th></tr></thead>
+                                    <tbody id="recent-list">
+                                        <tr><td colspan="4"><div class="skeleton-table-row"></div></td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="dash-card">
+                            <h3>
+                                <span style="display:flex; align-items:center; gap:8px;"><i data-lucide="alert-circle" style="color:var(--orange); width:18px;"></i> Urgent Deadlines</span> 
+                                <span style="font-size:0.75rem; font-weight:500; color:var(--text-muted); background:var(--bg-box); padding:4px 8px; border-radius:4px;">Next 7 Days</span>
+                            </h3>
+                            <div id="urgent-list">
+                                <div class="skeleton-table-row" style="height: 60px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="section-cal" class="dash-section">
+                    <div class="dash-card" style="margin-bottom: 25px;">
+                        <h3><span style="display:flex; align-items:center; gap:8px;"><i data-lucide="calendar-days" style="color:var(--link-color); width:18px;"></i> Calendar</span></h3>
+                        <div id="deadline-calendar" class="calendar-wrapper">
+                            <div class="skeleton-table-row" style="height: 300px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="section-radar" class="dash-section">
+                    <div class="dash-grid-bottom" id="radarContainer">
+                        <div class="dash-card">
+                            <h3>Team Capacity Radar (Active Jobs)</h3>
+                            <div class="workload-grid" id="team-workload">
+                                <div class="skeleton-table-row"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="workload" class="page">
+                <h1 style="margin-bottom: 5px;">Request Status Board</h1>
+                <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Track progress. Click any card to view full details.</p>
+                
+                <div class="controls-container">
+                    <div class="search-box">
+                        <i data-lucide="search"></i>
+                        <input type="text" id="searchWorkload" placeholder="Search Client Name, Job ID, or Assignee..." onkeyup="renderBoards()">
+                    </div>
+                </div>
+
+                <div id="projectList">
+                    <div class="project-grid">
+                        <div class="skeleton-card"><div class="skeleton-row"></div><div class="skeleton-row full"></div><div class="skeleton-row half"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="done" class="page">
+                <h1 style="margin-bottom: 5px;">Done Tasks</h1>
+                <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Archive of completed creative requests.</p>
+                
+                <div class="controls-container">
+                    <div class="search-box">
+                        <i data-lucide="search"></i>
+                        <input type="text" id="searchDone" placeholder="Search Client Name, Job ID, or Assignee..." onkeyup="renderBoards()">
+                    </div>
+                    <div>
+                        <button onclick="loadArchivedJobs()" class="export-btn" id="btnLoadArchive" style="display:inline-flex; background:var(--bg-box); margin-right:10px;"><i data-lucide="clock-4"></i> Load Archived Jobs</button>
+                        <button onclick="exportToCSV()" class="export-btn" style="display:inline-flex;"><i data-lucide="download"></i> Export Data (CSV)</button>
+                    </div>
+                </div>
+
+                <div id="doneList">
+                    <div class="project-grid">
+                        <div class="skeleton-card"><div class="skeleton-row"></div><div class="skeleton-row full"></div><div class="skeleton-row half"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="leave" class="page">
+                <h1 style="margin-bottom: 5px;">Creative Team Leave</h1>
+                <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Update your availability status here.</p>
+                
+                <div class="card-form" style="border-left: 1px solid var(--border-main);">
+                    <div class="form-row">
+                        <div class="input-group">
+                            <label>Your Name</label>
+                            <select id="leaveName" onchange="renderLeaveHistory()">
+                                <option value="">-- Select Name --</option>
+                                <optgroup label="Malaysia">
+                                    <option value="Aaron">Aaron</option>
+                                    <option value="Abel">Abel</option>
+                                    <option value="Alya">Alya</option>
+                                    <option value="Faiz Shamsul">Faiz Shamsul</option>
+                                    <option value="Simon">Simon</option>
+                                    <option value="Steven">Steven</option>
+                                </optgroup>
+                                <optgroup label="Indonesia">
+                                    <option value="Annisya Y.">Annisya Y.</option>
+                                    <option value="Miftahul Fikri">Miftahul Fikri</option>
+                                    <option value="Youke Yap">Youke Yap</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Your Passcode</label>
+                            <input type="password" id="leavePasscode" placeholder="Enter your secret PIN">
+                        </div>
+                    </div>
+                    
+                    <div class="input-group" style="margin-bottom: 20px;">
+                        <label>Type of Leave</label>
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                            <select id="leaveType" onchange="document.getElementById('leaveOtherInput').style.display = this.value === 'Others' ? 'block' : 'none'" style="flex: 1; min-width: 200px;">
+                                <option value="Annual Leave">Annual Leave</option>
+                                <option value="Medical Leave">Medical Leave (MC)</option>
+                                <option value="Emergency Leave">Emergency Leave</option>
+                                <option value="Unpaid Leave">Unpaid Leave</option>
+                                <option value="Others">Others</option>
+                            </select>
+                            <input type="text" id="leaveOtherInput" placeholder="Please specify reason..." style="display: none; flex: 1; min-width: 200px;">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="input-group">
+                            <label>Leave Start Date</label>
+                            <input type="date" id="leaveStart">
+                        </div>
+                        <div class="input-group">
+                            <label>Leave End Date</label>
+                            <input type="date" id="leaveEnd">
+                        </div>
+                    </div>
+                    
+                    <div class="form-navigation" style="justify-content: flex-end; gap: 15px;">
+                        <button class="btn-nav btn-prev" id="btnResetLeave" onclick="submitLeave('Active')" style="border-color: var(--accent);"><i data-lucide="check-circle"></i> I'm Back (Reset)</button>
+                        <button class="btn-nav btn-submit" id="btnSetLeave" onclick="submitLeave('On Leave')" style="background: var(--red);"><i data-lucide="plane"></i> Set On Leave</button>
+                    </div>
+                </div>
+
+                <div id="leaveHistoryContainer" style="margin-top: 30px; border-top: 1px dashed var(--border-main); padding-top: 20px; display: none;">
+                    <h3 style="font-size: 1rem; color: var(--text-strong); margin-top: 0; margin-bottom: 15px;"><i data-lucide="history" style="width: 18px; display: inline-block; vertical-align: middle; margin-right: 5px;"></i> Upcoming Leaves</h3>
+                    <div id="leaveHistoryList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                </div>
+            </div>
+
+            <div id="request" class="page">
+                <h1 style="margin-bottom: 10px;">Create New Request</h1>
+                <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;" id="requestSubtitle">Please select the type of campaign you want to request.</p>
+                
+                <div id="request-gateway" class="gateway-grid">
+                    <div class="gateway-card" onclick="selectRequestType('adhoc')">
+                        <div class="gateway-icon"><i data-lucide="zap" style="width: 30px; height: 30px;"></i></div>
+                        <h3>Ad-Hoc / One-Off</h3>
+                        <p>For quick tasks, single visuals, or specific video requests.</p>
+                    </div>
+                    <div class="gateway-card monthly" onclick="selectRequestType('monthly')">
+                        <div class="gateway-icon"><i data-lucide="calendar-range" style="width: 30px; height: 30px;"></i></div>
+                        <h3>Monthly Content Plan</h3>
+                        <p>For bulk calendar planning and full month campaigns.</p>
+                    </div>
+                </div>
+
+                <div class="card-form" id="request-form-area" style="display:none; border-left: 1px solid var(--border-main); padding-top: 40px; margin-top: 20px;">
+                    
+                    <button onclick="resetRequestGateway()" style="position: absolute; top: 15px; left: 15px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 0.8rem; font-weight: 600; transition: 0.2s;"><i data-lucide="arrow-left" style="width: 14px;"></i> Back to Options</button>
+                    
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <span id="formBadge" style="background: var(--bg-box); color: var(--accent); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; border: 1px solid var(--border-main); letter-spacing: 0.5px;">AD-HOC REQUEST</span>
+                    </div>
+
+                    <div class="form-progress">
+                        <div class="step-indicator active" id="ind-1">
+                            <div class="step-dot"><i data-lucide="user"></i></div>
+                            <span class="step-label">Requester</span>
+                        </div>
+                        <div class="step-indicator" id="ind-2">
+                            <div class="step-dot"><i data-lucide="briefcase"></i></div>
+                            <span class="step-label">Project</span>
+                        </div>
+                        <div class="step-indicator" id="ind-3">
+                            <div class="step-dot"><i data-lucide="file-text"></i></div>
+                            <span class="step-label">Brief</span>
+                        </div>
+                    </div>
+
+                    <div class="form-step active" id="step1">
+                        <h3 class="section-title">1. Requester Information</h3>
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Requester Name</label>
+                                <select id="requesterName">
+                                    <option value="">-- Select Name --</option>
+                                    <optgroup label="Malaysia">
+                                        <option value="Aaron">Aaron</option><option value="Abel">Abel</option><option value="Ain Sabrina">Ain Sabrina</option><option value="Alya">Alya</option><option value="Ammelia">Ammelia</option><option value="Angie Ng">Angie Ng</option><option value="Bernice Mah">Bernice Mah</option><option value="Boon Jie Xin">Boon Jie Xin</option><option value="Chong Jia Jun">Chong Jia Jun</option><option value="Darren (Boo Hwa Chian)">Darren (Boo Hwa Chian)</option><option value="Dillon Frederick Kugan">Dillon Frederick Kugan</option><option value="Faiz Shamsul">Faiz Shamsul</option><option value="Hao Yun">Hao Yun</option><option value="Joanne Yap">Joanne Yap</option><option value="Joseph Chong">Joseph Chong</option><option value="Kevin Tan">Kevin Tan</option><option value="Lina Leong">Lina Leong</option><option value="Nurul Iman Natasha">Nurul Iman Natasha</option><option value="Simon">Simon</option><option value="Steven">Steven</option><option value="Syaheerah Atiqah">Syaheerah Atiqah</option><option value="Wilson Ng Guan De">Wilson Ng Guan De</option><option value="Xuan Lee">Xuan Lee</option><option value="Zulkarnain Mustapa">Zulkarnain Mustapa</option>
+                                    </optgroup>
+                                    <optgroup label="Indonesia">
+                                        <option value="Angelina">Angelina</option><option value="Annisya Y.">Annisya Y.</option><option value="Arbaasya D.F.">Arbaasya D.F.</option><option value="Areta G.P.">Areta G.P.</option><option value="Ashley Karamoy">Ashley Karamoy</option><option value="Avira P.P.">Avira P.P.</option><option value="Ayu Aprillia">Ayu Aprillia</option><option value="Fadhil Zuhayr">Fadhil Zuhayr</option><option value="Fajar Abhirama">Fajar Abhirama</option><option value="Jap Hetty">Jap Hetty</option><option value="Joanne Chan">Joanne Chan</option><option value="Lutfan Allen R.">Lutfan Allen R.</option><option value="Marlina S.">Marlina S.</option><option value="Miftahul Fikri">Miftahul Fikri</option><option value="Moh. Reza P.">Moh. Reza P.</option><option value="Naufal Hilmy">Naufal Hilmy</option><option value="Tiffani Y.">Tiffani Y.</option><option value="Verincia T.">Verincia T.</option><option value="Youke Yap">Youke Yap</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="input-group"><label>Manual Name (If not in list)</label><input type="text" id="manualName" placeholder="Type name here"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Office / Region</label>
+                                <select id="pRegion">
+                                    <option>Malaysia</option><option>Hong Kong</option><option>Singapore</option><option>Indonesia</option>
+                                    <option>Vietnam</option><option>Japan</option><option>China</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-navigation" style="justify-content: flex-end;">
+                            <button class="btn-nav btn-next" onclick="goToStep(2)">Next Step <i data-lucide="arrow-right"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="form-step" id="step2">
+                        <h3 class="section-title">2. Project Details</h3>
+                        <div class="form-row">
+                            <div class="input-group"><label>Client Name</label><input type="text" id="pClient" placeholder="e.g. Adtechinno"></div>
+                            <div class="input-group"><label>Project Title</label><input type="text" id="pTitle" placeholder="e.g. Q3 Promo Campaign"></div>
+                        </div>
+                        
+                        <h3 class="section-title" style="margin-top: 10px;">3. Job Specifications</h3>
+                        
+                        <div id="jobTypesContainer">
+                            <div class="input-group" style="margin-bottom: 20px;">
+                                <label>Job Type (Select all that apply)</label>
+                                <div class="selection-box" id="jobTypes">
+                                    <label class="check-item"><input type="checkbox" value="Poster/Graphic"> Poster/Graphic</label>
+                                    <label class="check-item"><input type="checkbox" value="Video Production"> Video Production</label>
+                                    <label class="check-item"><input type="checkbox" value="Copywriting/Article"> Copywriting/Article</label>
+                                    <label class="check-item"><input type="checkbox" value="Presentation Deck"> Presentation Deck</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="monthlyFieldsContainer" style="display: none;">
+                            <div class="input-group" style="margin-bottom: 20px;">
+                                <label>Content Quantity Needed</label>
+                                <div class="selection-box" style="grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); background: transparent; padding: 0; border: none; gap: 10px;">
+                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;">
+                                        <i data-lucide="image" style="color: var(--link-color); margin-bottom: 5px;"></i>
+                                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Static Posters</div>
+                                        <input type="number" id="mStatic" placeholder="0" min="0" style="text-align: center; font-weight: 700;">
+                                    </div>
+                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;">
+                                        <i data-lucide="film" style="color: var(--orange); margin-bottom: 5px;"></i>
+                                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Videos / Reels</div>
+                                        <input type="number" id="mVideo" placeholder="0" min="0" style="text-align: center; font-weight: 700;">
+                                    </div>
+                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;">
+                                        <i data-lucide="gallery-horizontal" style="color: var(--green); margin-bottom: 5px;"></i>
+                                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Carousels</div>
+                                        <input type="number" id="mCarousel" placeholder="0" min="0" style="text-align: center; font-weight: 700;">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="input-group" style="margin-bottom: 20px;">
+                                <label>Monthly Content Plan Details <i data-lucide="help-circle" class="info-tooltip" title="Paste your entire calendar text or breakdown here"></i></label>
+                                <textarea id="pMonthlyPlan" rows="4" placeholder="e.g. Week 1: Launch Promo. Week 2: Educational..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="form-navigation">
+                            <button class="btn-nav btn-prev" onclick="goToStep(1)"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn-nav btn-next" onclick="goToStep(3)">Next Step <i data-lucide="arrow-right"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="form-step" id="step3">
+                        <h3 class="section-title">4. Creative Brief & Timeline</h3>
+                        <div class="input-group" style="margin-bottom: 20px;">
+                            <label>Objective (Select all that apply)</label>
+                            <div class="selection-box objective-checkboxes" id="jobObjectives">
+                                <label class="check-item"><input type="checkbox" value="Traffic"> Traffic</label>
+                                <label class="check-item"><input type="checkbox" value="Awareness"> Awareness</label>
+                                <label class="check-item"><input type="checkbox" value="Sales"> Sales</label>
+                                <label class="other-input-group"><input type="checkbox" id="objectiveOtherCheckbox"> Other: <input type="text" id="objectiveOtherInput" class="other-text-input" placeholder=""></label>
+                            </div>
+                        </div>
+                        
+                        <div class="input-group" id="deliverablesContainer" style="margin-bottom: 20px;">
+                            <label>Deliverables (Details, Size & Format)</label>
+                            <div id="dynamicSizeContainer">
+                                <div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+                                    <input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
+                                    <input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
+                                    <input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
+                                </div>
+                            </div>
+                            <button type="button" onclick="addSizeRow()" style="background: transparent; color: var(--link-color); border: 1px dashed var(--border-main); padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 5px; width: 100%; transition: 0.2s;"><i data-lucide="plus" style="width: 16px;"></i> Add Another Deliverable</button>
+                            <datalist id="sizeOptions">
+                                <option value="1080 x 1080px (Square Feed / Carousel)"></option><option value="1080 x 1350px (IG Portrait)"></option><option value="1080 x 1920px (IG Story / Reels / TikTok)"></option><option value="1200 x 628px (FB Link / LinkedIn Post)"></option><option value="1920 x 1080px (YouTube Thumbnail)"></option>
+                                <option value="300 x 250px (Medium Rectangle)"></option><option value="728 x 90px (Leaderboard)"></option><option value="160 x 600px (Wide Skyscraper)"></option><option value="300 x 600px (Half Page)"></option><option value="1920 x 1080px (Web Banner)"></option>
+                                <option value="1920 x 1080px (FHD Video 16:9)"></option><option value="1080 x 1920px (Vertical Video 9:16)"></option><option value="3840 x 2160px (4K UHD)"></option>
+                                <option value="A4 Size (Print)"></option><option value="A3 Size (Print)"></option><option value="A5 Size (Print)"></option><option value="Business Card (90 x 54mm)"></option><option value="Bunting 2x5 ft (Print)"></option><option value="Banner 8x4 ft (Print)"></option>
+                            </datalist>
+                        </div>
+
+                        <div class="input-group" style="margin-bottom: 20px;">
+                            <label>Creative Brief / Guidelines <i data-lucide="help-circle" class="info-tooltip" title="Provide overall visual direction, hook, and vibe"></i></label>
+                            <textarea id="pBrief" rows="6" style="padding: 12px; border: 1px solid var(--border-main); border-radius: 8px; line-height: 1.5; font-family: inherit; background: var(--bg-input); color: var(--text-main);">[MAIN MESSAGE / HOOK]: 
+
+[TARGET AUDIENCE]: 
+
+[TONE & VIBE]: 
+
+[MANDATORY LOGO / TEXT]: </textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group"><label>Deadline (Min. 3 working days)</label><input type="date" id="pDeadline"></div>
+                            <div class="input-group"><label>Reference/Moodboard (Google Slides Link)</label><input type="text" id="pRefLink" placeholder="Paste URL here"></div>
+                        </div>
+                        <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
+                        
+                        <div class="form-navigation">
+                            <button class="btn-nav btn-prev" onclick="goToStep(2)"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn-nav btn-submit" id="submitBtn" onclick="submitRequest()"><i data-lucide="send"></i> Submit Request</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
