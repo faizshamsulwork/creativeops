@@ -1046,6 +1046,20 @@ async function submitRequest() {
     submitBtn.disabled = true;
 
     try {
+        // 1. LOGIK PENJANAAN ID FORMAT LAMA (Contoh: DON-2604-001)
+        const clientPrefix = client.substring(0, 3).toUpperCase().replace(/\s/g, 'X'); 
+        const now = new Date();
+        const yy = now.getFullYear().toString().slice(-2); // Ambil '26'
+        const mm = (now.getMonth() + 1).toString().padStart(2, '0'); // Ambil '04'
+        
+        // Tarik jumlah data sedia ada untuk tentukan nombor siri (001, 002, etc)
+        const { data: existingJobs } = await supabaseClient.from('creative_requests').select('job_id');
+        const nextNumber = (existingJobs ? existingJobs.length : 0) + 1;
+        const serial = nextNumber.toString().padStart(3, '0');
+        
+        const finalJobID = `${clientPrefix}-${yy}${mm}-${serial}`;
+
+        // 2. KUMPUL DATA BORANG
         let objective = Array.from(document.querySelectorAll('#jobObjectives input[type="checkbox"]:checked')).filter(cb => cb.id !== 'objectiveOtherCheckbox').map(cb => cb.value).join(', ');
         const otherCheckbox = document.getElementById('objectiveOtherCheckbox'); 
         const otherInput = document.getElementById('objectiveOtherInput');
@@ -1075,17 +1089,17 @@ async function submitRequest() {
         const monthlyPlan = document.getElementById('pMonthlyPlan').value; 
         if(monthlyPlan) fullBrief += "\n\n[Monthly Plan Details]:\n" + monthlyPlan;
 
-        const finalJobID = "BETA-" + Math.floor(1000 + Math.random() * 9000);
         const payload = {
             job_id: finalJobID, requester_name: name, region: region, client_name: client, project_title: document.getElementById('pTitle').value,
             job_type: types, objective: objective, brief: fullBrief, deadline: deadline, ref_link: document.getElementById('pRefLink').value,
             remarks: document.getElementById('pRemarks').value, status: 'pending', assignee: 'Unassigned', playbook_link: '', work_status: 'Not started', revision: 0, approver: ''
         };
 
+        // 3. HANTAR KE SUPABASE
         const { error } = await supabaseClient.from('creative_requests').insert([payload]);
         if (error) throw new Error(error.message);
 
-        // 🌟 FIX: OPTIMISTIC UPDATE 🌟
+        // Optimistic Update
         globalData.unshift(payload);
             
         const flag = getFlag(region); 
@@ -1097,28 +1111,12 @@ async function submitRequest() {
         overlay.classList.add('show'); 
         playSuccessSound();
         
+        // Reset borang
         document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
         document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
         document.getElementById('objectiveOtherInput').value = ''; 
         setPresetDate(); 
         resetFormUI();
-
-        const savedName = localStorage.getItem('adtech_user_name');
-        if(savedName) {
-            const reqSelect = document.getElementById('requesterName'); let found = false;
-            for (let i = 0; i < reqSelect.options.length; i++) { 
-                if (reqSelect.options[i].value === savedName || reqSelect.options[i].text === savedName) { reqSelect.selectedIndex = i; found = true; break; } 
-            }
-            if (!found) document.getElementById('manualName').value = savedName;
-        }
-        
-        const pRegionField = document.getElementById('pRegion');
-        if (pRegionField) { 
-            pRegionField.value = userRegion; 
-            pRegionField.disabled = true; 
-            pRegionField.style.opacity = '0.7'; 
-            pRegionField.style.cursor = 'not-allowed'; 
-        }
 
         setTimeout(() => { 
             overlay.classList.remove('show'); 
@@ -1126,9 +1124,6 @@ async function submitRequest() {
                 showPage('dashboard'); 
                 submitBtn.innerHTML = originalText; 
                 submitBtn.disabled = false; 
-                refreshIcons(); 
-                
-                // 🌟 RENDER PAPARAN SEMULA UTK UPDATE BADGE 🌟
                 renderDashboard();
                 renderBoards();
             }, 400); 
@@ -1138,7 +1133,6 @@ async function submitRequest() {
         showAppleAlert("Submission Failed", e.message); 
         submitBtn.innerHTML = originalText; 
         submitBtn.disabled = false; 
-        refreshIcons(); 
     } 
 }
 
@@ -1675,6 +1669,9 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         
         setInterval(updateLiveClock, 1000); 
+        
+        // 🌟 Aktifkan mode senyap animasi selepas 2.5 saat
+        setTimeout(() => { document.body.classList.add('live-mode'); }, 2500); 
         
         // 🌟 TRIGGER SILENT SYNC BILA TUKAR TAB
         document.addEventListener("visibilitychange", () => { 

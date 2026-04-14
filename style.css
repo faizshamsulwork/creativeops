@@ -569,3 +569,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
     .action-buttons { max-height: 50vh; overflow-y: auto; padding-bottom: 20px; flex-direction: column;}
     .job-details { grid-template-columns: 1fr 1fr; padding: 20px; }
 }
+/* Matikan animasi kad selepas loading pertama untuk live-update yang lancar */
+body.live-mode .stagger-card {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+}
