@@ -708,7 +708,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
     .dash-section { display: none; animation: fadeInPremium 0.4s ease; }
     .dash-section.active-section { display: block; }
     
-    .dash-grid-top, .dash-grid-bottom, .form-row, .leave-date-row { grid-template-columns: minmax(0, 1fr); gap: 20px; width: 100%; }
+    .dash-grid-top, .dash-grid-bottom, .form-row, .leave-date-row, .gateway-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; width: 100%; }
+    .gateway-card { padding: 35px 20px; } /* Kurangkan padding sikit untuk mobile */
+    .gateway-icon { width: 55px; height: 55px; margin-bottom: 15px; } /* Ikon kecik sikit */
+    .gateway-card h3 { font-size: 1.2rem; } /* Tajuk kecik sikit */
     .dash-card { padding: 25px 20px; width: 100%; box-sizing: border-box; max-width: 100%; overflow: hidden; min-width: 0; }
     .input-group, .input-group input { max-width: 100%; box-sizing: border-box; }
     
