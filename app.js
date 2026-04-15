@@ -86,10 +86,37 @@ function showNotification(title, subtitle, callback) {
     notifTimeout = setTimeout(() => { overlay.classList.remove('show'); if (callback) setTimeout(callback, 400); }, 1800);
 }
 
-function showAppleAlert(title, msg) {
-    document.getElementById('alertTitle').innerText = title; document.getElementById('alertMsg').innerText = msg; document.getElementById('appleAlert').classList.add('show');
+function showAppleAlert(title, msg) { 
+    document.getElementById('alertTitle').innerText = title; 
+    document.getElementById('alertMsg').innerText = msg; 
+    document.getElementById('appleAlert').classList.add('show'); 
 }
-function closeAppleAlert() { document.getElementById('appleAlert').classList.remove('show'); document.body.classList.remove('no-scroll'); }
+
+function closeAppleAlert() { 
+    document.getElementById('appleAlert').classList.remove('show'); 
+    document.body.classList.remove('no-scroll'); 
+}
+
+// Fungsi untuk paparkan panduan Creative Brief
+function showBriefGuide() {
+    const guideText = `
+        A good brief helps the creative team nail the design on the first try! Here's an example:
+
+        [MAIN MESSAGE / HOOK]:
+        "Get 50% Off All Winter Gear! Limited Time Only." (Make the 50% pop!)
+
+        [TARGET AUDIENCE]:
+        Young adults (18-35) who love outdoor activities.
+
+        [TONE & VIBE]:
+        Energetic, adventurous, and slightly edgy. Use dark backgrounds with neon highlights.
+
+        [MANDATORY LOGO / TEXT]:
+        Must include the standard company logo at the bottom right. Do not use cursive fonts.
+    `;
+    // Kita guna fungsi alert sedia ada kau untuk tunjukkan panduan ni
+    showAppleAlert("How to write a good Brief?", guideText);
+}
 
 function showApplePrompt(title, desc, isPassword = false, validateFn = null) {
     return new Promise((resolve) => {
@@ -141,6 +168,91 @@ function setPresetDate() {
 // ========================================================
 // 🌟 3. FORM HELPERS & GATEWAY
 // ========================================================
+
+window.lockEndOfMonth = function(val) {
+    if(!val) return;
+    const [year, month] = val.split('-');
+    const lastDay = new Date(year, month, 0); 
+    const offset = lastDay.getTimezoneOffset() * 60000;
+    const formatted = new Date(lastDay - offset).toISOString().split('T')[0];
+    const dateInput = document.getElementById('pDeadline');
+    if(dateInput) dateInput.value = formatted;
+}
+
+function updateDateLogic(jobType) {
+    const dateInput = document.getElementById('pDeadline');
+    const dateLabel = document.getElementById('deadlineLabel');
+    const helperText = document.getElementById('deadlineHelper');
+
+    function calculateWorkingDays(daysRequired) {
+        let tempDate = new Date();
+        let addedDays = 0;
+        const holidays = ["2026-01-01", "2026-02-17", "2026-02-18", "2026-03-17", "2026-03-20", "2026-05-01", "2026-05-31", "2026-06-06", "2026-08-31", "2026-09-16", "2026-10-31", "2026-12-25"];
+
+        while (addedDays < daysRequired) {
+            tempDate.setDate(tempDate.getDate() + 1);
+            const dayOfWeek = tempDate.getDay();
+            const offset = tempDate.getTimezoneOffset() * 60000;
+            const dateString = (new Date(tempDate - offset)).toISOString().split('T')[0];
+            if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidays.includes(dateString)) { addedDays++; }
+        }
+        const finalOffset = tempDate.getTimezoneOffset() * 60000;
+        return new Date(tempDate - finalOffset).toISOString().split('T')[0];
+    }
+
+    if (jobType === 'Monthly Content Plan') {
+        dateLabel.innerText = 'Deadline (Locked to End of Month)';
+        helperText.style.display = 'none';
+        dateInput.readOnly = true;
+        dateInput.style.pointerEvents = 'none';
+        dateInput.style.opacity = '0.5';
+        dateInput.value = '';
+        
+    } else if (jobType === 'Pitch Deck Proposal') {
+        dateLabel.innerText = 'Deadline (Min. 4 working days)';
+        helperText.style.display = 'block';
+        helperText.style.color = 'var(--orange)';
+        helperText.innerText = '*SLA: Minimum 4 working days required for Pitch Deck. Subject to Creative Lead bandwidth.';
+        
+        dateInput.readOnly = false;
+        dateInput.style.pointerEvents = 'auto';
+        dateInput.style.opacity = '1';
+
+        const minWorkingDate = calculateWorkingDays(4);
+        dateInput.min = minWorkingDate;
+        if(!dateInput.value || dateInput.value < minWorkingDate) dateInput.value = minWorkingDate;
+        
+        dateInput.onchange = function(e) {
+            const selectedDate = new Date(e.target.value);
+            const day = selectedDate.getDay(); 
+            if (day === 0 || day === 6) { 
+                showAppleAlert("Invalid Date", "Weekends are off-limits! Please select a working day.");
+                e.target.value = dateInput.min; 
+            }
+        };
+        
+    } else {
+        dateLabel.innerText = 'Deadline (Min. 3 working days)';
+        helperText.style.display = 'none';
+        dateInput.readOnly = false;
+        dateInput.style.pointerEvents = 'auto';
+        dateInput.style.opacity = '1';
+
+        const minWorkingDate = calculateWorkingDays(3);
+        dateInput.min = minWorkingDate;
+        if(!dateInput.value || dateInput.value < minWorkingDate) dateInput.value = minWorkingDate;
+
+        dateInput.onchange = function(e) {
+            const selectedDate = new Date(e.target.value);
+            const day = selectedDate.getDay(); 
+            if (day === 0 || day === 6) { 
+                showAppleAlert("Invalid Date", "Weekends are off-limits! Please select a working day.");
+                e.target.value = dateInput.min; 
+            }
+        };
+    }
+}
+
 function selectRequestType(type) {
     currentRequestType = type;
     document.getElementById('request-gateway').style.display = 'none';
@@ -148,16 +260,49 @@ function selectRequestType(type) {
     document.getElementById('request-form-area').style.display = 'block';
     
     const badge = document.getElementById('formBadge');
+    
+    const jobTypesCont = document.getElementById('jobTypesContainer');
+    const monthlyCont = document.getElementById('monthlyFieldsContainer');
+    const pitchFieldsCont = document.getElementById('pitchFieldsContainer');
+    const standardBriefCont = document.getElementById('standardBriefContainer');
+    const pitchBriefCont = document.getElementById('pitchBriefContainer');
+    const deliverablesCont = document.getElementById('deliverablesContainer');
+
     if(type === 'monthly') {
-        document.getElementById('jobTypesContainer').style.display = 'none';
-        document.getElementById('monthlyFieldsContainer').style.display = 'block';
-        document.getElementById('deliverablesContainer').style.display = 'none';
+        if(jobTypesCont) jobTypesCont.style.display = 'none';
+        if(monthlyCont) monthlyCont.style.display = 'block';
+        if(pitchFieldsCont) pitchFieldsCont.style.display = 'none';
+        
+        if(standardBriefCont) standardBriefCont.style.display = 'block';
+        if(pitchBriefCont) pitchBriefCont.style.display = 'none';
+        if(deliverablesCont) deliverablesCont.style.display = 'none';
+        
         badge.innerText = "MONTHLY PLAN"; badge.style.color = "#8b5cf6"; badge.style.borderColor = "#c4b5fd"; badge.style.background = "#f5f3ff";
+        updateDateLogic('Monthly Content Plan');
+        
+    } else if (type === 'pitch') {
+        if(jobTypesCont) jobTypesCont.style.display = 'none';
+        if(monthlyCont) monthlyCont.style.display = 'none';
+        if(pitchFieldsCont) pitchFieldsCont.style.display = 'block';
+        
+        if(standardBriefCont) standardBriefCont.style.display = 'none';
+        if(pitchBriefCont) pitchBriefCont.style.display = 'block';
+        if(deliverablesCont) deliverablesCont.style.display = 'none';
+        
+        badge.innerText = "PITCH DECK PROPOSAL"; badge.style.color = "var(--orange)"; badge.style.borderColor = "rgba(245, 158, 11, 0.4)"; badge.style.background = "rgba(245, 158, 11, 0.1)";
+        updateDateLogic('Pitch Deck Proposal');
+        
     } else {
-        document.getElementById('jobTypesContainer').style.display = 'block';
-        document.getElementById('monthlyFieldsContainer').style.display = 'none';
-        document.getElementById('deliverablesContainer').style.display = 'block';
+        if(jobTypesCont) jobTypesCont.style.display = 'block';
+        if(monthlyCont) monthlyCont.style.display = 'none';
+        if(pitchFieldsCont) pitchFieldsCont.style.display = 'none';
+        
+        if(standardBriefCont) standardBriefCont.style.display = 'block';
+        if(pitchBriefCont) pitchBriefCont.style.display = 'none';
+        if(deliverablesCont) deliverablesCont.style.display = 'block';
+        
         badge.innerText = "AD-HOC REQUEST"; badge.style.color = "var(--accent)"; badge.style.borderColor = "var(--border-main)"; badge.style.background = "var(--bg-box)";
+        updateDateLogic('Ad-Hoc');
     }
     goToStep(1); window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -181,7 +326,7 @@ function addSizeRow() {
 }
 
 function resetFormUI() {
-    document.getElementById('mStatic').value = ''; document.getElementById('mVideo').value = ''; document.getElementById('mCarousel').value = ''; document.getElementById('pMonthlyPlan').value = '';
+    document.getElementById('mStatic').value = ''; document.getElementById('mVideo').value = ''; document.getElementById('mCarousel').value = ''; if(document.getElementById('mCaption')) document.getElementById('mCaption').value = ''; document.getElementById('pMonthlyPlan').value = '';
     const sizeContainer = document.getElementById('dynamicSizeContainer');
     sizeContainer.innerHTML = `<div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;"><input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"></div>`;
     document.getElementById('pBrief').value = "[MAIN MESSAGE / HOOK]: \n\n[TARGET AUDIENCE]: \n\n[TONE & VIBE]: \n\n[MANDATORY LOGO / TEXT]: \n";
@@ -203,85 +348,6 @@ function goToStep(step) {
     document.getElementById('ind-3').className = 'step-indicator ' + (step >= 3 ? 'active' : '');
     refreshIcons();
 }
-// ========================================================
-// 🌟 3. FORM HELPERS & GATEWAY
-// ========================================================
-function selectRequestType(type) {
-    currentRequestType = type;
-    document.getElementById('request-gateway').style.display = 'none';
-    document.getElementById('requestSubtitle').style.display = 'none';
-    document.getElementById('request-form-area').style.display = 'block';
-    
-    const badge = document.getElementById('formBadge');
-    if(type === 'monthly') {
-        document.getElementById('jobTypesContainer').style.display = 'none';
-        document.getElementById('monthlyFieldsContainer').style.display = 'block';
-        document.getElementById('deliverablesContainer').style.display = 'none';
-        badge.innerText = "MONTHLY PLAN"; badge.style.color = "#8b5cf6"; badge.style.borderColor = "#c4b5fd"; badge.style.background = "#f5f3ff";
-    } else {
-        document.getElementById('jobTypesContainer').style.display = 'block';
-        document.getElementById('monthlyFieldsContainer').style.display = 'none';
-        document.getElementById('deliverablesContainer').style.display = 'block';
-        badge.innerText = "AD-HOC REQUEST"; badge.style.color = "var(--accent)"; badge.style.borderColor = "var(--border-main)"; badge.style.background = "var(--bg-box)";
-    }
-    goToStep(1); window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function resetRequestGateway() {
-    const gateway = document.getElementById('request-gateway');
-    if(gateway) {
-        gateway.style.display = 'grid';
-        document.getElementById('requestSubtitle').style.display = 'block';
-        document.getElementById('request-form-area').style.display = 'none';
-        document.querySelectorAll('.form-step').forEach(el => el.classList.remove('active'));
-    }
-}
-
-function addSizeRow() {
-    const container = document.getElementById('dynamicSizeContainer'); 
-    const row = document.createElement('div'); row.className = 'size-row';
-    row.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; animation: fadeIn 0.3s ease;';
-    row.innerHTML = `<input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: var(--red); cursor: pointer; padding: 0 5px; display: flex; align-items: center;"><i data-lucide="x" style="width: 18px;"></i></button>`;
-    container.appendChild(row); refreshIcons();
-}
-
-function resetFormUI() {
-    document.getElementById('mStatic').value = ''; document.getElementById('mVideo').value = ''; document.getElementById('mCarousel').value = ''; document.getElementById('pMonthlyPlan').value = '';
-    const sizeContainer = document.getElementById('dynamicSizeContainer');
-    sizeContainer.innerHTML = `<div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;"><input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"></div>`;
-    document.getElementById('pBrief').value = "[MAIN MESSAGE / HOOK]: \n\n[TARGET AUDIENCE]: \n\n[TONE & VIBE]: \n\n[MANDATORY LOGO / TEXT]: \n";
-    resetRequestGateway(); 
-}
-
-function goToStep(step) {
-    if (step === 2) {
-        const n1 = document.getElementById('requesterName').value; const n2 = document.getElementById('introManualName').value;
-        if (!n1 && !n2) return showAppleAlert("Incomplete Info", "Please tell us your name before proceeding.");
-    }
-    if (step === 3) {
-        const c = document.getElementById('pClient').value; const t = document.getElementById('pTitle').value;
-        if (!c || !t) return showAppleAlert("Incomplete Info", "Please fill in Client Name and Project Title.");
-    }
-    document.querySelectorAll('.form-step').forEach(el => el.classList.remove('active')); document.getElementById('step' + step).classList.add('active');
-    document.getElementById('ind-1').className = 'step-indicator ' + (step >= 1 ? (step > 1 ? 'completed' : 'active') : '');
-    document.getElementById('ind-2').className = 'step-indicator ' + (step >= 2 ? (step > 2 ? 'completed' : 'active') : '');
-    document.getElementById('ind-3').className = 'step-indicator ' + (step >= 3 ? 'active' : '');
-    refreshIcons();
-}
-
-function setPresetDate() {
-    const today = new Date(); const offset = today.getTimezoneOffset() * 60000; const localISOTime = (new Date(today - offset)).toISOString().slice(0, -1);
-    let minDate = new Date(); let addedDays = 0; const publicHolidays2026 = ["2026-01-01", "2026-02-17", "2026-02-18", "2026-03-17", "2026-03-20", "2026-05-01", "2026-05-31", "2026-06-06", "2026-08-31", "2026-09-16", "2026-10-31", "2026-12-25"];
-    while (addedDays < 3) {
-        minDate.setDate(minDate.getDate() + 1); const dayOfWeek = minDate.getDay(); const dateString = (new Date(minDate - offset)).toISOString().split('T')[0];
-        if (dayOfWeek !== 0 && dayOfWeek !== 6 && !publicHolidays2026.includes(dateString)) addedDays++;
-    }
-    const lockedMinDateStr = (new Date(minDate - offset)).toISOString().split('T')[0];
-    const pDeadline = document.getElementById('pDeadline'); const leaveStart = document.getElementById('leaveStart'); const leaveEnd = document.getElementById('leaveEnd');
-    if(pDeadline) { pDeadline.value = lockedMinDateStr; pDeadline.min = lockedMinDateStr; }
-    if(leaveStart) leaveStart.value = localISOTime.split('T')[0]; if(leaveEnd) leaveEnd.value = localISOTime.split('T')[0];
-}
-
 // ========================================================
 // 🌟 4. UI NAVIGATION & THEMING
 // ========================================================
@@ -521,7 +587,7 @@ async function fetchSupabaseData(force = false, silent = false) {
             }
         } catch (e) { console.log("Gagal tarik data cuti Supabase:", e.message); }
 
-        const { data, error } = await supabaseClient.from('creative_requests').select('*').order('created_at', { ascending: false });
+       const { data, error } = await supabaseClient.from('creative_requests').select('*').order('created_at', { ascending: false });
         if (error) throw error;
         
         // 🌟 SMART RENDER: Elak skrin berkelip kalau takde perubahan data baru
@@ -598,23 +664,40 @@ function renderDashboard() {
 
     let data = globalData || []; const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
     data = filterDataByRegion(data, finalRegion);
+
+    // 🌟 FIX: FILTER IKUT NAMA USER (JIKA BUKAN ADMIN) 🌟
+    const currentUser = localStorage.getItem('adtech_user_name');
+    if (!isSuperAdmin && currentUser) {
+        data = data.filter(d => 
+            String(d.requester_name).toLowerCase() === currentUser.toLowerCase() || 
+            String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
+        );
+    }
+
     const pendingData = data.filter(d => String(d.status || '').toLowerCase() === 'pending');
     const activeData = data.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() !== 'done');
     const approvedData = data.filter(d => String(d.status || '').toLowerCase() === 'approved');
     
     document.getElementById('total-val').innerText = data.length; document.getElementById('pending-val').innerText = pendingData.length; document.getElementById('active-val').innerText = activeData.length;
 
-    const maxRecent = window.innerWidth <= 992 ? 3 : 5; 
-    // TAMBAHAN BARU: Susun data ikut tarikh dicipta (atau deadline) sebelum dipotong
-    const sortedData = [...data].sort((a, b) => {
-        const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
-        const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
-        return dateB - dateA; // Susunan menurun (paling baru di atas)
+   const maxRecent = window.innerWidth <= 992 ? 3 : 5; 
+    
+    // 🌟 FIX: Terbalikkan (reverse) data dulu supaya ia dibaca dari bawah, 
+    // kemudian baru sort. Ini selesaikan masalah data import yang ada tarikh/masa serentak!
+    const sortedData = [...data].reverse().sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
     });
+    
     const recent5 = sortedData.slice(0, maxRecent);
+    
+    document.getElementById('recent-list').innerHTML = recent5.length ? recent5.map((d, index) => `<tr onclick="if(typeof openDetailModal === 'function') openDetailModal('${d.job_id}')" class="clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" title="Click to view details"><td><span class="job-id-pill">${d.job_id} ${getFlag(d.region)}</span></td><td><div class="td-client">${d.client_name}</div><div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;">${d.project_title}</div></td><td>${formatDate(d.deadline)}</td><td style="text-align:center;"><div style="font-size:1.2rem; cursor:help;" title="${String(d.status || '').toUpperCase()}">${String(d.status || '').toLowerCase() === 'pending' ? '⏳' : '✅'}</div></td></tr>`).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px;"><i data-lucide="inbox"></i><p>No requests yet.</p></div></td></tr>';
+
     const today = new Date(); today.setHours(0,0,0,0); const nextWeek = new Date(today); nextWeek.setDate(today.getDate() + 7);
     const urgentJobs = activeData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); return dDate >= today && dDate <= nextWeek; }).sort((a,b) => new Date(a.deadline) - new Date(b.deadline));
-    document.getElementById('urgent-list').innerHTML = urgentJobs.length ? urgentJobs.map((u, index) => `<div class="urgent-item clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${u.job_id}')" title="Click to view details"><div style="flex:1; overflow:hidden; padding-right:10px;"><div class="urgent-client">${u.client_name}</div><div class="urgent-meta"><span class="job-id-pill" style="padding: 2px 6px; font-size: 0.65rem;">${u.job_id} ${getFlag(u.region)}</span> • ...${u.assignee && u.assignee !== 'null' ? u.assignee : 'Unassigned'}</div></div>...<div class="urgent-date">${formatDate(u.deadline)}</div></div>`).join('') : '<div class="empty-state" style="padding:20px;"><i data-lucide="coffee"></i><p>Relax, no urgent deadlines.</p></div>';
+    
+    document.getElementById('urgent-list').innerHTML = urgentJobs.length ? urgentJobs.map((u, index) => `<div class="urgent-item clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${u.job_id}')" title="Click to view details"><div style="flex:1; overflow:hidden; padding-right:10px;"><div class="urgent-client">${u.client_name}</div><div class="urgent-meta"><span class="job-id-pill" style="padding: 2px 6px; font-size: 0.65rem;">${u.job_id} ${getFlag(u.region)}</span> • ${u.assignee && u.assignee !== 'null' ? u.assignee : 'Unassigned'}</div></div><div class="urgent-date">${formatDate(u.deadline)}</div></div>`).join('') : '<div class="empty-state" style="padding:20px;"><i data-lucide="coffee"></i><p>Relax, no urgent deadlines.</p></div>';
 
     let currentPicList = []; if (finalRegion === 'Malaysia') currentPicList = дизайнериMY; else if (finalRegion === 'Indonesia') currentPicList = дизайнериID; else currentPicList = PIC_LIST; 
     document.getElementById('team-workload').innerHTML = currentPicList.map((pic, index) => {
@@ -645,6 +728,15 @@ function renderBoards() {
 
     let data = globalData || []; const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
     data = filterDataByRegion(data, finalRegion);
+
+    // 🌟 FIX: FILTER IKUT NAMA USER (JIKA BUKAN ADMIN) 🌟
+    const currentUser = localStorage.getItem('adtech_user_name');
+    if (!isSuperAdmin && currentUser) {
+        data = data.filter(d => 
+            String(d.requester_name).toLowerCase() === currentUser.toLowerCase() || 
+            String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
+        );
+    }
 
     if(!data || data.length === 0) {
         document.getElementById('projectList').innerHTML = '<div class="empty-state"><i data-lucide="inbox"></i><p>No active requests found.</p></div>';
@@ -726,15 +818,29 @@ function renderBoards() {
 function viewMyRequests() { showPage('workload'); const savedName = localStorage.getItem('adtech_user_name'); if (savedName) { const firstName = extractFirstName(savedName); const searchBox = document.getElementById('searchWorkload'); searchBox.value = firstName; renderBoards(); } }
 
 function generateJobCard(item, isDoneTab = false, index = 0) {
-    const ws = item.work_status || 'Not started'; const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
+    const ws = item.work_status || 'Not started'; 
+    const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
     const borderColors = { 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Revision': '#ea580c', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
     const borderColor = borderColors[ws] || '#cbd5e1';
-    const isMonthly = String(item.job_type).toLowerCase().includes('monthly'); const monthlyBadge = isMonthly ? `<span style="background:#8b5cf6; color:white; padding:2px 6px; border-radius:4px; font-size:0.6rem; margin-left:5px; vertical-align: middle;">📅 Monthly</span>` : '';
+    
+    // LOGIK BARU: Tentukan ikon berdasarkan jenis Job
+    const jobTypeStr = String(item.job_type).toLowerCase();
+    let typeIcon = '⚡'; // Default (Ad-Hoc)
+    
+    if (jobTypeStr.includes('monthly')) {
+        typeIcon = '📅'; // Monthly Content Plan
+    } else if (jobTypeStr.includes('pitch')) {
+        typeIcon = '🖥️'; // Pitch Deck Proposal
+    }
+    
     return `
         <div class="kanban-card stagger-card" style="border-left-color: ${borderColor}; animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${item.job_id}')">
-            <div class="kb-header"><span class="kb-id">[${item.job_id}] ${getFlag(item.region)}</span><strong class="ws-badge ${wsClass}">${ws}</strong></div>
-            <div class="kb-title">${item.client_name}: ${item.project_title} ${monthlyBadge}</div>
-            <div class="kb-pic"><i data-lucide="user"></i> ${item.assignee && item.assignee !== 'null' ? item.assignee : 'Unassigned'}</div><div class="kb-date"><i data-lucide="calendar"></i> ${formatDate(item.deadline)}</div></div>
+            <div class="kb-header"><span class="kb-id">${typeIcon} [${item.job_id}] ${getFlag(item.region)}</span><strong class="ws-badge ${wsClass}">${ws}</strong></div>
+            <div class="kb-title">${item.client_name}: ${item.project_title}</div>
+            <div class="kb-footer">
+                <div class="kb-pic"><i data-lucide="user"></i> ${item.assignee && item.assignee !== 'null' ? item.assignee : 'Unassigned'}</div>
+                <div class="kb-date"><i data-lucide="calendar"></i> ${formatDate(item.deadline)}</div>
+            </div>
         </div>
     `;
 }
@@ -961,7 +1067,6 @@ function openDetailModal(jobID, isUpdate = false) {
 
         const safeClient = String(item.client_name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
         const safeTitle = String(item.project_title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;'); 
-        // Bersihkan "null" awal-awal
         const actualAssignee = (item.assignee && item.assignee !== 'null') ? item.assignee : 'Unassigned';
         const actualRequester = (item.requester_name && item.requester_name !== 'null') ? item.requester_name : 'Unknown';
 
@@ -980,8 +1085,22 @@ function openDetailModal(jobID, isUpdate = false) {
             playbookBtnHtml = `<a href="${item.playbook_link}" target="_blank" class="premium-playbook-btn"><i data-lucide="layout-template"></i> Open Playbook</a>`; 
         }
 
-        const briefText = String(item.brief || ''); 
-        const formattedBrief = briefText ? briefText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--link-color); text-decoration:underline; word-break:break-all;">$1</a>').replace(/\n/g, '<br>') : 'No brief provided.';
+        // --- MULA LOGIK FORMAT BRIEF BERBEZA ---
+        const briefText = String(item.brief || '');
+        const isPitchDeck = String(item.job_type || '').toLowerCase().includes('pitch deck');
+        
+        let formattedBriefHTML = '';
+
+        if (isPitchDeck) {
+            // Kita pecahkan Brief teks tu kalau dia Pitch Deck, supaya nampak kemas
+            const formatPitchLinks = briefText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--orange); font-weight: 600; text-decoration:underline; word-break:break-all;"><i data-lucide="external-link" style="width:14px; height:14px; vertical-align:middle;"></i> Open Link</a>').replace(/\n/g, '<br>');
+            formattedBriefHTML = `<div style="background: rgba(245, 158, 11, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(245, 158, 11, 0.2);"><h4 style="color: var(--orange); margin: 0 0 10px 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;"><i data-lucide="presentation" style="width:16px; height:16px; vertical-align:middle; margin-right:5px;"></i> Pitch Deck Details</h4><p style="margin:0;">${formatPitchLinks}</p></div>`;
+        } else {
+            // Format standard
+            const formattedBrief = briefText ? briefText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--link-color); text-decoration:underline; word-break:break-all;">$1</a>').replace(/\n/g, '<br>') : 'No brief provided.';
+            formattedBriefHTML = `<p><strong>Creative Brief & Plan:</strong><br>${formattedBrief}</p>`;
+        }
+        // --- TAMAT LOGIK FORMAT BRIEF ---
 
         let bodyHtml = `
             ${playbookBtnHtml}
@@ -994,7 +1113,11 @@ function openDetailModal(jobID, isUpdate = false) {
                 <div class="detail-item"><span>Revision Count</span>${securePin && !isDoneTab ? `<div style="display:flex; align-items:center; gap:8px; margin-top:2px;"><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, -1)">-</button><strong style="min-width:15px; text-align:center;">${item.revision || 0}</strong><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, 1)">+</button></div>` : `<strong>${item.revision || 0}</strong>`}</div>
                 ${(item.approver) ? `<div class="detail-item"><span>Approved By</span><strong>${item.approver}</strong></div>` : ''}
             </div>
-            <div class="brief-box"><p><strong>Creative Brief & Plan:</strong><br>${formattedBrief}</p>${item.ref_link ? `<p><strong>Reference:</strong> <a href="${item.ref_link}" target="_blank">Click to view reference</a></p>` : ''}${item.remarks ? `<p><strong>Remarks:</strong> ${item.remarks}</p>` : ''}</div>
+            <div class="brief-box">
+                ${formattedBriefHTML}
+                ${item.ref_link ? `<p style="margin-top: 15px;"><strong>Reference:</strong> <a href="${item.ref_link}" target="_blank">Click to view reference</a></p>` : ''}
+                ${item.remarks ? `<p style="margin-top: 10px;"><strong>Remarks:</strong> ${item.remarks}</p>` : ''}
+            </div>
         `;
 
         let footerHtml = ''; 
@@ -1035,7 +1158,6 @@ function openDetailModal(jobID, isUpdate = false) {
         alert("Ada ralat teknikal: " + err.message);
     }
 }
-
 // ========================================================
 // 🌟 10. PENGURUSAN DATA SUPABASE (SUBMIT / EDIT / DELETE)
 // ========================================================
@@ -1054,13 +1176,12 @@ async function submitRequest() {
     submitBtn.disabled = true;
 
     try {
-        // 1. LOGIK PENJANAAN ID FORMAT LAMA (Contoh: DON-2604-001)
+        // 1. LOGIK PENJANAAN ID
         const clientPrefix = client.substring(0, 3).toUpperCase().replace(/\s/g, 'X'); 
         const now = new Date();
-        const yy = now.getFullYear().toString().slice(-2); // Ambil '26'
-        const mm = (now.getMonth() + 1).toString().padStart(2, '0'); // Ambil '04'
+        const yy = now.getFullYear().toString().slice(-2); 
+        const mm = (now.getMonth() + 1).toString().padStart(2, '0'); 
         
-        // Tarik jumlah data sedia ada untuk tentukan nombor siri (001, 002, etc)
         const { data: existingJobs } = await supabaseClient.from('creative_requests').select('job_id');
         const nextNumber = (existingJobs ? existingJobs.length : 0) + 1;
         const serial = nextNumber.toString().padStart(3, '0');
@@ -1068,20 +1189,39 @@ async function submitRequest() {
         const finalJobID = `${clientPrefix}-${yy}${mm}-${serial}`;
 
         // 2. KUMPUL DATA BORANG
-        let objective = Array.from(document.querySelectorAll('#jobObjectives input[type="checkbox"]:checked')).filter(cb => cb.id !== 'objectiveOtherCheckbox').map(cb => cb.value).join(', ');
-        const otherCheckbox = document.getElementById('objectiveOtherCheckbox'); 
+        let objective = Array.from(document.querySelectorAll('#jobObjectives input[type="checkbox"]:checked')).map(cb => cb.value).join(', ');
         const otherInput = document.getElementById('objectiveOtherInput');
-        if (otherCheckbox.checked && otherInput.value.trim()) { objective = (objective ? objective + ', ' : '') + 'Other: ' + otherInput.value.trim(); }
+        if (otherInput && otherInput.value.trim()) { 
+            objective = (objective ? objective + ', ' : '') + 'Other: ' + otherInput.value.trim(); 
+        }
         if (!objective) objective = 'N/A';
 
         let types = ""; let compiledSizes = ""; let fullBrief = document.getElementById('pBrief').value;
 
+        // 🌟 LOGIK BARU: TANGKAP JENIS REQUEST DENGAN BETUL 🌟
         if (currentRequestType === 'monthly') {
             types = "Monthly Content Plan"; 
             const sCount = document.getElementById('mStatic').value || 0; 
             const vCount = document.getElementById('mVideo').value || 0; 
             const cCount = document.getElementById('mCarousel').value || 0;
-            compiledSizes = `- Static Posters: ${sCount}\n- Videos / Reels: ${vCount}\n- Carousels: ${cCount}\n`;
+            const capCount = document.getElementById('mCaption') ? document.getElementById('mCaption').value : 0; 
+            
+            compiledSizes = `- Static Posters: ${sCount}\n- Videos / Reels: ${vCount}\n- Carousels: ${cCount}\n- Caption Only: ${capCount}\n`;
+            
+        } else if (currentRequestType === 'pitch') {
+            types = "Pitch Deck Proposal";
+            objective = "Pitch / Proposal"; // Override objective supaya kemas
+            
+            const pitchSupport = Array.from(document.querySelectorAll('#pitchSupportTypes input[type="checkbox"]:checked')).map(cb => cb.value).join(', ');
+            const pitchIdea = document.getElementById('pPitchIdea') ? document.getElementById('pPitchIdea').value.trim() : '';
+            const pitchDraft = document.getElementById('pPitchDraft') ? document.getElementById('pPitchDraft').value.trim() : '';
+            const pitchAsset = document.getElementById('pPitchAsset') ? document.getElementById('pPitchAsset').value.trim() : '';
+            const pitchDate = document.getElementById('pPitchDate') ? document.getElementById('pPitchDate').value : '';
+            
+            if(!pitchDraft || !pitchAsset) throw new Error("Draft Deck Link and Brand Assets are mandatory for Pitch Deck.");
+            
+            fullBrief = `[PITCH STRATEGY / BIG IDEA]:\n${pitchIdea || 'N/A'}\n\n[PITCH SUPPORT NEEDED]:\n${pitchSupport || 'N/A'}\n\n[DRAFT DECK LINK]:\n${pitchDraft}\n\n[BRAND ASSETS]:\n${pitchAsset}\n\n[ACTUAL PITCH DATE]:\n${pitchDate ? formatDate(pitchDate) : 'Not specified'}`;
+            
         } else {
             types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', '); 
             const sizeRows = document.querySelectorAll('.size-row');
@@ -1093,9 +1233,13 @@ async function submitRequest() {
             });
         }
 
+        // Cantumkan brief mengikut jenis
         if (compiledSizes) fullBrief = "[DELIVERABLES REQUIRED]:\n" + compiledSizes + "\n\n" + fullBrief;
-        const monthlyPlan = document.getElementById('pMonthlyPlan').value; 
-        if(monthlyPlan) fullBrief += "\n\n[Monthly Plan Details]:\n" + monthlyPlan;
+        
+        if (currentRequestType !== 'pitch') {
+            const monthlyPlan = document.getElementById('pMonthlyPlan') ? document.getElementById('pMonthlyPlan').value : ''; 
+            if(monthlyPlan) fullBrief += "\n\n[Monthly Plan Details]:\n" + monthlyPlan;
+        }
 
         const payload = {
             job_id: finalJobID, requester_name: name, region: region, client_name: client, project_title: document.getElementById('pTitle').value,
@@ -1119,12 +1263,44 @@ async function submitRequest() {
         overlay.classList.add('show'); 
         playSuccessSound();
         
-        // Reset borang
+        // 4. RESET BORANG & KEMBALIKAN LOCALSTORAGE
         document.querySelectorAll('input:not([type="radio"]):not([type="checkbox"]), textarea, select').forEach(el => el.value = ''); 
         document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => el.checked = false);
-        document.getElementById('objectiveOtherInput').value = ''; 
+        if(document.getElementById('objectiveOtherInput')) document.getElementById('objectiveOtherInput').value = ''; 
         setPresetDate(); 
         resetFormUI();
+
+        const savedName = localStorage.getItem('adtech_user_name');
+        const savedRegion = localStorage.getItem('adtech_region');
+        
+        if (savedRegion) {
+            const pRegionField = document.getElementById('pRegion');
+            if (pRegionField) { 
+                pRegionField.innerHTML = `<option value="${savedRegion}">${savedRegion}</option>`; 
+                pRegionField.value = savedRegion; 
+            }
+        }
+        
+        if (savedName) {
+            const reqSelect = document.getElementById('requesterName');
+            let found = false;
+            if (reqSelect) {
+                for(let i=0; i<reqSelect.options.length; i++){ 
+                    if(reqSelect.options[i].value === savedName || reqSelect.options[i].text === savedName){ 
+                        reqSelect.selectedIndex = i; 
+                        found = true; 
+                        break; 
+                    } 
+                }
+            }
+            if(!found) { 
+                const manualInput = document.getElementById('manualName');
+                if (manualInput) {
+                    manualInput.value = savedName; 
+                    manualInput.style.display = 'block'; 
+                }
+            }
+        }
 
         setTimeout(() => { 
             overlay.classList.remove('show'); 
@@ -1143,7 +1319,6 @@ async function submitRequest() {
         submitBtn.disabled = false; 
     } 
 }
-
 async function approveJob(jobID, client, title) {
     const selectedPIC = Array.from(document.querySelectorAll(`.cb-${jobID}:checked`)).map(cb => cb.value).join(', ');
     if(!selectedPIC) return showAppleAlert("Missing Assignee", "Please select at least one creative PIC.");

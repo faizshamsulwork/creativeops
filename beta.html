@@ -402,7 +402,7 @@
                 <h1 style="margin-bottom: 10px;">Create New Request</h1>
                 <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;" id="requestSubtitle">Please select the type of campaign you want to request.</p>
                 
-                <div id="request-gateway" class="gateway-grid">
+               <div id="request-gateway" class="gateway-grid">
                     <div class="gateway-card" onclick="selectRequestType('adhoc')">
                         <div class="gateway-icon"><i data-lucide="zap" style="width: 30px; height: 30px;"></i></div>
                         <h3>Ad-Hoc / One-Off</h3>
@@ -412,6 +412,11 @@
                         <div class="gateway-icon"><i data-lucide="calendar-range" style="width: 30px; height: 30px;"></i></div>
                         <h3>Monthly Content Plan</h3>
                         <p>For bulk calendar planning and full month campaigns.</p>
+                    </div>
+                    <div class="gateway-card pitch-deck" onclick="selectRequestType('pitch')">
+                        <div class="gateway-icon"><i data-lucide="presentation" style="width: 30px; height: 30px;"></i></div>
+                        <h3>Pitch Deck Proposal</h3>
+                        <p>For high-priority deck beautification, mockups, or concept visuals.</p>
                     </div>
                 </div>
 
@@ -424,18 +429,9 @@
                     </div>
 
                     <div class="form-progress">
-                        <div class="step-indicator active" id="ind-1">
-                            <div class="step-dot"><i data-lucide="user"></i></div>
-                            <span class="step-label">Requester</span>
-                        </div>
-                        <div class="step-indicator" id="ind-2">
-                            <div class="step-dot"><i data-lucide="briefcase"></i></div>
-                            <span class="step-label">Project</span>
-                        </div>
-                        <div class="step-indicator" id="ind-3">
-                            <div class="step-dot"><i data-lucide="file-text"></i></div>
-                            <span class="step-label">Brief</span>
-                        </div>
+                        <div class="step-indicator active" id="ind-1"><div class="step-dot"><i data-lucide="user"></i></div><span class="step-label">Requester</span></div>
+                        <div class="step-indicator" id="ind-2"><div class="step-dot"><i data-lucide="briefcase"></i></div><span class="step-label">Project</span></div>
+                        <div class="step-indicator" id="ind-3"><div class="step-dot"><i data-lucide="file-text"></i></div><span class="step-label">Brief</span></div>
                     </div>
 
                     <div class="form-step active" id="step1">
@@ -445,12 +441,8 @@
                                 <label>Requester Name</label>
                                 <select id="requesterName">
                                     <option value="">-- Select Name --</option>
-                                    <optgroup label="Malaysia">
-                                        <option value="Aaron">Aaron</option><option value="Abel">Abel</option><option value="Ain Sabrina">Ain Sabrina</option><option value="Alya">Alya</option><option value="Ammelia">Ammelia</option><option value="Angie Ng">Angie Ng</option><option value="Bernice Mah">Bernice Mah</option><option value="Boon Jie Xin">Boon Jie Xin</option><option value="Chong Jia Jun">Chong Jia Jun</option><option value="Darren (Boo Hwa Chian)">Darren (Boo Hwa Chian)</option><option value="Dillon Frederick Kugan">Dillon Frederick Kugan</option><option value="Faiz Shamsul">Faiz Shamsul</option><option value="Hao Yun">Hao Yun</option><option value="Joanne Yap">Joanne Yap</option><option value="Joseph Chong">Joseph Chong</option><option value="Kevin Tan">Kevin Tan</option><option value="Lina Leong">Lina Leong</option><option value="Nurul Iman Natasha">Nurul Iman Natasha</option><option value="Simon">Simon</option><option value="Steven">Steven</option><option value="Syaheerah Atiqah">Syaheerah Atiqah</option><option value="Wilson Ng Guan De">Wilson Ng Guan De</option><option value="Xuan Lee">Xuan Lee</option><option value="Zulkarnain Mustapa">Zulkarnain Mustapa</option>
-                                    </optgroup>
-                                    <optgroup label="Indonesia">
-                                        <option value="Angelina">Angelina</option><option value="Annisya Y.">Annisya Y.</option><option value="Arbaasya D.F.">Arbaasya D.F.</option><option value="Areta G.P.">Areta G.P.</option><option value="Ashley Karamoy">Ashley Karamoy</option><option value="Avira P.P.">Avira P.P.</option><option value="Ayu Aprillia">Ayu Aprillia</option><option value="Fadhil Zuhayr">Fadhil Zuhayr</option><option value="Fajar Abhirama">Fajar Abhirama</option><option value="Jap Hetty">Jap Hetty</option><option value="Joanne Chan">Joanne Chan</option><option value="Lutfan Allen R.">Lutfan Allen R.</option><option value="Marlina S.">Marlina S.</option><option value="Miftahul Fikri">Miftahul Fikri</option><option value="Moh. Reza P.">Moh. Reza P.</option><option value="Naufal Hilmy">Naufal Hilmy</option><option value="Tiffani Y.">Tiffani Y.</option><option value="Verincia T.">Verincia T.</option><option value="Youke Yap">Youke Yap</option>
-                                    </optgroup>
+                                    <optgroup label="Malaysia"><option value="Aaron">Aaron</option><option value="Abel">Abel</option><option value="Ain Sabrina">Ain Sabrina</option><option value="Alya">Alya</option><option value="Ammelia">Ammelia</option><option value="Angie Ng">Angie Ng</option><option value="Bernice Mah">Bernice Mah</option><option value="Boon Jie Xin">Boon Jie Xin</option><option value="Chong Jia Jun">Chong Jia Jun</option><option value="Darren (Boo Hwa Chian)">Darren (Boo Hwa Chian)</option><option value="Dillon Frederick Kugan">Dillon Frederick Kugan</option><option value="Faiz Shamsul">Faiz Shamsul</option><option value="Hao Yun">Hao Yun</option><option value="Joanne Yap">Joanne Yap</option><option value="Joseph Chong">Joseph Chong</option><option value="Kevin Tan">Kevin Tan</option><option value="Lina Leong">Lina Leong</option><option value="Nurul Iman Natasha">Nurul Iman Natasha</option><option value="Simon">Simon</option><option value="Steven">Steven</option><option value="Syaheerah Atiqah">Syaheerah Atiqah</option><option value="Wilson Ng Guan De">Wilson Ng Guan De</option><option value="Xuan Lee">Xuan Lee</option><option value="Zulkarnain Mustapa">Zulkarnain Mustapa</option></optgroup>
+                                    <optgroup label="Indonesia"><option value="Angelina">Angelina</option><option value="Annisya Y.">Annisya Y.</option><option value="Arbaasya D.F.">Arbaasya D.F.</option><option value="Areta G.P.">Areta G.P.</option><option value="Ashley Karamoy">Ashley Karamoy</option><option value="Avira P.P.">Avira P.P.</option><option value="Ayu Aprillia">Ayu Aprillia</option><option value="Fadhil Zuhayr">Fadhil Zuhayr</option><option value="Fajar Abhirama">Fajar Abhirama</option><option value="Jap Hetty">Jap Hetty</option><option value="Joanne Chan">Joanne Chan</option><option value="Lutfan Allen R.">Lutfan Allen R.</option><option value="Marlina S.">Marlina S.</option><option value="Miftahul Fikri">Miftahul Fikri</option><option value="Moh. Reza P.">Moh. Reza P.</option><option value="Naufal Hilmy">Naufal Hilmy</option><option value="Tiffani Y.">Tiffani Y.</option><option value="Verincia T.">Verincia T.</option><option value="Youke Yap">Youke Yap</option></optgroup>
                                 </select>
                             </div>
                             <div class="input-group"><label>Manual Name (If not in list)</label><input type="text" id="manualName" placeholder="Type name here"></div>
@@ -458,10 +450,7 @@
                         <div class="form-row">
                             <div class="input-group">
                                 <label>Office / Region</label>
-                                <select id="pRegion">
-                                    <option>Malaysia</option><option>Hong Kong</option><option>Singapore</option><option>Indonesia</option>
-                                    <option>Vietnam</option><option>Japan</option><option>China</option>
-                                </select>
+                                <select id="pRegion"><option>Malaysia</option><option>Hong Kong</option><option>Singapore</option><option>Indonesia</option><option>Vietnam</option><option>Japan</option><option>China</option></select>
                             </div>
                         </div>
                         <div class="form-navigation" style="justify-content: flex-end;">
@@ -491,29 +480,38 @@
                         </div>
 
                         <div id="monthlyFieldsContainer" style="display: none;">
+                            <div class="input-group" style="margin-bottom: 25px; padding: 20px; background: rgba(139, 92, 246, 0.05); border: 1px dashed #8b5cf6; border-radius: 12px;">
+                                <label style="color: #6d28d9;"><i data-lucide="calendar-check" style="width: 18px;"></i> Content For Month</label>
+                                <input type="month" id="mTargetMonth" onchange="window.lockEndOfMonth ? window.lockEndOfMonth(this.value) : null" style="border-color: #c4b5fd;">
+                            </div>
                             <div class="input-group" style="margin-bottom: 20px;">
                                 <label>Content Quantity Needed</label>
                                 <div class="selection-box" style="grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); background: transparent; padding: 0; border: none; gap: 10px;">
-                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;">
-                                        <i data-lucide="image" style="color: var(--link-color); margin-bottom: 5px;"></i>
-                                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Static Posters</div>
-                                        <input type="number" id="mStatic" placeholder="0" min="0" style="text-align: center; font-weight: 700;">
-                                    </div>
-                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;">
-                                        <i data-lucide="film" style="color: var(--orange); margin-bottom: 5px;"></i>
-                                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Videos / Reels</div>
-                                        <input type="number" id="mVideo" placeholder="0" min="0" style="text-align: center; font-weight: 700;">
-                                    </div>
-                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;">
-                                        <i data-lucide="gallery-horizontal" style="color: var(--green); margin-bottom: 5px;"></i>
-                                        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Carousels</div>
-                                        <input type="number" id="mCarousel" placeholder="0" min="0" style="text-align: center; font-weight: 700;">
-                                    </div>
+                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;"><i data-lucide="image" style="color: var(--link-color); margin-bottom: 5px;"></i><div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Static Posters</div><input type="number" id="mStatic" placeholder="0" min="0" style="text-align: center; font-weight: 700;"></div>
+                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;"><i data-lucide="film" style="color: var(--orange); margin-bottom: 5px;"></i><div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Videos / Reels</div><input type="number" id="mVideo" placeholder="0" min="0" style="text-align: center; font-weight: 700;"></div>
+                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;"><i data-lucide="gallery-horizontal" style="color: var(--green); margin-bottom: 5px;"></i><div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Carousels</div><input type="number" id="mCarousel" placeholder="0" min="0" style="text-align: center; font-weight: 700;"></div>
+                                    <div style="background: var(--bg-box); border: 1px solid var(--border-main); padding: 15px; border-radius: 8px; text-align: center;"><i data-lucide="type" style="color: #8b5cf6; margin-bottom: 5px;"></i><div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">Caption Only</div><input type="number" id="mCaption" placeholder="0" min="0" style="text-align: center; font-weight: 700;"></div>
                                 </div>
                             </div>
                             <div class="input-group" style="margin-bottom: 20px;">
-                                <label>Monthly Content Plan Details <i data-lucide="help-circle" class="info-tooltip" title="Paste your entire calendar text or breakdown here"></i></label>
+                                <label>Monthly Content Plan Details <div class="tooltip-container"><i data-lucide="help-circle" class="info-tooltip"></i><div class="tooltip-box">Good Example:
+• Week 1: Teaser & Awareness
+• Week 2: Educational
+• Week 3: Hard Sell (Promo)
+• Week 4: Social Proof</div></div></label>
                                 <textarea id="pMonthlyPlan" rows="4" placeholder="e.g. Week 1: Launch Promo. Week 2: Educational..."></textarea>
+                            </div>
+                        </div>
+
+                        <div id="pitchFieldsContainer" style="display: none;">
+                            <div class="input-group" style="margin-bottom: 20px;">
+                                <label>Pitch Support Needed (Select all that apply)</label>
+                                <div class="selection-box" id="pitchSupportTypes">
+                                    <label class="check-item"><input type="checkbox" value="Full Deck Beautification"> Full Deck Beautification</label>
+                                    <label class="check-item"><input type="checkbox" value="Key Visual (KV) / Concept"> Key Visual (KV) / Concept</label>
+                                    <label class="check-item"><input type="checkbox" value="Campaign Mockups"> Campaign Mockups</label>
+                                    <label class="check-item"><input type="checkbox" value="Master Template Creation"> Master Template</label>
+                                </div>
                             </div>
                         </div>
 
@@ -525,48 +523,94 @@
 
                     <div class="form-step" id="step3">
                         <h3 class="section-title">4. Creative Brief & Timeline</h3>
-                        <div class="input-group" style="margin-bottom: 20px;">
-                            <label>Objective (Select all that apply)</label>
-                            <div class="selection-box objective-checkboxes" id="jobObjectives">
-                                <label class="check-item"><input type="checkbox" value="Traffic"> Traffic</label>
-                                <label class="check-item"><input type="checkbox" value="Awareness"> Awareness</label>
-                                <label class="check-item"><input type="checkbox" value="Sales"> Sales</label>
-                                <label class="other-input-group"><input type="checkbox" id="objectiveOtherCheckbox"> Other: <input type="text" id="objectiveOtherInput" class="other-text-input" placeholder=""></label>
-                            </div>
-                        </div>
                         
-                        <div class="input-group" id="deliverablesContainer" style="margin-bottom: 20px;">
-                            <label>Deliverables (Details, Size & Format)</label>
-                            <div id="dynamicSizeContainer">
-                                <div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
-                                    <input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
-                                    <input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
-                                    <input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
+                        <div id="standardBriefContainer">
+                            <div class="input-group" style="margin-bottom: 20px;">
+                                <label>Objective (Select all that apply)</label>
+                                <div class="selection-box objective-checkboxes" id="jobObjectives">
+                                    <label class="check-item"><input type="checkbox" value="Traffic"> Traffic</label>
+                                    <label class="check-item"><input type="checkbox" value="Awareness"> Awareness</label>
+                                    <label class="check-item"><input type="checkbox" value="Sales"> Sales</label>
+                                    <div class="other-input-group"><span style="font-size: 0.9rem; font-weight: 600; color: var(--text-muted);">Other:</span><input type="text" id="objectiveOtherInput" class="other-text-input" placeholder="Type here..."></div>
                                 </div>
                             </div>
-                            <button type="button" onclick="addSizeRow()" style="background: transparent; color: var(--link-color); border: 1px dashed var(--border-main); padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 5px; width: 100%; transition: 0.2s;"><i data-lucide="plus" style="width: 16px;"></i> Add Another Deliverable</button>
-                            <datalist id="sizeOptions">
-                                <option value="1080 x 1080px (Square Feed / Carousel)"></option><option value="1080 x 1350px (IG Portrait)"></option><option value="1080 x 1920px (IG Story / Reels / TikTok)"></option><option value="1200 x 628px (FB Link / LinkedIn Post)"></option><option value="1920 x 1080px (YouTube Thumbnail)"></option>
-                                <option value="300 x 250px (Medium Rectangle)"></option><option value="728 x 90px (Leaderboard)"></option><option value="160 x 600px (Wide Skyscraper)"></option><option value="300 x 600px (Half Page)"></option><option value="1920 x 1080px (Web Banner)"></option>
-                                <option value="1920 x 1080px (FHD Video 16:9)"></option><option value="1080 x 1920px (Vertical Video 9:16)"></option><option value="3840 x 2160px (4K UHD)"></option>
-                                <option value="A4 Size (Print)"></option><option value="A3 Size (Print)"></option><option value="A5 Size (Print)"></option><option value="Business Card (90 x 54mm)"></option><option value="Bunting 2x5 ft (Print)"></option><option value="Banner 8x4 ft (Print)"></option>
-                            </datalist>
-                        </div>
-
-                        <div class="input-group" style="margin-bottom: 20px;">
-                            <label>Creative Brief / Guidelines <i data-lucide="help-circle" class="info-tooltip" title="Provide overall visual direction, hook, and vibe"></i></label>
-                            <textarea id="pBrief" rows="6" style="padding: 12px; border: 1px solid var(--border-main); border-radius: 8px; line-height: 1.5; font-family: inherit; background: var(--bg-input); color: var(--text-main);">[MAIN MESSAGE / HOOK]: 
+                            <div class="input-group" id="deliverablesContainer" style="margin-bottom: 20px;">
+                                <label>Deliverables (Details, Size & Format)</label>
+                                <div id="dynamicSizeContainer">
+                                    <div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+                                        <input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
+                                        <input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
+                                        <input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
+                                    </div>
+                                </div>
+                                <button type="button" onclick="addSizeRow()" style="background: transparent; color: var(--link-color); border: 1px dashed var(--border-main); padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 5px; width: 100%; transition: 0.2s;"><i data-lucide="plus" style="width: 16px;"></i> Add Another Deliverable</button>
+                                <datalist id="sizeOptions">
+                                    <option value="1080 x 1080px (Square Feed / Carousel)"></option><option value="1080 x 1350px (IG Portrait)"></option><option value="1080 x 1920px (IG Story / Reels / TikTok)"></option><option value="1200 x 628px (FB Link / LinkedIn Post)"></option><option value="1920 x 1080px (YouTube Thumbnail)"></option>
+                                    <option value="300 x 250px (Medium Rectangle)"></option><option value="728 x 90px (Leaderboard)"></option><option value="160 x 600px (Wide Skyscraper)"></option><option value="300 x 600px (Half Page)"></option><option value="1920 x 1080px (Web Banner)"></option>
+                                    <option value="1920 x 1080px (FHD Video 16:9)"></option><option value="1080 x 1920px (Vertical Video 9:16)"></option><option value="3840 x 2160px (4K UHD)"></option>
+                                </datalist>
+                            </div>
+                            <div class="input-group" style="margin-bottom: 20px;">
+                                <label>Creative Brief / Guidelines <div class="tooltip-container"><i data-lucide="help-circle" class="info-tooltip"></i><div class="tooltip-box">Good Example:
+[HOOK]: "Get 50% Off Winter Gear!"
+[AUDIENCE]: Young adults (18-35).
+[VIBE]: Energetic, dark bg with neon highlights.
+[MANDATORY]: Put company logo at bottom right.</div></div></label>
+                                <textarea id="pBrief" rows="6" style="padding: 12px; border: 1px solid var(--border-main); border-radius: 8px; line-height: 1.5; font-family: inherit; background: var(--bg-input); color: var(--text-main);">[MAIN MESSAGE / HOOK]: 
 
 [TARGET AUDIENCE]: 
 
 [TONE & VIBE]: 
 
 [MANDATORY LOGO / TEXT]: </textarea>
+                            </div>
+                        </div>
+
+                       <div id="pitchBriefContainer" style="display: none; padding: 20px; background: rgba(245, 158, 11, 0.05); border: 1px dashed var(--orange); border-radius: 12px; margin-bottom: 20px;">
+                            <div class="input-group" style="margin-bottom: 20px;">
+                                <label>The "Big Idea" / Core Strategy 
+                                    <div class="tooltip-container">
+                                        <i data-lucide="help-circle" class="info-tooltip"></i>
+                                        <div class="tooltip-box">What is the single most important message you want the client to remember?
+                                        
+Good Example: "We want to position the brand as the No.1 lifestyle choice for Gen-Z in Malaysia by leveraging TikTok culture and gamification."</div>
+                                    </div>
+                                </label>
+                                <textarea id="pPitchIdea" rows="3" placeholder="e.g. We want to position the brand as the No.1 lifestyle choice in Malaysia..." style="padding: 12px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-input); color: var(--text-main);"></textarea>
+                            </div>
+                            <div class="form-row" style="margin-bottom: 20px;">
+                                <div class="input-group">
+                                    <label>Draft Deck Link <span style="color:var(--red);">*Mandatory</span></label>
+                                    <input type="text" id="pPitchDraft" placeholder="Paste Google Slides link">
+                                </div>
+                                <div class="input-group">
+                                    <label>Brand Guidelines / Assets <span style="color:var(--red);">*Mandatory</span></label>
+                                    <input type="text" id="pPitchAsset" placeholder="Paste Drive/Brand link">
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label>Actual Pitch Date 
+                                    <div class="tooltip-container">
+                                        <i data-lucide="help-circle" class="info-tooltip"></i>
+                                        <div class="tooltip-box">When is the actual presentation meeting with the client? Giving the exact date helps the Creative Lead prioritize and schedule this deck against other urgent ad-hoc tasks.</div>
+                                    </div>
+                                </label>
+                                <input type="date" id="pPitchDate">
+                            </div>
                         </div>
 
                         <div class="form-row">
-                            <div class="input-group"><label>Deadline (Min. 3 working days)</label><input type="date" id="pDeadline"></div>
-                            <div class="input-group"><label>Reference/Moodboard (Google Slides Link)</label><input type="text" id="pRefLink" placeholder="Paste URL here"></div>
+                            <div class="input-group">
+                                <label id="deadlineLabel" for="pDeadline">Deadline (Min. 3 working days)</label>
+                                <input type="date" id="pDeadline">
+                                <small id="deadlineHelper" style="display: none; color: var(--orange); margin-top: 5px; font-size: 0.75rem; line-height: 1.4; font-weight: 600;">
+                                    *SLA: Minimum 5 working days required for the 1st Batch / First Draft.
+                                </small>
+                            </div>
+                            <div class="input-group">
+                                <label>Reference/Moodboard (Google Slides Link)</label>
+                                <input type="text" id="pRefLink" placeholder="Paste URL here">
+                            </div>
                         </div>
                         <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
                         
@@ -577,10 +621,6 @@
                     </div>
 
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="app.js"></script>
+                    </div> </div> </div> </div> </div> <script src="app.js"></script>
 </body>
 </html>
