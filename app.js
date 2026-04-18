@@ -6,8 +6,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const GAS_API = 'https://script.google.com/macros/s/AKfycbwKNzX9BsgsTz2Cu-L_egPvrwKe-hrcsVMSEAxVy7sDgdCYd8TYyzWAnxJwjf1wOlXx/exec'; 
-const TG_TOKEN = '8660418607:AAH-Lz-n3qIy6dNZ02BgF8RtsmGSnsrAI_s';
-const TG_CHAT = '-5196158296'; 
+const TELEGRAM_API = 'https://script.google.com/macros/s/AKfycbyC-UgaT5QWgaWqfAQN2K-tRE2BhFYumAWzDxM6GBApTddvI9SmQHcAyMoh1sN2UML1/exec'; 
 
 const PIC_LIST = ["Abel", "Aaron", "Simon", "Alya", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y."]; 
 const дизайнериMY = ["Abel", "Aaron", "Simon", "Alya", "Steven", "Faiz Shamsul"];
@@ -126,7 +125,12 @@ function showApplePrompt(title, desc, isPassword = false, validateFn = null) {
         let oldBtnCancel = document.getElementById('iosPromptCancel'); let btnCancel = oldBtnCancel.cloneNode(true); oldBtnCancel.parentNode.replaceChild(btnCancel, oldBtnCancel);
 
         document.getElementById('iosPromptTitle').innerText = title; document.getElementById('iosPromptDesc').innerText = desc;
-        input.type = isPassword ? 'password' : 'text'; input.value = ''; btnConfirm.innerHTML = 'OK'; btnConfirm.disabled = false; input.disabled = false;
+        
+        // LOGIK BARU: Tukar placeholder berdasarkan jenis input
+        input.type = isPassword ? 'password' : 'text'; 
+        input.placeholder = isPassword ? 'PIN / Passcode' : 'Type number here...'; 
+        
+        input.value = ''; btnConfirm.innerHTML = 'OK'; btnConfirm.disabled = false; input.disabled = false;
         overlay.classList.add('show'); setTimeout(() => input.focus(), 100); let isProcessing = false; 
 
         const cleanUp = () => { overlay.classList.remove('show'); btnConfirm.removeEventListener('click', onConfirm); btnCancel.removeEventListener('click', onCancel); input.removeEventListener('keypress', onEnter); document.body.classList.remove('no-scroll'); };
@@ -145,7 +149,6 @@ function showApplePrompt(title, desc, isPassword = false, validateFn = null) {
         btnConfirm.addEventListener('click', onConfirm); btnCancel.addEventListener('click', onCancel); input.addEventListener('keypress', onEnter);
     });
 }
-
 function extractFirstName(fullName) {
     if (!fullName) return ""; let cleanName = fullName;
     if (cleanName.includes('-')) cleanName = cleanName.split('-')[1].trim(); 
@@ -404,13 +407,34 @@ function toggleTheme(event) {
 }
 
 function checkAdminUI() {
-    const btn = document.getElementById('adminBtn'); const radar = document.getElementById('radarContainer'); const securePin = localStorage.getItem('adtech_lead_pin');
+    const btn = document.getElementById('adminBtn'); 
+    const radar = document.getElementById('radarContainer'); 
+    const securePin = localStorage.getItem('adtech_lead_pin');
+    
+    // Rujukan butang khas Admin
+    const btnLoadArchive = document.getElementById('btnLoadArchive');
+    const btnExportCSV = document.getElementById('btnExportCSV');
+
     if(securePin) { 
         btn.innerHTML = '<i data-lucide="unlock"></i> <span>Admin Unlocked</span>'; btn.classList.add('unlocked'); if(radar) radar.style.display = 'grid';
-        document.getElementById('superAdminControls').style.display = 'inline-flex'; document.getElementById('btnArchive').style.display = 'inline-flex'; isSuperAdmin = true;
+        if(document.getElementById('superAdminControls')) document.getElementById('superAdminControls').style.display = 'inline-flex'; 
+        if(document.getElementById('btnArchive')) document.getElementById('btnArchive').style.display = 'inline-flex'; 
+        
+        // BUKA: Tunjuk butang bila Admin masuk
+        if(btnLoadArchive) btnLoadArchive.style.display = 'inline-flex';
+        if(btnExportCSV) btnExportCSV.style.display = 'inline-flex';
+        
+        isSuperAdmin = true;
     } else { 
         btn.innerHTML = '<i data-lucide="lock"></i> <span>Admin Access</span>'; btn.classList.remove('unlocked'); if(radar) radar.style.display = 'none';
-        document.getElementById('superAdminControls').style.display = 'none'; document.getElementById('btnArchive').style.display = 'none'; isSuperAdmin = false;
+        if(document.getElementById('superAdminControls')) document.getElementById('superAdminControls').style.display = 'none'; 
+        if(document.getElementById('btnArchive')) document.getElementById('btnArchive').style.display = 'none'; 
+        
+        // KUNCI: Sorok butang untuk staf biasa
+        if(btnLoadArchive) btnLoadArchive.style.display = 'none';
+        if(btnExportCSV) btnExportCSV.style.display = 'none';
+        
+        isSuperAdmin = false;
     }
     updateLiveClock(); refreshIcons();
 }
@@ -659,11 +683,14 @@ function updateGlobalBadge() {
     }
 }
 
+
 function renderDashboard() {
     updateGlobalBadge();
 
     let data = globalData || []; const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
     data = filterDataByRegion(data, finalRegion);
+
+    
 
     // 🌟 FIX: FILTER IKUT NAMA USER (JIKA BUKAN ADMIN) 🌟
     const currentUser = localStorage.getItem('adtech_user_name');
@@ -673,6 +700,9 @@ function renderDashboard() {
             String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
         );
     }
+
+    // 🌟 FIX BARU: BUANG TERUS DATA 'DELETED' DARI DASHBOARD
+    data = data.filter(d => String(d.status || '').toLowerCase() !== 'deleted');
 
     const pendingData = data.filter(d => String(d.status || '').toLowerCase() === 'pending');
     const activeData = data.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() !== 'done');
@@ -1256,7 +1286,7 @@ async function submitRequest() {
             
         const flag = getFlag(region); 
         const tgMsg = `[NEW REQUEST] ${flag}\n\n*ID:* ${finalJobID}\n*Client:* ${client}\n*By:* ${name}\n\n🔗 [Open Adtechinno App](https://adtechinno-creativeengine.vercel.app/)`;
-        fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=${encodeURIComponent(tgMsg)}`);
+        fetch(TELEGRAM_API, { method: 'POST', body: JSON.stringify({ action: 'send_telegram', text: tgMsg }) });
         
         document.getElementById('successSubText').innerText = `Job ID: ${finalJobID}`;
         const overlay = document.getElementById('successOverlay'); 
@@ -1368,7 +1398,7 @@ async function approveJob(jobID, client, title) {
 
         // 6. Hantar Telegram di "background" (tak payah guna await, supaya UI tak stuck)
         const tgMsg = `[APPROVED] ${flag}\n\n*ID:* ${jobID}\n*Client:* ${client}\n*PIC:* ${selectedPIC}\n*Approved by:* ${currentUser}\n\n📝 *Playbook:* ${playbookLink}\n🔗 [Open Adtechinno App](https://adtechinno-creativeengine.vercel.app/)`;
-        fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=${encodeURIComponent(tgMsg)}`);
+       fetch(TELEGRAM_API, { method: 'POST', body: JSON.stringify({ action: 'send_telegram', text: tgMsg }) });
 
     } catch(e) { 
         showAppleAlert("Approval Error", e.message); 
@@ -1412,6 +1442,20 @@ async function saveEdit() {
 async function updateWorkStatusOptimistic(jobID, newStatus) {
     const job = globalData.find(d => d.job_id === jobID); 
     const oldStatus = job ? job.work_status : 'Not started'; 
+    
+    // Sediakan data untuk dihantar ke Supabase
+    let updatePayload = { work_status: newStatus };
+    const nowISO = new Date().toISOString();
+
+    // Logik Timestamp: Jika tukar ke Review atau Done, catat masa sekarang
+    if (newStatus === 'Client Review') {
+        updatePayload.review_started_at = nowISO;
+        if (job) job.review_started_at = nowISO;
+    } else if (newStatus === 'Done') {
+        updatePayload.done_at = nowISO;
+        if (job) job.done_at = nowISO;
+    }
+
     if (job) { 
         job.work_status = newStatus; 
         renderBoards(); 
@@ -1421,7 +1465,7 @@ async function updateWorkStatusOptimistic(jobID, newStatus) {
     showNotification('Status Updated', newStatus);
     
     try { 
-        const { error } = await supabaseClient.from('creative_requests').update({ work_status: newStatus }).eq('job_id', jobID); 
+        const { error } = await supabaseClient.from('creative_requests').update(updatePayload).eq('job_id', jobID); 
         if(error) throw error; 
     } catch(e) { 
         showAppleAlert("Status Update Error", e.message); 
@@ -1434,40 +1478,94 @@ async function updateRevisionOptimistic(event, jobID, currentRev, change) {
     const job = globalData.find(d => d.job_id === jobID); 
     if(!job) return;
     
+    let reasonText = "";
+    
+    // Minta sebab HANYA jika Admin tekan butang "+" (tambah revision)
+    if (change > 0) {
+        const reasonCode = await showApplePrompt(
+            "Revision Category", 
+            "Type 1, 2, or 3:\n1 = Client Change of Mind\n2 = Internal Error (Team)\n3 = Minor Tweak",
+            false // bukan password
+        );
+        
+        if (!reasonCode) return; // Kalau admin tekan Cancel, batalkan proses
+        
+        if (reasonCode === '1') reasonText = "Client Change of Mind";
+        else if (reasonCode === '2') reasonText = "Internal Error";
+        else if (reasonCode === '3') reasonText = "Minor Tweak";
+        else reasonText = "Others (" + reasonCode + ")";
+    }
+
     let newRev = parseInt(job.revision || 0) + change; 
     if (newRev < 0) newRev = 0; 
+    
     const oldRev = job.revision; 
+    const oldReasons = job.revision_reasons || "";
+    const oldStatus = job.work_status; // Simpan status lama sekiranya berlaku error
+    
+    // Cantumkan log alasan lama dengan yang baru
+    let updatedReasons = oldReasons;
+    if (reasonText) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const newEntry = `[${todayStr}] ${reasonText}`;
+        updatedReasons = oldReasons ? oldReasons + " | " + newEntry : newEntry;
+    }
+
+    // Kemaskini data di memori
     job.revision = newRev; 
+    job.revision_reasons = updatedReasons;
+    
+    // LOGIK BARU: Tukar status kepada Revision secara automatik
+    if (change > 0) {
+        job.work_status = 'Revision';
+    }
+    
     renderBoards(); 
     openDetailModal(jobID, true);
     
     try { 
-        const { error } = await supabaseClient.from('creative_requests').update({ revision: newRev }).eq('job_id', jobID); 
+        // Sediakan data untuk dihantar ke Supabase
+        let updatePayload = {
+            revision: newRev,
+            revision_reasons: updatedReasons
+        };
+        
+        if (change > 0) {
+            updatePayload.work_status = 'Revision';
+        }
+
+        const { error } = await supabaseClient.from('creative_requests').update(updatePayload).eq('job_id', jobID); 
         if(error) throw error; 
+        
     } catch(e) { 
         showAppleAlert("Revision Error", e.message); 
+        // Rollback jika error
         job.revision = oldRev; 
+        job.revision_reasons = oldReasons;
+        job.work_status = oldStatus;
         renderBoards(); 
         openDetailModal(jobID, true); 
     }
 }
 
 async function deleteJob(jobID) {
-    await showApplePrompt("Delete Record", "Enter passcode to permanently delete this record:", true, async (val) => {
+    await showApplePrompt("Delete Record", "Enter passcode to remove this record:", true, async (val) => {
         if(val !== "3030300" && val !== "1234") return false; 
         try {
-            const { error } = await supabaseClient.from('creative_requests').delete().eq('job_id', jobID);
+            // LOGIK BARU: Kita guna Update, bukan Delete. (Sesuai dengan polisi RLS kita)
+            const { error } = await supabaseClient.from('creative_requests').update({ status: 'deleted' }).eq('job_id', jobID);
             if(error) throw error;
             
-            // 🌟 FIX: Buang terus dari memori & update paparan serta Badge 🌟
+            // Buang dari memori (skrin) supaya ia hilang terus dari pandangan
             globalData = globalData.filter(d => d.job_id !== jobID);
             renderDashboard();
             renderBoards();
             
-            showNotification('Job Deleted', ''); 
+            showNotification('Job Deleted', 'Moved to hidden archive'); 
             closeDetailModal(); 
             return true;
         } catch(e) { 
+            showAppleAlert("Error", "Failed to delete: " + e.message);
             return false; 
         }
     });
@@ -1588,8 +1686,15 @@ function exportToCSV() {
     
     if (doneData.length === 0) return showAppleAlert("Export Failed", "No completed tasks available to export for this region.");
     
-    const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Deadline", "Revision", "Assigned Team", "Playbook Link"];
-    const rows = doneData.map(d => [d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(d.deadline), (d.revision || 0), d.assignee, d.playbook_link].map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(","));
+    const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Deadline", "Revision", "Revision Reasons", "Assigned Team", "Playbook Link", "Created At", "Review Started At", "Done At"];
+    
+    const rows = doneData.map(d => [
+        d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(d.deadline), (d.revision || 0), d.revision_reasons, d.assignee, d.playbook_link,
+        d.created_at ? new Date(d.created_at).toLocaleString('en-GB') : '',
+        d.review_started_at ? new Date(d.review_started_at).toLocaleString('en-GB') : '',
+        d.done_at ? new Date(d.done_at).toLocaleString('en-GB') : ''
+    ].map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(","));
+    
     const csvContent = [headers.join(","), ...rows].join("\n"); 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); 
     const link = document.createElement("a"); 
@@ -1766,7 +1871,7 @@ async function submitLeave(statusParam) {
         if (statusParam !== 'Active') {
             const flag = getFlag(userRegion); 
             const tgMsg = `[TEAM LEAVE] ${flag}\n\n*Name:* ${name}\n*Type:* ${displayLeave}\n*From:* ${formatDate(startDate)}\n*To:* ${formatDate(endDate)}\n\n🔗 [Open Adtechinno App](https://adtechinno-creativeengine.vercel.app/)`;
-            fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT}&text=${encodeURIComponent(tgMsg)}`);
+            fetch(TELEGRAM_API, { method: 'POST', body: JSON.stringify({ action: 'send_telegram', text: tgMsg }) });
         }
         
         showNotification('Status Updated', statusParam === 'Active' ? 'Welcome back!' : 'Enjoy your leave!');
@@ -1881,5 +1986,44 @@ window.addEventListener('DOMContentLoaded', () => {
             const overlay = document.getElementById('soft-refresh-overlay'); 
             if (overlay) overlay.classList.remove('show'); 
         }, 1000);
+    }
+});
+// ==========================================
+// BRANDING ASSETS GATEKEEPER LOGIC
+// ==========================================
+
+function openAssetGate() {
+    document.getElementById('assetGateOverlay').classList.add('show');
+    document.getElementById('assetPasscodeInput').value = ''; // Kosongkan input lama
+    
+    // Auto focus pada input box lepas setengah saat (tunggu modal habis animasi)
+    setTimeout(() => {
+        document.getElementById('assetPasscodeInput').focus();
+    }, 100);
+}
+
+function closeAssetGate() {
+    document.getElementById('assetGateOverlay').classList.remove('show');
+}
+
+function verifyAssetPasscode() {
+    const input = document.getElementById('assetPasscodeInput').value;
+    const correctPasscode = 'creative888';
+    const dropboxLink = 'https://www.dropbox.com/scl/fo/a7lhncssirscv7idlej7a/AFwcdxVzqCx0pEynpZwkHTM?rlkey=w4w6fz502jd2xg40su6lxnrvp&st=ei2w6p9y&dl=0';
+
+    if (input === correctPasscode) {
+        closeAssetGate(); // Tutup popup
+        window.open(dropboxLink, '_blank'); // Buka Dropbox kat tab baru
+    } else {
+        alert('Passcode salah. Akses ditolak.');
+        document.getElementById('assetPasscodeInput').value = ''; // Kosongkan balik box
+        document.getElementById('assetPasscodeInput').focus();
+    }
+}
+
+// Benarkan tekan butang "Enter" kat keyboard untuk submit
+document.getElementById('assetPasscodeInput').addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') {
+        verifyAssetPasscode();
     }
 });

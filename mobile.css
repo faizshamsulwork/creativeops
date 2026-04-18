@@ -1,0 +1,96 @@
+/* ========================================================
+   🌟 ADTECHINNO MOBILE CORE - BOTTOM NAV & FAB 🌟
+   ======================================================== */
+
+/* 1. TOP BAR (DYNAMIC ISLAND / NOTCH SAFE) */
+.sidebar { 
+    width: 100% !important; 
+    height: calc(70px + env(safe-area-inset-top)) !important; /* Automatik tambah tinggi jika ada Island */
+    padding-top: env(safe-area-inset-top) !important; /* Tolak butang ke bawah Island */
+    position: fixed !important; 
+    top: 0; left: 0; 
+    flex-direction: row !important; 
+    justify-content: space-between !important; 
+    align-items: center !important; 
+    padding-left: 20px !important; 
+    padding-right: 20px !important;
+    border-right: none !important; 
+    border-bottom: 1px solid var(--border-main) !important; 
+    z-index: 1000 !important; 
+    background: var(--bg-card) !important; 
+    backdrop-filter: none !important; 
+}
+
+/* 2. MAIN CONTENT (SEDUT GAP KOSONG SEPENUHNYA) */
+.main-content { 
+    margin-left: 0 !important; 
+    /* Tarik rapat dari 90px ke 72px (Ngam-ngam ngam bawah border Top Bar) */
+    padding-top: calc(72px + env(safe-area-inset-top)) !important; 
+    padding-bottom: calc(100px + env(safe-area-inset-bottom)) !important; 
+}
+
+/* 3. SEDUT RUANG LEBIHAN PADA TAJUK */
+.page {
+    padding-top: 5px !important; /* Tinggalkan 5px je untuk ruang bernafas sikit */
+}
+
+.welcome-banner {
+    margin-top: 0 !important; 
+    padding-top: 0 !important;
+}
+
+.page h1 {
+    margin-top: 0 !important;
+}
+
+/* 4. FLOATING ACTION BUTTON (Bulatan Biru +) */
+.nav-item.btn-new-request { 
+    position: fixed !important; 
+    bottom: calc(90px + env(safe-area-inset-bottom)) !important; 
+    right: 20px !important; 
+    width: 60px !important; 
+    height: 60px !important; 
+    border-radius: 50% !important; 
+    padding: 0 !important; 
+    margin: 0 !important; 
+    display: flex !important; 
+    justify-content: center !important; 
+    align-items: center !important; 
+    box-shadow: 0 10px 25px rgba(14, 165, 233, 0.4) !important; 
+    z-index: 1001 !important; 
+    background: var(--link-color) !important; 
+    color: white !important;
+}
+
+.nav-item.btn-new-request i { width: 28px !important; height: 28px !important; margin: 0 !important; }
+.nav-item.btn-new-request span { display: none !important; } /* Sorok teks */
+
+/* 5. ELEMEN LAIN (Saiz font & card) */
+input, select, textarea { font-size: 16px !important; }
+.kanban-card { padding: 18px !important; border-radius: 12px !important; }
+
+/* 6. KEMASKINI RUANG KOSONG (TOP SPACING FIX) */
+.main-content { 
+    padding-top: 70px !important; /* Ngam-ngam lepasi Top Bar */
+}
+
+.page {
+    padding-top: 10px !important; /* Potong padding asal yang buatkan ruang atas nampak luas */
+}
+
+.page h1 {
+    margin-top: 0 !important;
+    margin-bottom: 5px !important;
+    font-size: 1.6rem !important; 
+}
+/* 7. KEMASKINI JADUAL TERKINI (ELAK TEKS TERLIPAT) */
+.recent-table td, 
+.recent-table th {
+    white-space: nowrap !important; /* Halang teks dari turun ke bawah */
+    word-break: keep-all !important;
+}
+
+.job-id-pill {
+    display: inline-block !important;
+    white-space: nowrap !important;
+}

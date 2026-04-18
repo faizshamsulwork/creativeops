@@ -627,6 +627,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 
 /* EDIT MODAL */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--modal-bg); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 6000; align-items: center; justify-content: center; transition: opacity 0.3s ease; padding: 20px; box-sizing: border-box;}
+.modal-overlay.show { display: flex !important; }
+.custom-modal { background: var(--bg-card); padding: 40px; border-radius: 20px; width: 100%; box-shadow: 0 25px 50px rgba(0,0,0,0.15); border: 1px solid var(--border-main); animation: popIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .modal-content { background: var(--bg-card); padding: 40px; border-radius: 20px; width: 100%; max-width: 500px; box-shadow: 0 25px 50px rgba(0,0,0,0.15); border: 1px solid var(--border-main); animation: popIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--border-light); padding-bottom: 20px; }
 .modal-header h3 { margin: 0; color: var(--text-strong); font-weight: 800; font-size: 1.3rem; letter-spacing: -0.01em;}
@@ -755,4 +757,203 @@ body.live-mode .stagger-card {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
+}
+/* 🌟 WARNA BUTANG BRANDING ASSETS 🌟 */
+
+/* 1. Light Mode (Warna Penuh / Solid) */
+#assetBtn {
+    background: #8b5cf6;
+    color: #ffffff;
+    border: 1px solid #8b5cf6;
+}
+
+#assetBtn i {
+    color: #ffffff;
+}
+
+/* 2. Dark Mode (Lutsinar / Outlined macam butang Admin) */
+[data-theme="dark"] #assetBtn {
+    background: rgba(139, 92, 246, 0.05);
+    color: #a78bfa; 
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+[data-theme="dark"] #assetBtn i {
+    color: #a78bfa;
+}
+/* ========================================================
+   🌟 APPLE-STYLE MOBILE POLISH (FINAL TWEAKS) 🌟
+   ======================================================== */
+@media (max-width: 992px) {
+    /* 1. Support Notch iPhone & Buang kotak biru bila tekan (Tap Highlight) */
+    body { 
+        padding-bottom: env(safe-area-inset-bottom); 
+        -webkit-tap-highlight-color: transparent; 
+    }
+
+    /* 2. Elak iPhone Auto-Zoom bila klik kotak input (Wajib 16px) */
+    input, select, textarea, .intro-field { 
+        font-size: 16px !important; 
+    }
+
+    /* 3. Ruang bernafas untuk content supaya tak tertindih dengan Bottom Nav */
+    .main-content { 
+        padding-top: 15px;
+        padding-bottom: calc(110px + env(safe-area-inset-bottom)) !important; 
+    }
+
+    /* 4. Kemaskan Kanban Card supaya tak nampak gemuk di skrin kecik */
+    .project-grid { gap: 15px; }
+    .kanban-card { 
+        padding: 20px; 
+        border-radius: 14px; 
+    }
+    .kb-title { 
+        font-size: 0.95rem; 
+        margin-bottom: 15px;
+    }
+
+    /* 5. Perhalusi Bottom Navigation (Glassmorphism & Safe Area) */
+    .nav-group { 
+        padding-bottom: env(safe-area-inset-bottom) !important; 
+        height: auto !important; 
+        min-height: 75px; 
+    }
+    .nav-item { 
+        padding: 12px 2px; 
+    }
+
+    /* 6. Betulkan kedudukan butang "New Request" yang terapung */
+    .nav-item.btn-new-request { 
+        bottom: calc(90px + env(safe-area-inset-bottom)); 
+        right: 15px; 
+        width: 55px; 
+        height: 55px; 
+    }
+
+    /* 7. Kemaskan Modal/Popup (Bottom Sheet style) */
+    .detail-modal {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    .dm-body {
+        padding-bottom: calc(90px + env(safe-area-inset-bottom));
+    }
+}
+/* ========================================================
+   🔍 ULTRA PREMIUM SEARCH BAR (FIXED)
+   ======================================================== */
+.controls-container {
+    margin-bottom: 25px !important;
+}
+
+.search-box {
+    position: relative !important;
+    width: 100% !important;
+    display: block !important;
+}
+
+/* KITA TARGET TERUS PADA SVG (LUCIDE ICON) */
+.search-box svg {
+    position: absolute !important;
+    left: 16px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important; /* Paksa ikon duduk betul-betul di tengah */
+    color: var(--text-muted) !important;
+    width: 20px !important;
+    height: 20px !important;
+    pointer-events: none !important;
+    z-index: 10 !important;
+    margin: 0 !important;
+}
+
+/* KOTAK INPUT MEWAH GAYA APPLE */
+.search-box input {
+    width: 100% !important;
+    padding: 16px 20px 16px 48px !important; /* Ruang bernafas yang luas. 48px tu tolak teks ke kanan */
+    border: 1.5px solid var(--border-main) !important;
+    border-radius: 16px !important; /* Lengkung bucu lebih smooth dan membulat */
+    background: var(--bg-box) !important;
+    color: var(--text-main) !important;
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important; /* Bayang-bayang lembut kat bawah */
+    box-sizing: border-box !important;
+}
+
+/* WARNA PLACEHOLDER LEBIH KEMAS */
+.search-box input::placeholder {
+    color: var(--text-muted) !important;
+    font-weight: 400 !important;
+}
+
+/* EFEK GLOW BILA DITEKAN (FOCUS) */
+.search-box input:focus {
+    border-color: var(--link-color) !important;
+    background: var(--bg-card) !important;
+    box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.2), 0 4px 12px rgba(0, 0, 0, 0.1) !important; /* Efek cincin biru bercahaya */
+    outline: none !important;
+}
+/* ========================================================
+   ✨ PREMIUM ADMIN BUTTONS (DONE TASKS)
+   ======================================================== */
+.premium-admin-btn {
+    display: inline-flex ;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    padding: 10px 18px !important;
+    background: var(--bg-card) !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--border-main) !important;
+    border-radius: 12px !important; /* Lengkung sama macam search bar */
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+    flex: 1; /* Pastikan kedua-dua butang sama lebar */
+    min-width: 140px;
+}
+
+.premium-admin-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+    color: var(--text-muted) !important;
+    transition: color 0.2s ease !important;
+    margin: 0 !important;
+}
+
+/* Efek bila mouse lalu (Hover) */
+.premium-admin-btn:hover {
+    border-color: var(--text-muted) !important;
+    transform: translateY(-2px) !important; /* Butang naik sikit */
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Efek bila ditekan (Active) */
+.premium-admin-btn:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* ========================================================
+   ✨ PREMIUM APP REVEAL ANIMATION (APPLE-STYLE)
+   ======================================================== */
+@keyframes premiumReveal {
+    0% { 
+        opacity: 0; 
+        transform: scale(0.97) translateY(15px); 
+        filter: blur(8px); 
+    }
+    100% { 
+        opacity: 1; 
+        transform: scale(1) translateY(0); 
+        filter: blur(0); 
+    }
+}
+
+/* app-active ni memang dah sedia ada dalam app.js kau bila lepas log masuk */
+.app-active {
+    animation: premiumReveal 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
 }
