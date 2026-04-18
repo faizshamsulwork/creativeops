@@ -957,3 +957,24 @@ body.live-mode .stagger-card {
 .app-active {
     animation: premiumReveal 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
 }
+
+/* ========================================================
+   💻 DESKTOP SIDEBAR FIX (SENTIASA TERPAKU DI KIRI)
+   ======================================================== */
+@media (min-width: 993px) {
+    .sidebar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        height: 100vh !important; /* Paksa sidebar tinggi penuh dari atas ke bawah skrin */
+        overflow-y: auto !important; /* Kalau menu panjang, boleh scroll dalam sidebar je */
+        z-index: 1000 !important;
+    }
+
+    /* Pastikan kandungan utama tak tertindih dengan sidebar yang dah di-fixed */
+    .main-content {
+        margin-left: 260px !important; /* Adjust saiz ni mengikut kelebaran sidebar kau (biasanya 250px - 280px) */
+        height: 100vh;
+        overflow-y: auto; /* Content utama je yang akan scroll */
+    }
+}
