@@ -180,8 +180,8 @@ body.no-scroll { overflow: hidden !important; }
 [data-theme="dark"] .toggle-btn.active { color: var(--accent); }
 
 /* DASHBOARD TRANSITION */
-#app-wrapper { display: flex; width: 100%; min-height: 100vh; opacity: 0; transform: scale(0.98); transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
-#app-wrapper.app-active { opacity: 1; transform: none; }
+#app-wrapper { display: flex; width: 100%; min-height: 100vh; opacity: 0; transition: opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+#app-wrapper.app-active { opacity: 1; }
 
 /* 🌟 SIDEBAR 🌟 */
 .sidebar { width: 280px; border-right: 1px solid var(--border-main); padding: 40px 24px; background: var(--bg-sidebar); position: fixed; height: 100vh; box-sizing: border-box; z-index: 100; display: flex; flex-direction: column; transition: 0.3s; overflow-y: auto; }
@@ -935,22 +935,6 @@ body.live-mode .stagger-card {
 .premium-admin-btn:active {
     transform: translateY(0) !important;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04) !important;
-}
-
-/* ========================================================
-   ✨ PREMIUM APP REVEAL ANIMATION (APPLE-STYLE)
-   ======================================================== */
-@keyframes premiumReveal {
-    0% { 
-        opacity: 0; 
-        transform: scale(0.97) translateY(15px); 
-        filter: blur(8px); 
-    }
-    100% { 
-        opacity: 1; 
-        transform: scale(1) translateY(0); 
-        filter: blur(0); 
-    }
 }
 
 /* app-active ni memang dah sedia ada dalam app.js kau bila lepas log masuk */

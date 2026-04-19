@@ -2021,9 +2021,36 @@ function verifyAssetPasscode() {
     }
 }
 
+// ========================================================
+// 📱 LOGIK MOBILE: SOROK TOP BAR BILA SCROLL
+// ========================================================
+let lastScrollY = window.scrollY;
+
+window.addEventListener('scroll', () => {
+    // Abaikan fungsi ni kalau buka kat Laptop/Desktop (Lebih dari 992px)
+    if (window.innerWidth > 992) return; 
+    
+    const sidebar = document.querySelector('.sidebar');
+    if (!sidebar) return;
+    
+    const currentScrollY = window.scrollY;
+    
+    // Kalau scroll ke bawah (dan dah lepas 80px dari atas)
+    if (currentScrollY > lastScrollY && currentScrollY > 80) {
+        sidebar.classList.add('nav-hidden'); // Sorok Top Bar
+    } else {
+        // Kalau scroll ke atas
+        sidebar.classList.remove('nav-hidden'); // Tunjuk Top Bar semula
+    }
+    
+    // Update posisi scroll terkini
+    lastScrollY = currentScrollY;
+}, { passive: true });
+
 // Benarkan tekan butang "Enter" kat keyboard untuk submit
 document.getElementById('assetPasscodeInput').addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
         verifyAssetPasscode();
     }
 });
+
