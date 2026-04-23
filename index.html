@@ -170,10 +170,16 @@
                     <i data-lucide="loader-2" class="spin" style="width:18px;height:18px;"></i> Syncing workspace...
                 </span>
             </div>
-        </div>
-    </div>
-
-    <div id="app-wrapper">
+            <div style="display: flex; justify-content: center; margin-top: 40px; position: relative; z-index: 10;">
+                <div class="apple-theme-toggle" onclick="toggleTheme(event)">
+                    <div class="toggle-thumb">
+                        <i data-lucide="sun" class="icon-sun"></i>
+                        <i data-lucide="moon" class="icon-moon"></i>
+                    </div>
+                </div>
+            </div>
+            
+        </div> </div> <div id="app-wrapper">
         <div class="sidebar">
             <div class="logo-container">
                 <img src="AdTechinno.png" alt="AdTechinno" class="brand-logo">
@@ -303,25 +309,41 @@
                     </div>
                 </div>
 
+                <div id="adminKanbanToggle" style="display: none; margin-bottom: 20px; text-align: right;">
+                    <button onclick="toggleKanbanMode()" class="premium-admin-btn" style="background: var(--bg-card); color: var(--link-color); border: 1px solid var(--link-color); width: auto; min-width: auto; padding: 8px 16px;">
+                        <i data-lucide="kanban-square"></i> <span id="kanbanBtnText">Admin: Kanban View</span>
+                    </button>
+                </div>
+
                 <div id="projectList">
                     <div class="project-grid">
                         <div class="skeleton-card"><div class="skeleton-row"></div><div class="skeleton-row full"></div><div class="skeleton-row half"></div></div>
                     </div>
                 </div>
-            </div>
 
+                <div id="kanbanBoardContainer" class="kanban-board-wrapper" style="display: none;">
+                    </div>
+            </div>
+            
             <div id="done" class="page">
                 <h1 style="margin-bottom: 5px;">Done Tasks</h1>
                 <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Archive of completed creative requests.</p>
                 
-                <div class="controls-container">
+                <div class="controls-container" style="flex-direction: column; align-items: stretch; gap: 15px;">
                     <div class="search-box">
                         <i data-lucide="search"></i>
                         <input type="text" id="searchDone" placeholder="Search Client Name, Job ID, or Assignee..." onkeyup="renderBoards()">
                     </div>
-                    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 15px;">
-                        <button onclick="loadArchivedJobs()" class="premium-admin-btn" id="btnLoadArchive" style="display:none;"><i data-lucide="clock-4"></i> Load Archived</button>
-                        <button onclick="exportToCSV()" class="premium-admin-btn" id="btnExportCSV" style="display:none;"><i data-lucide="download"></i> Export CSV</button>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                        <button onclick="toggleDoneView()" class="premium-admin-btn" style="background: var(--bg-card); color: var(--text-main); width: auto; min-width: auto; padding: 8px 16px;">
+                            <i data-lucide="layout-grid" id="doneViewIcon"></i> <span id="doneViewBtnText">Board View</span>
+                        </button>
+                        
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <button onclick="loadArchivedJobs()" class="premium-admin-btn" id="btnLoadArchive" style="display:none;"><i data-lucide="clock-4"></i> Load Archived</button>
+                            <button onclick="exportToCSV()" class="premium-admin-btn" id="btnExportCSV" style="display:none;"><i data-lucide="download"></i> Export CSV</button>
+                        </div>
                     </div>
                 </div>
 
@@ -331,7 +353,7 @@
                     </div>
                 </div>
             </div>
-
+            
             <div id="leave" class="page">
                 <h1 style="margin-bottom: 5px;">Creative Team Leave</h1>
                 <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Update your availability status here.</p>

@@ -352,8 +352,13 @@ function goToStep(step) {
     refreshIcons();
 }
 // ========================================================
-// 🌟 4. UI NAVIGATION & THEMING
+// 🌟 4. UI NAVIGATION & THEMING (UPDATED WITH AUTO-KANBAN)
 // ========================================================
+
+/**
+ * Mengendalikan pertukaran halaman utama dalam aplikasi.
+ * Memastikan data di-render semula setiap kali tab ditukar.
+ */
 function showPage(id) {
     document.body.classList.remove('no-scroll'); 
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -361,17 +366,32 @@ function showPage(id) {
     document.getElementById(id).classList.add('active');
     
     let navItem;
-    if(id === 'request') { navItem = document.getElementById('btn-request'); resetRequestGateway(); }
+    if(id === 'request') { 
+        navItem = document.getElementById('btn-request'); 
+        if (typeof resetRequestGateway === 'function') resetRequestGateway(); 
+    }
     else if(id === 'dashboard') navItem = document.getElementById('btn-dashboard');
     else if(id === 'workload') navItem = document.getElementById('btn-workload');
     else if(id === 'done') navItem = document.getElementById('btn-done');
     else if(id === 'leave') navItem = document.getElementById('btn-leave');
+    
     if(navItem) navItem.classList.add('active');
 
-    if (id === 'dashboard' && localStorage.getItem('adtech_lead_pin') && 'Notification' in window && Notification.permission !== 'granted') Notification.requestPermission();
-    if(globalData.length > 0) { if(id === 'dashboard') renderDashboard(); if(id === 'workload' || id === 'done') renderBoards(); }
+    // Minta kebenaran notifikasi jika Admin baru masuk
+    if (id === 'dashboard' && localStorage.getItem('adtech_lead_pin') && 'Notification' in window && Notification.permission !== 'granted') {
+        Notification.requestPermission();
+    }
+
+    // Render semula data mengikut tab yang aktif
+    if(globalData && globalData.length > 0) { 
+        if(id === 'dashboard') renderDashboard(); 
+        if(id === 'workload' || id === 'done') renderBoards(); 
+    }
 }
 
+/**
+ * Logik pertukaran tab dashboard untuk paparan mobile.
+ */
 function switchDashTab(tab) {
     if(window.innerWidth > 992) return; 
     document.querySelectorAll('.dash-tab-btn').forEach(b => b.classList.remove('active'));
@@ -380,95 +400,187 @@ function switchDashTab(tab) {
     document.getElementById(`section-${tab}`).classList.add('active-section');
 }
 
+/**
+ * Inisialisasi tema berdasarkan simpanan pengguna atau waktu semasa.
+ */
 function initTheme() {
-    const savedTheme = localStorage.getItem('adtech_theme'); const hour = new Date().getHours(); const isWorkingLate = (hour < 9 || hour >= 17);
-    let targetTheme = 'light'; if (savedTheme) { targetTheme = savedTheme; } else { if (isWorkingLate) targetTheme = 'dark'; }
+    const savedTheme = localStorage.getItem('adtech_theme'); 
+    const hour = new Date().getHours(); 
+    const isWorkingLate = (hour < 9 || hour >= 17);
+    
+    let targetTheme = 'light'; 
+    if (savedTheme) { 
+        targetTheme = savedTheme; 
+    } else { 
+        if (isWorkingLate) targetTheme = 'dark'; 
+    }
     applyThemeState(targetTheme);
 }
 
+/**
+ * Mengaplikasikan atribut tema pada HTML dan mengemaskini ikon butang.
+ */
 function applyThemeState(theme) {
-    const root = document.documentElement; const themeBtn = document.getElementById('themeBtn');
-    if (theme === 'dark') { root.setAttribute('data-theme', 'dark'); themeBtn.innerHTML = '<i data-lucide="sun"></i> <span>Light Mode</span>'; } 
-    else { root.removeAttribute('data-theme'); themeBtn.innerHTML = '<i data-lucide="moon"></i> <span>Dark Mode</span>'; }
-    refreshIcons();
+    const root = document.documentElement; 
+    const themeBtn = document.getElementById('themeBtn'); 
+    
+    if (theme === 'dark') { 
+        root.setAttribute('data-theme', 'dark'); 
+        if (themeBtn) themeBtn.innerHTML = '<i data-lucide="sun"></i> <span>Light Mode</span>'; 
+    } 
+    else { 
+        root.removeAttribute('data-theme'); 
+        if (themeBtn) themeBtn.innerHTML = '<i data-lucide="moon"></i> <span>Dark Mode</span>'; 
+    }
+    if (typeof refreshIcons === 'function') refreshIcons();
 }
 
+/**
+ * Mengendalikan animasi pertukaran tema (mendukung View Transitions API).
+ */
 function toggleTheme(event) {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark'; const nextTheme = isDark ? 'light' : 'dark';
-    localStorage.setItem('adtech_theme', nextTheme); setGreetingAndDate(localStorage.getItem('adtech_user_name')); 
-    if (!document.startViewTransition) { applyThemeState(nextTheme); return; }
-    const x = event?.clientX ?? window.innerWidth / 2; const y = event?.clientY ?? window.innerHeight / 2;
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark'; 
+    const nextTheme = isDark ? 'light' : 'dark';
+    
+    localStorage.setItem('adtech_theme', nextTheme); 
+    if (typeof setGreetingAndDate === 'function') setGreetingAndDate(localStorage.getItem('adtech_user_name')); 
+    
+    if (!document.startViewTransition) { 
+        applyThemeState(nextTheme); 
+        return; 
+    }
+    
+    const x = event?.clientX ?? window.innerWidth / 2; 
+    const y = event?.clientY ?? window.innerHeight / 2;
     const endRadius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    
     const transition = document.startViewTransition(() => { applyThemeState(nextTheme); });
     transition.ready.then(() => {
         const clipPath = [ `circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)` ];
-        document.documentElement.animate({ clipPath: clipPath }, { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' });
+        document.documentElement.animate(
+            { clipPath: clipPath }, 
+            { duration: 600, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
+        );
     });
 }
 
+/**
+ * Mengemaskini UI berdasarkan status Admin.
+ * 🌟 AUTO-TRIGGER KANBAN: Memaksa paparan Kanban jika Admin login.
+ */
 function checkAdminUI() {
     const btn = document.getElementById('adminBtn'); 
     const radar = document.getElementById('radarContainer'); 
     const securePin = localStorage.getItem('adtech_lead_pin');
     
-    // Rujukan butang khas Admin
     const btnLoadArchive = document.getElementById('btnLoadArchive');
     const btnExportCSV = document.getElementById('btnExportCSV');
+    const btnKanban = document.getElementById('adminKanbanToggle'); 
 
     if(securePin) { 
-        btn.innerHTML = '<i data-lucide="unlock"></i> <span>Admin Unlocked</span>'; btn.classList.add('unlocked'); if(radar) radar.style.display = 'grid';
+        btn.innerHTML = '<i data-lucide="unlock"></i> <span>Admin Unlocked</span>'; 
+        btn.classList.add('unlocked'); 
+        if(radar) radar.style.display = 'grid';
         if(document.getElementById('superAdminControls')) document.getElementById('superAdminControls').style.display = 'inline-flex'; 
         if(document.getElementById('btnArchive')) document.getElementById('btnArchive').style.display = 'inline-flex'; 
         
-        // BUKA: Tunjuk butang bila Admin masuk
         if(btnLoadArchive) btnLoadArchive.style.display = 'inline-flex';
         if(btnExportCSV) btnExportCSV.style.display = 'inline-flex';
+        if(btnKanban) btnKanban.style.display = 'block'; 
         
         isSuperAdmin = true;
+
+        // 🌟 AUTO-TRIGGER: Tukar ke Kanban secara automatik
+        if (typeof isKanbanMode !== 'undefined' && !isKanbanMode) {
+            if (typeof toggleKanbanMode === 'function') toggleKanbanMode();
+        }
+        
     } else { 
-        btn.innerHTML = '<i data-lucide="lock"></i> <span>Admin Access</span>'; btn.classList.remove('unlocked'); if(radar) radar.style.display = 'none';
+        btn.innerHTML = '<i data-lucide="lock"></i> <span>Admin Access</span>'; 
+        btn.classList.remove('unlocked'); 
+        if(radar) radar.style.display = 'none';
         if(document.getElementById('superAdminControls')) document.getElementById('superAdminControls').style.display = 'none'; 
         if(document.getElementById('btnArchive')) document.getElementById('btnArchive').style.display = 'none'; 
         
-        // KUNCI: Sorok butang untuk staf biasa
         if(btnLoadArchive) btnLoadArchive.style.display = 'none';
         if(btnExportCSV) btnExportCSV.style.display = 'none';
+        if(btnKanban) btnKanban.style.display = 'none'; 
         
         isSuperAdmin = false;
+        
+        // 🌟 AUTO-TRIGGER: Kembali ke paparan biasa jika Admin dikunci
+        if(typeof isKanbanMode !== 'undefined' && isKanbanMode) {
+            if (typeof toggleKanbanMode === 'function') toggleKanbanMode();
+        }
     }
-    updateLiveClock(); refreshIcons();
+    if (typeof updateLiveClock === 'function') updateLiveClock(); 
+    if (typeof refreshIcons === 'function') refreshIcons();
 }
 
+/**
+ * Mengendalikan proses log masuk/keluar Admin menggunakan PIN.
+ */
 async function toggleAdmin() {
     let securePin = localStorage.getItem('adtech_lead_pin');
     if(securePin) {
-        localStorage.removeItem('adtech_lead_pin'); isSuperAdmin = false; showNotification('Admin Locked', 'View-only mode active');
-        checkAdminUI(); renderDashboard(); renderBoards();
+        localStorage.removeItem('adtech_lead_pin'); 
+        isSuperAdmin = false; 
+        if (typeof showNotification === 'function') showNotification('Admin Locked', 'View-only mode active');
+        checkAdminUI(); 
+        if (typeof renderDashboard === 'function') renderDashboard(); 
+        if (typeof renderBoards === 'function') renderBoards();
     } else {
         const pin = await showApplePrompt("Admin Access", "Enter PIN:", true, async (val) => {
-            if(val === "3030300" || val === "1234") { isSuperAdmin = true; return true; } return false;
+            // PIN keselamatan
+            if(val === "3030300" || val === "1234") { 
+                isSuperAdmin = true; 
+                return true; 
+            } 
+            return false;
         });
         if(pin) {
-            localStorage.setItem('adtech_lead_pin', pin); showNotification('Admin Unlocked', 'You can now manage assignments');
-            checkAdminUI(); renderDashboard(); renderBoards();
+            localStorage.setItem('adtech_lead_pin', pin); 
+            if (typeof showNotification === 'function') showNotification('Admin Unlocked', 'You can now manage assignments');
+            checkAdminUI(); 
+            if (typeof renderDashboard === 'function') renderDashboard(); 
+            if (typeof renderBoards === 'function') renderBoards();
             if ('Notification' in window && Notification.permission !== 'granted') Notification.requestPermission();
         }
     }
 }
 
+/**
+ * Menapis paparan data mengikut region (Malaysia/Indonesia/Global).
+ */
 function filterByRegion(reg) {
-    currentRegionFilter = reg; document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    currentRegionFilter = reg; 
+    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    
     if(reg === 'all') document.getElementById('t-all').classList.add('active');
     else if(reg === 'Malaysia') document.getElementById('t-my').classList.add('active');
     else if(reg === 'Indonesia') document.getElementById('t-id').classList.add('active');
     else document.getElementById('t-gb').classList.add('active');
-    updateLiveClock(); renderDashboard(); renderBoards();
+    
+    if (typeof updateLiveClock === 'function') updateLiveClock(); 
+    if (typeof renderDashboard === 'function') renderDashboard(); 
+    if (typeof renderBoards === 'function') renderBoards();
 }
 
+/**
+ * Mengeluarkan pengguna dari aplikasi dan membersihkan sesi.
+ */
 function signOutApp() {
-    document.getElementById('soft-refresh-overlay').classList.add('show');
-    setTimeout(() => { localStorage.removeItem('adtech_user_name'); localStorage.removeItem('adtech_lead_pin'); localStorage.removeItem('adtech_region'); window.location.reload(true); }, 600);
+    const overlay = document.getElementById('soft-refresh-overlay');
+    if(overlay) overlay.classList.add('show');
+    
+    setTimeout(() => { 
+        localStorage.removeItem('adtech_user_name'); 
+        localStorage.removeItem('adtech_lead_pin'); 
+        localStorage.removeItem('adtech_region'); 
+        window.location.reload(true); 
+    }, 600);
 }
+
 // ========================================================
 // 🌟 5. AUTHENTICATION & APP START
 // ========================================================
@@ -657,6 +769,16 @@ function updateGlobalBadge() {
     let data = globalData || []; 
     const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
     data = filterDataByRegion(data, finalRegion);
+
+    // 🌟 LOGIK BARU: Tapis ikut privasi (Admin nampak semua, Staf nampak tiket mereka sahaja)
+    const currentUser = localStorage.getItem('adtech_user_name');
+    if (!isSuperAdmin && currentUser) {
+        data = data.filter(d => 
+            String(d.requester_name).toLowerCase() === currentUser.toLowerCase() || 
+            String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
+        );
+    }
+
     const pendingData = data.filter(d => String(d.status || '').toLowerCase() === 'pending');
     const pendingCount = pendingData.length;
 
@@ -754,12 +876,15 @@ function renderDashboard() {
 }
 
 function renderBoards() {
-    updateGlobalBadge(); 
+    const isWorkloadTab = document.getElementById('workload') && document.getElementById('workload').classList.contains('active');
+    const isDoneTab = document.getElementById('done') && document.getElementById('done').classList.contains('active');
+    
+    if (!isWorkloadTab && !isDoneTab) return; 
 
-    let data = globalData || []; const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
+    let data = globalData || [];
+    const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
     data = filterDataByRegion(data, finalRegion);
 
-    // 🌟 FIX: FILTER IKUT NAMA USER (JIKA BUKAN ADMIN) 🌟
     const currentUser = localStorage.getItem('adtech_user_name');
     if (!isSuperAdmin && currentUser) {
         data = data.filter(d => 
@@ -768,104 +893,190 @@ function renderBoards() {
         );
     }
 
-    if(!data || data.length === 0) {
-        document.getElementById('projectList').innerHTML = '<div class="empty-state"><i data-lucide="inbox"></i><p>No active requests found.</p></div>';
-        document.getElementById('doneList').innerHTML = '<div class="empty-state"><i data-lucide="inbox"></i><p>No completed tasks available.</p></div>';
-        refreshIcons(); return;
-    }
-
-    let pendingData = data.filter(d => String(d.status || '').toLowerCase() === 'pending');
-    let activeData = data.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() !== 'done');
-    let doneData = data.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() === 'done');
-
-    const qW = document.getElementById('searchWorkload') ? document.getElementById('searchWorkload').value.toLowerCase() : '';
-    if(qW) {
-        pendingData = pendingData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW));
-        activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW));
-    }
-
-    const qD = document.getElementById('searchDone') ? document.getElementById('searchDone').value.toLowerCase() : '';
-    if(qD) {
-        doneData = doneData.filter(d => String(d.job_id || '').toLowerCase().includes(qD) || String(d.client_name || '').toLowerCase().includes(qD) || String(d.requester_name || '').toLowerCase().includes(qD) || String(d.assignee || '').toLowerCase().includes(qD));
-    }
-
-    if (pendingData.length === 0 && activeData.length === 0) {
-        document.getElementById('projectList').innerHTML = '<div class="empty-state"><i data-lucide="search-x"></i><p>No matching requests found.</p></div>';
-    } else {
-        let finalWorkloadHtml = '';
-        if (pendingData.length > 0) {
-            finalWorkloadHtml += `<h3 class="month-group-header" style="color: var(--orange); border-bottom-color: var(--orange);">⚠️ PENDING APPROVAL <span class="month-group-badge" style="background: #fff7ed; color: #c2410c; border-color: #fdba74;">${pendingData.length} Requests</span></h3>`;
-            finalWorkloadHtml += `<div class="project-grid">` + pendingData.map((item, idx) => generateJobCard(item, false, idx)).join('') + `</div>`;
+    // ==========================================
+    // RENDER WORKLOAD (REQUEST STATUS BOARD)
+    // ==========================================
+    if (isWorkloadTab) {
+        let activeData = data.filter(d => 
+            String(d.status || '').toLowerCase() === 'pending' || 
+            (String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() !== 'done')
+        );
+        
+        const qW = document.getElementById('searchWorkload') ? document.getElementById('searchWorkload').value.toLowerCase() : '';
+        if(qW) {
+            activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW));
         }
-        if (activeData.length > 0) {
-            const groupedWorkload = {}; const today = new Date(); today.setHours(0, 0, 0, 0);
-            activeData.forEach(item => {
-                let sortKey = "5"; let displayLabel = "No Deadline Set";
+
+        const statusOrder = {
+            'pending': 0, 
+            'not started': 1,
+            'drafting': 2,
+            'internal review': 3,
+            'revision': 4,
+            'client review': 5
+        };
+
+        activeData.sort((a, b) => {
+            let statusA = String(a.status || '').toLowerCase() === 'pending' ? 'pending' : String(a.work_status || 'not started').toLowerCase();
+            let statusB = String(b.status || '').toLowerCase() === 'pending' ? 'pending' : String(b.work_status || 'not started').toLowerCase();
+            
+            let orderA = statusOrder[statusA] !== undefined ? statusOrder[statusA] : 99;
+            let orderB = statusOrder[statusB] !== undefined ? statusOrder[statusB] : 99;
+
+            if (orderA !== orderB) {
+                return orderA - orderB;
+            }
+
+            let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31');
+            let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31');
+            return dateA - dateB;
+        });
+
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) {
+            if (typeof renderKanbanBoard === 'function') renderKanbanBoard();
+        } else {
+            if (activeData.length === 0) {
+                document.getElementById('projectList').innerHTML = '<div class="empty-state"><i data-lucide="search-x"></i><p>No matching requests found.</p></div>';
+            } else {
+                // 🌟 FIX BARU: PECAHKAN NORMAL VIEW KEPADA GROUP HEADERS 🌟
+                let listHtml = '';
+                
+                const statusGroups = [
+                    { id: 'pending', label: 'Inbox (Pending)', color: 'var(--red)', bg: 'rgba(239, 68, 68, 0.1)' },
+                    { id: 'not started', label: 'Not Started', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.1)' },
+                    { id: 'drafting', label: 'Drafting', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+                    { id: 'internal review', label: 'Internal Review', color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
+                    { id: 'revision', label: 'Revision', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.1)' },
+                    { id: 'client review', label: 'Client Review', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' }
+                ];
+
+                statusGroups.forEach(cfg => {
+                    let groupTasks = [];
+                    if (cfg.id === 'pending') {
+                        groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'pending');
+                    } else {
+                        groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || 'not started').toLowerCase() === cfg.id);
+                    }
+
+                    if (groupTasks.length > 0) {
+                        listHtml += `
+                        <h3 class="month-group-header" style="border-bottom-color: ${cfg.color}; color: ${cfg.color}; margin-top: 30px;">
+                            <span style="display:flex; align-items:center; gap:10px;">
+                                <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${cfg.color};"></span>
+                                ${cfg.label.toUpperCase()}
+                            </span>
+                            <span class="month-group-badge" style="background: ${cfg.bg}; color: ${cfg.color};">${groupTasks.length} Tasks</span>
+                        </h3>`;
+                        
+                        listHtml += `<div class="project-grid">` + groupTasks.map((item, index) => generateJobCard(item, false, index)).join('') + `</div>`;
+                    }
+                });
+
+                document.getElementById('projectList').innerHTML = listHtml;
+            }
+        }
+    }
+
+    // ==========================================
+    // RENDER DONE TASKS
+    // ==========================================
+    if (isDoneTab) {
+        let doneData = data.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() === 'done');
+        
+        const qD = document.getElementById('searchDone') ? document.getElementById('searchDone').value.toLowerCase() : '';
+        if(qD) {
+            doneData = doneData.filter(d => String(d.job_id || '').toLowerCase().includes(qD) || String(d.client_name || '').toLowerCase().includes(qD) || String(d.requester_name || '').toLowerCase().includes(qD) || String(d.assignee || '').toLowerCase().includes(qD));
+        }
+
+        if (doneData.length === 0) {
+            document.getElementById('doneList').innerHTML = '<div class="empty-state"><i data-lucide="search-x"></i><p>No matching tasks found.</p></div>';
+        } else {
+            const groupedDone = {};
+            doneData.forEach(item => {
+                let sortKey = "0000-00"; let displayLabel = "No Date";
                 if(item.deadline) {
                     const d = new Date(item.deadline);
-                    if(!isNaN(d)) {
-                        d.setHours(0, 0, 0, 0); const diffDays = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                        if (diffDays < 0) { sortKey = "1"; displayLabel = "🚨 OVERDUE"; } else if (diffDays === 0 || diffDays === 1) { sortKey = "2"; displayLabel = "🎯 DUE TODAY & TOMORROW"; } else if (diffDays >= 2 && diffDays <= 7) { sortKey = "3"; displayLabel = "📅 DUE THIS WEEK"; } else { sortKey = "4"; displayLabel = "🗓️ DUE LATER"; }
+                    if(!isNaN(d)) { 
+                        sortKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`; 
+                        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]; 
+                        displayLabel = `${months[d.getMonth()]} ${d.getFullYear()}`; 
                     }
                 }
-                if(!groupedWorkload[sortKey]) groupedWorkload[sortKey] = { label: displayLabel, tasks: [] };
-                groupedWorkload[sortKey].tasks.push(item);
+                if(!groupedDone[sortKey]) groupedDone[sortKey] = { label: displayLabel, tasks: [] };
+                groupedDone[sortKey].tasks.push(item);
             });
-            const sortedKeysW = Object.keys(groupedWorkload).sort();
-            sortedKeysW.forEach(key => {
-                const group = groupedWorkload[key]; group.tasks.sort((a, b) => (a.deadline ? new Date(a.deadline) : new Date('9999-12-31')) - (b.deadline ? new Date(b.deadline) : new Date('9999-12-31')));
-                finalWorkloadHtml += `<h3 class="month-group-header">${group.label} <span class="month-group-badge">${group.tasks.length} Requests</span></h3>`;
-                finalWorkloadHtml += `<div class="project-grid">` + group.tasks.map((item, idx) => generateJobCard(item, false, idx)).join('') + `</div>`;
-            });
+            
+            const sortedKeys = Object.keys(groupedDone).sort((a, b) => b.localeCompare(a)); 
+            let doneHtml = '';
+
+            if (typeof isDoneKanbanMode !== 'undefined' && isDoneKanbanMode) {
+                doneHtml += '<div class="kanban-board-wrapper">';
+                sortedKeys.forEach(key => {
+                    const group = groupedDone[key]; 
+                    group.tasks.sort((a, b) => { let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31'); let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31'); return dateA - dateB; });
+                    
+                    doneHtml += `
+                    <div class="kanban-column" style="border-top-color: var(--green);">
+                        <div class="kanban-column-header">
+                            <span style="color: var(--text-strong);">${group.label}</span> 
+                            <span class="kanban-column-count" style="background: rgba(16, 185, 129, 0.1); color: var(--green);">${group.tasks.length}</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            ${group.tasks.map((item, idx) => `
+                                <div class="kanban-drag-card" onclick="openDetailModal('${item.job_id}')" title="Click to view full details" style="border-left-color: var(--green); cursor: pointer;">
+                                    <span class="kd-id">[${item.job_id}] ${getFlag(item.region)}</span>
+                                    <div class="kd-title">${item.client_name}: ${item.project_title}</div>
+                                    <div class="kd-footer">
+                                        <span><i data-lucide="user" style="width:12px; margin-right:4px;"></i>${item.assignee !== 'null' ? item.assignee : 'Unassigned'}</span>
+                                        <span style="color: var(--green); font-weight: 700;"><i data-lucide="check-circle" style="width:12px; margin-right:4px; vertical-align:text-bottom;"></i>Done</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>`;
+                });
+                doneHtml += '</div>';
+            } else {
+                sortedKeys.forEach(key => {
+                    const group = groupedDone[key]; 
+                    group.tasks.sort((a, b) => { let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31'); let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31'); return dateA - dateB; });
+                    doneHtml += `<h3 class="month-group-header">${group.label} <span class="month-group-badge">${group.tasks.length} Tasks</span></h3>`;
+                    doneHtml += `<div class="project-grid">` + group.tasks.map((item, idx) => generateJobCard(item, true, idx)).join('') + `</div>`;
+                });
+            }
+            document.getElementById('doneList').innerHTML = doneHtml;
         }
-        document.getElementById('projectList').innerHTML = finalWorkloadHtml;
     }
     
-    if (doneData.length === 0) {
-        document.getElementById('doneList').innerHTML = '<div class="empty-state"><i data-lucide="search-x"></i><p>No matching tasks found.</p></div>';
-    } else {
-        const groupedDone = {};
-        doneData.forEach(item => {
-            let sortKey = "0000-00"; let displayLabel = "No Date";
-            if(item.deadline) {
-                const d = new Date(item.deadline);
-                if(!isNaN(d)) { sortKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`; const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]; displayLabel = `${months[d.getMonth()]} ${d.getFullYear()}`; }
-            }
-            if(!groupedDone[sortKey]) groupedDone[sortKey] = { label: displayLabel, tasks: [] };
-            groupedDone[sortKey].tasks.push(item);
-        });
-        const sortedKeys = Object.keys(groupedDone).sort((a, b) => b.localeCompare(a)); let doneHtml = '';
-        sortedKeys.forEach(key => {
-            const group = groupedDone[key]; group.tasks.sort((a, b) => { let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31'); let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31'); return dateA - dateB; });
-            doneHtml += `<h3 class="month-group-header">${group.label} <span class="month-group-badge">${group.tasks.length} Tasks</span></h3>`;
-            doneHtml += `<div class="project-grid">` + group.tasks.map((item, idx) => generateJobCard(item, true, idx)).join('') + `</div>`;
-        });
-        document.getElementById('doneList').innerHTML = doneHtml;
-    }
     refreshIcons();
 }
 
 function viewMyRequests() { showPage('workload'); const savedName = localStorage.getItem('adtech_user_name'); if (savedName) { const firstName = extractFirstName(savedName); const searchBox = document.getElementById('searchWorkload'); searchBox.value = firstName; renderBoards(); } }
 
 function generateJobCard(item, isDoneTab = false, index = 0) {
-    const ws = item.work_status || 'Not started'; 
-    const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
-    const borderColors = { 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Revision': '#ea580c', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
+    // 🌟 LOGIK BARU: Kesan status pending dan letak warna merah
+    const isPending = String(item.status || '').toLowerCase() === 'pending';
+    const ws = isPending ? 'Inbox (Pending)' : (item.work_status || 'Not started'); 
+    
+    const wsClass = isPending ? 'ws-pending' : `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
+    const borderColors = { 'Inbox (Pending)': '#ef4444', 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Internal Review': '#0ea5e9', 'Revision': '#ea580c', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
     const borderColor = borderColors[ws] || '#cbd5e1';
     
-    // LOGIK BARU: Tentukan ikon berdasarkan jenis Job
     const jobTypeStr = String(item.job_type).toLowerCase();
-    let typeIcon = '⚡'; // Default (Ad-Hoc)
+    let typeIcon = '⚡'; 
     
     if (jobTypeStr.includes('monthly')) {
-        typeIcon = '📅'; // Monthly Content Plan
+        typeIcon = '📅'; 
     } else if (jobTypeStr.includes('pitch')) {
-        typeIcon = '🖥️'; // Pitch Deck Proposal
+        typeIcon = '🖥️'; 
     }
     
     return `
         <div class="kanban-card stagger-card" style="border-left-color: ${borderColor}; animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${item.job_id}')">
-            <div class="kb-header"><span class="kb-id">${typeIcon} [${item.job_id}] ${getFlag(item.region)}</span><strong class="ws-badge ${wsClass}">${ws}</strong></div>
+            <div class="kb-header">
+                <span class="kb-id">${typeIcon} [${item.job_id}] ${getFlag(item.region)}</span>
+                <strong class="ws-badge ${wsClass}" ${isPending ? 'style="background: #ef4444;"' : ''}>${ws}</strong>
+            </div>
             <div class="kb-title">${item.client_name}: ${item.project_title}</div>
             <div class="kb-footer">
                 <div class="kb-pic"><i data-lucide="user"></i> ${item.assignee && item.assignee !== 'null' ? item.assignee : 'Unassigned'}</div>
@@ -1439,15 +1650,13 @@ async function saveEdit() {
     }
 }
 
-async function updateWorkStatusOptimistic(jobID, newStatus) {
+async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
     const job = globalData.find(d => d.job_id === jobID); 
     const oldStatus = job ? job.work_status : 'Not started'; 
     
-    // Sediakan data untuk dihantar ke Supabase
     let updatePayload = { work_status: newStatus };
     const nowISO = new Date().toISOString();
 
-    // Logik Timestamp: Jika tukar ke Review atau Done, catat masa sekarang
     if (newStatus === 'Client Review') {
         updatePayload.review_started_at = nowISO;
         if (job) job.review_started_at = nowISO;
@@ -1460,7 +1669,8 @@ async function updateWorkStatusOptimistic(jobID, newStatus) {
         job.work_status = newStatus; 
         renderBoards(); 
         renderDashboard(); 
-        openDetailModal(jobID, true); 
+        // Hanya buka modal jika bukan dipanggil dari Drag & Drop
+        if (!skipModal) openDetailModal(jobID, true); 
     }
     showNotification('Status Updated', newStatus);
     
@@ -1469,7 +1679,7 @@ async function updateWorkStatusOptimistic(jobID, newStatus) {
         if(error) throw error; 
     } catch(e) { 
         showAppleAlert("Status Update Error", e.message); 
-        if(job) { job.work_status = oldStatus; renderBoards(); renderDashboard(); openDetailModal(jobID, true); } 
+        if(job) { job.work_status = oldStatus; renderBoards(); renderDashboard(); if(!skipModal) openDetailModal(jobID, true); } 
     }
 }
 
@@ -1520,7 +1730,10 @@ async function updateRevisionOptimistic(event, jobID, currentRev, change) {
         job.work_status = 'Revision';
     }
     
+    // 🌟 FIX: REFRESH KEDUA-DUA PAPARAN (BIASA & KANBAN)
     renderBoards(); 
+    if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+    
     openDetailModal(jobID, true);
     
     try { 
@@ -1543,7 +1756,11 @@ async function updateRevisionOptimistic(event, jobID, currentRev, change) {
         job.revision = oldRev; 
         job.revision_reasons = oldReasons;
         job.work_status = oldStatus;
+        
+        // 🌟 FIX: REFRESH KEDUA-DUA PAPARAN JIKA ERROR
         renderBoards(); 
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        
         openDetailModal(jobID, true); 
     }
 }
@@ -2051,6 +2268,218 @@ window.addEventListener('scroll', () => {
 document.getElementById('assetPasscodeInput').addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
         verifyAssetPasscode();
+        
     }
 });
+
+// ========================================================
+// 🌟 14. ADMIN KANBAN DRAG & DROP (FEATURE FLAG)
+// ========================================================
+let isKanbanMode = false;
+
+function toggleKanbanMode() {
+    isKanbanMode = !isKanbanMode;
+    const btnText = document.getElementById('kanbanBtnText');
+    const normalView = document.getElementById('projectList');
+    const kanbanView = document.getElementById('kanbanBoardContainer');
+
+    if (isKanbanMode) {
+        btnText.innerText = "Admin: Switch to Normal View";
+        normalView.style.display = 'none';
+        kanbanView.style.display = 'flex';
+        renderKanbanBoard();
+    } else {
+        btnText.innerText = "Admin: Kanban View";
+        normalView.style.display = 'block';
+        kanbanView.style.display = 'none';
+        renderBoards();
+    }
+}
+
+function renderKanbanBoard() {
+    const kanbanContainer = document.getElementById('kanbanBoardContainer');
+    if (!kanbanContainer) return;
+
+    let data = globalData || [];
+    const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
+    data = filterDataByRegion(data, finalRegion);
+    
+    // 🌟 LOGIK BARU: Masukkan data 'pending' ke dalam Kanban
+    let activeData = data.filter(d => 
+        String(d.status || '').toLowerCase() === 'pending' || 
+        (String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() !== 'done')
+    );
+    
+    const qW = document.getElementById('searchWorkload') ? document.getElementById('searchWorkload').value.toLowerCase() : '';
+    if(qW) {
+        activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW));
+    }
+
+    // Susun mengikut deadline
+    activeData.sort((a, b) => {
+        let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31');
+        let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31');
+        return dateA - dateB;
+    });
+
+    // 🌟 PETA WARNA: TAMBAH ZON 'INBOX' DI PALING KIRI
+    const statusConfig = [
+        { name: 'Inbox (Pending)', isPending: true, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
+        { name: 'Not started', isPending: false, color: '#64748b', bg: 'rgba(100, 116, 139, 0.1)' },
+        { name: 'Drafting', isPending: false, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
+        { name: 'Internal Review', isPending: false, color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
+        { name: 'Revision', isPending: false, color: '#ea580c', bg: 'rgba(234, 88, 12, 0.1)' },
+        { name: 'Client Review', isPending: false, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' },
+        { name: 'Done', isPending: false, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' }
+    ];
+    
+    let html = '';
+    statusConfig.forEach(cfg => {
+        const statusName = cfg.name;
+        
+        // Asingkan kad ikut status Pending vs Approved
+        let colTasks = [];
+        if (cfg.isPending) {
+            colTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'pending');
+        } else {
+            colTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || 'Not started').toLowerCase() === statusName.toLowerCase());
+        }
+        
+        const isDoneZone = statusName === 'Done';
+        const emptyDoneUI = isDoneZone ? `<div style="text-align:center; padding: 40px 10px; color: var(--green); font-weight: 600; font-size: 0.85rem; border: 2px dashed rgba(16, 185, 129, 0.4); border-radius: 12px; margin-top: 10px;"><i data-lucide="check-circle" style="width:28px; height:28px; margin-bottom:10px; opacity:0.8;"></i><br>Drop here to complete!</div>` : '';
+
+        // 🔒 KAWALAN KESELAMATAN: Kad Pending tak boleh di-drag, dan kolum Pending tak boleh di-drop
+        const dragDropEvents = cfg.isPending ? '' : `ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, '${statusName}')"`;
+
+        html += `
+        <div class="kanban-column" style="border-top-color: ${cfg.color}; ${isDoneZone ? 'background: rgba(16, 185, 129, 0.03); border: 1px dashed rgba(16, 185, 129, 0.3);' : ''}" ${dragDropEvents}>
+            <div class="kanban-column-header">
+                <span style="color: ${cfg.color};">${statusName}</span> 
+                <span class="kanban-column-count" style="background: ${cfg.bg}; color: ${cfg.color};">${colTasks.length}</span>
+            </div>
+            ${colTasks.map(t => {
+                const cardDragAttr = cfg.isPending ? 'draggable="false"' : 'draggable="true" ondragstart="drag(event)"';
+                const cursorStyle = cfg.isPending ? 'cursor: pointer;' : 'cursor: grab;';
+                
+                return `
+                <div class="kanban-drag-card" id="${t.job_id}" ${cardDragAttr} onclick="openDetailModal('${t.job_id}')" title="Click to view full details" style="border-left-color: ${cfg.color}; ${cursorStyle}">
+                    <span class="kd-id">[${t.job_id}] ${getFlag(t.region)}</span>
+                    <div class="kd-title">${t.client_name}: ${t.project_title}</div>
+                    <div class="kd-footer">
+                        <span><i data-lucide="user" style="width:12px; margin-right:4px;"></i>${t.assignee !== 'null' ? t.assignee : 'Unassigned'}</span>
+                    </div>
+                </div>
+                `;
+            }).join('')}
+            ${emptyDoneUI}
+        </div>`;
+    });
+    
+    kanbanContainer.innerHTML = html;
+    refreshIcons();
+}
+
+// Intercept Carian supaya Kanban pun ter-update
+const searchWorkloadInput = document.getElementById('searchWorkload');
+if(searchWorkloadInput) {
+    searchWorkloadInput.addEventListener('keyup', () => {
+        if(isKanbanMode) renderKanbanBoard();
+    });
+}
+
+// -- NATIVE DRAG & DROP EVENTS --
+function drag(event) {
+    event.dataTransfer.setData("text/plain", event.currentTarget.id);
+    event.dataTransfer.effectAllowed = "move";
+}
+
+function allowDrop(event) {
+    event.preventDefault();
+    const column = event.target.closest('.kanban-column');
+    if(column) column.classList.add('drag-over');
+}
+
+function dragLeave(event) {
+    const column = event.target.closest('.kanban-column');
+    if(column) column.classList.remove('drag-over');
+}
+
+function drop(event, newStatus) {
+    event.preventDefault();
+    const column = event.target.closest('.kanban-column');
+    if(column) column.classList.remove('drag-over');
+    
+    const jobID = event.dataTransfer.getData("text/plain");
+    if(jobID) {
+        // Panggil fungsi update, dan tambah "true" untuk skip buka Modal
+        updateWorkStatusOptimistic(jobID, newStatus, true);
+        
+        // 🌟 LOGIK BARU: Letupkan Confetti bila masuk zon Done!
+        if (newStatus === 'Done') {
+            firePremiumConfetti();
+        }
+        
+        // Refresh paparan Kanban
+        setTimeout(() => {
+            if (isKanbanMode) renderKanbanBoard();
+        }, 100);
+    }
+}
+
+// ========================================================
+// 🎊 FUNGSI BANTUAN: PREMIUM CONFETTI ANIMATION
+// ========================================================
+function firePremiumConfetti() {
+    // Inject CDN script secara automatik (Tak perlu edit index.html)
+    if (!window.confetti) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js';
+        script.onload = () => playConfetti();
+        document.head.appendChild(script);
+    } else {
+        playConfetti();
+    }
+
+    function playConfetti() {
+        var duration = 2.5 * 1000;
+        var animationEnd = Date.now() + duration;
+        var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 99999 };
+
+        function randomInRange(min, max) { return Math.random() * (max - min) + min; }
+
+        var interval = setInterval(function() {
+            var timeLeft = animationEnd - Date.now();
+            if (timeLeft <= 0) return clearInterval(interval);
+            var particleCount = 50 * (timeLeft / duration);
+            // Tembak dari kiri dan kanan
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+        }, 250);
+        
+        // Mainkan bunyi 'Ting!' kejayaan jika ada
+        if (typeof playSuccessSound === 'function') playSuccessSound();
+    }
+}
+
+// ========================================================
+// 🌟 15. TOGGLE DONE TASKS VIEW
+// ========================================================
+let isDoneKanbanMode = false;
+
+function toggleDoneView() {
+    isDoneKanbanMode = !isDoneKanbanMode;
+    const btnText = document.getElementById('doneViewBtnText');
+    const icon = document.getElementById('doneViewIcon');
+    
+    if (isDoneKanbanMode) {
+        btnText.innerText = "List View";
+        icon.setAttribute('data-lucide', 'list');
+    } else {
+        btnText.innerText = "Board View";
+        icon.setAttribute('data-lucide', 'layout-grid');
+    }
+    
+    // Refresh paparan dengan gaya baru
+    renderBoards();
+}
 

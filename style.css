@@ -2,21 +2,25 @@
    ADTECHINNO CREATIVE ENGINE - PREMIUM STYLESHEET
    ========================================================= */
 
+/* =========================================================
+   ADTECHINNO CREATIVE ENGINE - PREMIUM STYLESHEET
+   ========================================================= */
+
 /* 🌟 DUAL THEME VARIABLES (UPGRADED) 🌟 */
 :root { 
-    /* Light Mode - Softer, cleaner */
-    --bg-main: #f8fafc; 
-    --bg-sidebar: #ffffff; 
-    --bg-card: #ffffff; 
-    --bg-box: #f1f5f9; 
-    --bg-input: #ffffff;
+    /* Light Mode - Glassmorphism Premium */
+    --bg-main: #f0f4f8; 
+    --bg-sidebar: rgba(255, 255, 255, 0.65); 
+    --bg-card: rgba(255, 255, 255, 0.65); 
+    --bg-box: rgba(255, 255, 255, 0.4); 
+    --bg-input: rgba(255, 255, 255, 0.8);
     
     --text-main: #475569; 
     --text-strong: #0f172a; 
     --text-muted: #64748b;
     
-    --border-main: rgba(226, 232, 240, 0.8); 
-    --border-light: rgba(241, 245, 249, 0.5);
+    --border-main: rgba(255, 255, 255, 0.9); 
+    --border-light: rgba(255, 255, 255, 0.5);
     
     --accent: #0f172a; 
     --accent-hover: #334155; 
@@ -30,13 +34,45 @@
     --green: #10b981; 
     --orange: #f59e0b; 
     
-    /* Apple-style soft diffused shadow */
-    --shadow: 0 10px 40px -10px rgba(0,0,0,0.05); 
+    --shadow: 0 10px 40px -10px rgba(0,0,0,0.08); 
     --focus-ring: rgba(14, 165, 233, 0.2);
     
-    --mesh-bg: #f8fafc; 
+    --mesh-bg: #f0f4f8; 
     --overlay-bg: rgba(255, 255, 255, 0.85); 
     --modal-bg: rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] {
+    /* Dark Mode - Midnight blue, muted accents for premium feel */
+    --bg-main: #0b1120; 
+    --bg-sidebar: rgba(17, 24, 39, 0.65); 
+    --bg-card: rgba(17, 24, 39, 0.75); 
+    --bg-box: rgba(31, 41, 55, 0.5); 
+    --bg-input: rgba(11, 17, 32, 0.8);
+    
+    --text-main: #cbd5e1; 
+    --text-strong: #f8fafc; 
+    --text-muted: #94a3b8;
+    
+    --border-main: rgba(51, 65, 85, 0.4); 
+    --border-light: rgba(31, 41, 55, 0.4);
+    
+    --accent: #38bdf8; 
+    --accent-hover: #0284c7; 
+    --accent-text: #0f172a; 
+    --link-color: #38bdf8;
+    
+    --shadow: 0 15px 50px -10px rgba(0,0,0,0.3); 
+    --focus-ring: rgba(56, 189, 248, 0.2);
+    
+    --mesh-bg: #0b1120; 
+    --overlay-bg: rgba(11, 17, 32, 0.85); 
+    --modal-bg: rgba(0, 0, 0, 0.6);
+
+    /* 🌟 AURORA DARK MODE COLORS 🌟 */
+    --aurora-1: rgba(56, 189, 248, 0.12); /* Deep Sky Blue */
+    --aurora-2: rgba(139, 92, 246, 0.10); /* Deep Purple */
+    --aurora-3: rgba(14, 165, 233, 0.06); /* Center Soft Blue Glow */
 }
 
 [data-theme="dark"] {
@@ -77,8 +113,48 @@
 input[type="date"], input[type="number"] { -webkit-appearance: none; appearance: none; width: 100%; max-width: 100%; display: block; box-sizing: border-box; }
 
 /* 🌟 SCROLL FIX & BODY LOCK 🌟 */
-html, body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(--text-main); margin: 0; min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+html { background: var(--bg-main); }
+body { 
+    font-family: 'Inter', sans-serif; 
+    background: transparent; /* Tukar supaya cahaya aurora boleh tembus */
+    color: var(--text-main); 
+    margin: 0; 
+    min-height: 100vh; 
+    overflow-x: hidden; 
+    -webkit-font-smoothing: antialiased; 
+    position: relative;
+}
 body.no-scroll { overflow: hidden !important; }
+
+/* 🌟 PREMIUM AURORA GLOW EFFECT 🌟 */
+body::before, body::after, html::before {
+    content: '';
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px); /* Blur tahap maksimum untuk efek premium */
+    z-index: -1;
+    pointer-events: none;
+    transition: background 1s ease;
+    will-change: transform; 
+}
+
+/* Cahaya Kiri Atas (Biru) */
+body::before {
+    top: -10%; left: -10%; width: 50vw; height: 50vh;
+    background: var(--aurora-1);
+}
+
+/* Cahaya Kanan Bawah (Ungu) */
+body::after {
+    bottom: -10%; right: -10%; width: 60vw; height: 60vh;
+    background: var(--aurora-2);
+}
+
+/* Cahaya Tengah (Soft Glow) */
+html::before {
+    top: 20%; left: 30%; width: 40vw; height: 40vh;
+    background: var(--aurora-3);
+}
 
 /* 🌟 OVERLAYS (BLUR EFFECT) 🌟 */
 #soft-refresh-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--overlay-bg); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 99999; display: flex; justify-content: center; align-items: center; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
@@ -227,7 +303,7 @@ body.no-scroll { overflow: hidden !important; }
 
 /* MAIN CONTENT */
 .main-content { margin-left: 280px; padding: 50px; width: calc(100% - 280px); box-sizing: border-box; overflow-x: hidden; min-height: 100vh; }
-.page { display: none; max-width: 1100px; margin: 0 auto; }
+.page { display: none; max-width: 100%; margin: 0 auto; }
 .page.active { display: block; animation: fadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
 h1 { color: var(--text-strong); font-weight: 800; letter-spacing: -0.02em; }
 
@@ -961,4 +1037,188 @@ body.live-mode .stagger-card {
         height: 100vh;
         overflow-y: auto; /* Content utama je yang akan scroll */
     }
+}
+
+/* ========================================================
+   📋 ADMIN KANBAN BOARD (DRAG & DROP) - FLUID FIT
+   ======================================================== */
+.kanban-board-wrapper { 
+    display: flex; 
+    gap: 15px; /* Rapatkan sikit gap supaya tak bazir ruang */
+    overflow-x: auto; 
+    padding-bottom: 20px; 
+    min-height: 500px; 
+    align-items: flex-start; 
+    scrollbar-width: thin; 
+    -webkit-overflow-scrolling: touch;
+}
+
+.kanban-column { 
+    flex: 1; /* Ini kunci utama: Semua kolum akan kongsi ruang sama rata */
+    min-width: 180px; /* Jangan sampai terlalu kecil */
+    background: var(--bg-box); 
+    border-radius: 12px; 
+    padding: 12px; 
+    border: 1px solid var(--border-main); 
+    border-top-width: 4px; /* Garis tebal di atas untuk warna status */
+    display: flex; 
+    flex-direction: column; 
+    gap: 12px; 
+    transition: all 0.2s ease; 
+    min-height: 150px;
+}
+
+.kanban-column.drag-over { 
+    background: var(--bg-card); 
+    transform: scale(1.02);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+}
+
+.kanban-column-header { 
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 800; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.kanban-column-count { 
+    padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700;
+}
+
+.kanban-drag-card { 
+    background: var(--bg-card); border-left: 4px solid var(--border-main); padding: 12px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); cursor: grab; transition: transform 0.2s ease;
+}
+.kanban-drag-card:active { 
+    cursor: grabbing; transform: scale(0.97) rotate(2deg); opacity: 0.9; box-shadow: 0 15px 30px rgba(0,0,0,0.1); z-index: 100;
+}
+
+.kanban-drag-card .kd-id { font-size: 0.65rem; font-family: monospace; color: var(--text-muted); background: var(--bg-box); padding: 3px 6px; border-radius: 4px; margin-bottom: 8px; display: inline-block; font-weight: 700;}
+.kanban-drag-card .kd-title { font-size: 0.85rem; font-weight: 700; color: var(--text-strong); line-height: 1.3; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;}
+.kanban-drag-card .kd-footer { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-muted); font-weight: 600; border-top: 1px solid var(--border-light); padding-top: 8px;}
+
+/* ========================================================
+   🌟 PREMIUM AURORA GLOW & APPLE TOGGLE SWITCH 🌟
+   ======================================================== */
+
+/* 1. Jadikan background intro lutsinar */
+.intro-overlay { background-color: transparent !important; }
+body { background-color: transparent !important; }
+html { background-color: var(--bg-main) !important; }
+
+/* 2. Warna Cahaya Aurora (LEBIH TERANG & PEKAT) */
+:root {
+    --aurora-1: rgba(14, 165, 233, 0.25); /* Biru pekat sikit */
+    --aurora-2: rgba(139, 92, 246, 0.20); /* Ungu pekat sikit */
+    --aurora-3: rgba(16, 185, 129, 0.15); 
+}
+[data-theme="dark"] {
+    --aurora-1: rgba(56, 189, 248, 0.35); /* Lebih pop dalam gelap */
+    --aurora-2: rgba(167, 139, 250, 0.30); 
+    --aurora-3: rgba(52, 211, 153, 0.20); 
+}
+
+/* 3. Efek Cahaya Bergerak (Dipertingkatkan supaya lebih jelas & smooth) */
+body::before, body::after, html::before {
+    content: ''; position: fixed; border-radius: 50%; filter: blur(90px); 
+    z-index: -1; pointer-events: none; will-change: transform, opacity; 
+}
+
+/* Tambah pergerakan lebih jauh (15-20%) dan efek opacity bernafas */
+@keyframes auroraBreathe1 { 
+    0% { transform: translate(0, 0) scale(1); opacity: 0.7; } 
+    50% { transform: translate(15%, 10%) scale(1.3); opacity: 1; } 
+    100% { transform: translate(-10%, -15%) scale(0.9); opacity: 0.6; } 
+}
+@keyframes auroraBreathe2 { 
+    0% { transform: translate(0, 0) scale(1); opacity: 0.6; } 
+    50% { transform: translate(-15%, -15%) scale(1.35); opacity: 1; } 
+    100% { transform: translate(15%, 10%) scale(0.85); opacity: 0.7; } 
+}
+@keyframes auroraBreathe3 { 
+    0% { transform: translate(0, 0) scale(1); opacity: 0.9; } 
+    50% { transform: translate(10%, 20%) scale(1.4); opacity: 0.5; } 
+    100% { transform: translate(-15%, -10%) scale(0.95); opacity: 1; } 
+}
+
+body::before { top: -10%; left: -10%; width: 50vw; height: 50vh; background: var(--aurora-1); animation: auroraBreathe1 18s ease-in-out infinite alternate; }
+body::after { bottom: -10%; right: -10%; width: 60vw; height: 60vh; background: var(--aurora-2); animation: auroraBreathe2 22s ease-in-out infinite alternate; }
+html::before { top: 20%; left: 30%; width: 40vw; height: 40vh; background: var(--aurora-3); animation: auroraBreathe3 25s ease-in-out infinite alternate; }
+
+/* ========================================================
+   🌟 PREMIUM SaaS THEME TOGGLE (VERCEL/APPLE STYLE) 🌟
+   ======================================================== */
+.apple-theme-toggle {
+    cursor: pointer; width: 64px; height: 34px; border-radius: 34px;
+    background: #e2e8f0; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); 
+    position: relative; transition: background 0.4s ease;
+}
+[data-theme="dark"] .apple-theme-toggle {
+    background: #3b82f6; /* Warna Biru Premium SaaS bila Dark Mode ON */
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Bulatan (Thumb) dalam Switch */
+.toggle-thumb {
+    position: absolute; top: 3px; left: 3px; width: 28px; height: 28px;
+    background: #ffffff; border-radius: 50%; 
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15), 0 0 1px rgba(0,0,0,0.1);
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); /* Efek 'Bouncy Spring' Apple */
+    display: grid; place-items: center; /* Cara paling kebal untuk center ikon SVG */
+}
+[data-theme="dark"] .toggle-thumb {
+    transform: translateX(30px); 
+    background: #ffffff; /* Kekal putih supaya ikon bulan nampak timbul */
+}
+
+/* Paksa saiz SVG Lucide supaya tak jadi telur dadar gergasi */
+.toggle-thumb svg { 
+    position: absolute; 
+    width: 16px !important; height: 16px !important; 
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Animasi pusing & pudar (Rotate + Scale) yang sangat smooth */
+.icon-sun { color: #f59e0b; opacity: 1; transform: rotate(0deg) scale(1); }
+.icon-moon { color: #3b82f6; opacity: 0; transform: rotate(-90deg) scale(0.5); }
+
+[data-theme="dark"] .icon-sun { opacity: 0; transform: rotate(90deg) scale(0.5); }
+[data-theme="dark"] .icon-moon { opacity: 1; transform: rotate(0deg) scale(1); }
+
+/* Efek timbul dan tenggelam (Scale + Translate) */
+.icon-sun { color: #f59e0b; opacity: 1; transform: translateY(0) scale(1); }
+.icon-moon { color: #a78bfa; opacity: 0; transform: translateY(20px) scale(0.5); }
+
+[data-theme="dark"] .icon-sun { opacity: 0; transform: translateY(-20px) scale(0.5); }
+[data-theme="dark"] .icon-moon { opacity: 1; transform: translateY(0) scale(1); }
+
+/* ========================================================
+   🌟 TAMBAHAN: GLASSMORPHISM & SIDEBAR IOS SWITCH 🌟
+   ======================================================== */
+/* 1. Efek cermin lutsinar (Frosted Glass) supaya Aurora tembus */
+.sidebar, .dash-card, .stat-box, .kanban-card, .card-form, .brief-box, .job-details, .custom-modal, .modal-content {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+/* 2. Besarkan sikit opacity Aurora untuk Light Mode supaya jelas */
+:root {
+    --aurora-1: rgba(14, 165, 233, 0.4); 
+    --aurora-2: rgba(139, 92, 246, 0.35); 
+    --aurora-3: rgba(16, 185, 129, 0.25); 
+}
+
+/* 3. Design Switch iOS untuk Sidebar */
+.sidebar-toggle-switch {
+    width: 44px; height: 24px; border-radius: 24px;
+    background: rgba(226, 232, 240, 0.8); border: 1px solid rgba(0,0,0,0.05);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); position: relative;
+    transition: background 0.4s ease; pointer-events: none;
+}
+[data-theme="dark"] .sidebar-toggle-switch {
+    background: var(--green); /* Warna hijau Apple bila Dark Mode ON */
+    border-color: transparent;
+}
+.sidebar-toggle-thumb {
+    position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+    background: #ffffff; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+[data-theme="dark"] .sidebar-toggle-thumb {
+    transform: translateX(20px);
 }
