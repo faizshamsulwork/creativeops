@@ -1222,3 +1222,28 @@ html::before { top: 20%; left: 30%; width: 40vw; height: 40vh; background: var(-
 [data-theme="dark"] .sidebar-toggle-thumb {
     transform: translateX(20px);
 }
+
+/* --- BADGE: RECENTLY DONE (SMART THEME) --- */
+.badge-recent {
+    background: #d1fae5; /* Hijau Mint cair untuk Light Mode */
+    color: #065f46;      /* Hijau Emerald pekat supaya tulisan tajam & jelas */
+    border: 1px solid #a7f3d0;
+    font-size: 0.6rem;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 12px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+/* Automatik tukar rupa bila Dark Mode aktif */
+[data-theme="dark"] .badge-recent {
+    background: rgba(52, 211, 153, 0.15);
+    color: #34d399; /* Hijau Neon */
+    border-color: rgba(52, 211, 153, 0.4);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}

@@ -908,12 +908,7 @@ function renderBoards() {
         }
 
         const statusOrder = {
-            'pending': 0, 
-            'not started': 1,
-            'drafting': 2,
-            'internal review': 3,
-            'revision': 4,
-            'client review': 5
+            'pending': 0, 'not started': 1, 'drafting': 2, 'internal review': 3, 'revision': 4, 'client review': 5
         };
 
         activeData.sort((a, b) => {
@@ -923,9 +918,7 @@ function renderBoards() {
             let orderA = statusOrder[statusA] !== undefined ? statusOrder[statusA] : 99;
             let orderB = statusOrder[statusB] !== undefined ? statusOrder[statusB] : 99;
 
-            if (orderA !== orderB) {
-                return orderA - orderB;
-            }
+            if (orderA !== orderB) return orderA - orderB;
 
             let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31');
             let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31');
@@ -938,9 +931,7 @@ function renderBoards() {
             if (activeData.length === 0) {
                 document.getElementById('projectList').innerHTML = '<div class="empty-state"><i data-lucide="search-x"></i><p>No matching requests found.</p></div>';
             } else {
-                // 🌟 FIX BARU: PECAHKAN NORMAL VIEW KEPADA GROUP HEADERS 🌟
                 let listHtml = '';
-                
                 const statusGroups = [
                     { id: 'pending', label: 'Inbox (Pending)', color: 'var(--red)', bg: 'rgba(239, 68, 68, 0.1)' },
                     { id: 'not started', label: 'Not Started', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.1)' },
@@ -952,26 +943,14 @@ function renderBoards() {
 
                 statusGroups.forEach(cfg => {
                     let groupTasks = [];
-                    if (cfg.id === 'pending') {
-                        groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'pending');
-                    } else {
-                        groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || 'not started').toLowerCase() === cfg.id);
-                    }
+                    if (cfg.id === 'pending') groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'pending');
+                    else groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || 'not started').toLowerCase() === cfg.id);
 
                     if (groupTasks.length > 0) {
-                        listHtml += `
-                        <h3 class="month-group-header" style="border-bottom-color: ${cfg.color}; color: ${cfg.color}; margin-top: 30px;">
-                            <span style="display:flex; align-items:center; gap:10px;">
-                                <span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${cfg.color};"></span>
-                                ${cfg.label.toUpperCase()}
-                            </span>
-                            <span class="month-group-badge" style="background: ${cfg.bg}; color: ${cfg.color};">${groupTasks.length} Tasks</span>
-                        </h3>`;
-                        
+                        listHtml += `<h3 class="month-group-header" style="border-bottom-color: ${cfg.color}; color: ${cfg.color}; margin-top: 30px;"><span style="display:flex; align-items:center; gap:10px;"><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${cfg.color};"></span>${cfg.label.toUpperCase()}</span><span class="month-group-badge" style="background: ${cfg.bg}; color: ${cfg.color};">${groupTasks.length} Tasks</span></h3>`;
                         listHtml += `<div class="project-grid">` + groupTasks.map((item, index) => generateJobCard(item, false, index)).join('') + `</div>`;
                     }
                 });
-
                 document.getElementById('projectList').innerHTML = listHtml;
             }
         }
@@ -984,9 +963,7 @@ function renderBoards() {
         let doneData = data.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() === 'done');
         
         const qD = document.getElementById('searchDone') ? document.getElementById('searchDone').value.toLowerCase() : '';
-        if(qD) {
-            doneData = doneData.filter(d => String(d.job_id || '').toLowerCase().includes(qD) || String(d.client_name || '').toLowerCase().includes(qD) || String(d.requester_name || '').toLowerCase().includes(qD) || String(d.assignee || '').toLowerCase().includes(qD));
-        }
+        if(qD) doneData = doneData.filter(d => String(d.job_id || '').toLowerCase().includes(qD) || String(d.client_name || '').toLowerCase().includes(qD) || String(d.requester_name || '').toLowerCase().includes(qD) || String(d.assignee || '').toLowerCase().includes(qD));
 
         if (doneData.length === 0) {
             document.getElementById('doneList').innerHTML = '<div class="empty-state"><i data-lucide="search-x"></i><p>No matching tasks found.</p></div>';
@@ -994,12 +971,13 @@ function renderBoards() {
             const groupedDone = {};
             doneData.forEach(item => {
                 let sortKey = "0000-00"; let displayLabel = "No Date";
-                if(item.deadline) {
-                    const d = new Date(item.deadline);
+                let targetDate = item.done_at ? item.done_at : item.deadline;
+                if(targetDate) {
+                    const d = new Date(targetDate);
                     if(!isNaN(d)) { 
                         sortKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`; 
                         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]; 
-                        displayLabel = `${months[d.getMonth()]} ${d.getFullYear()}`; 
+                        displayLabel = `Completed: ${months[d.getMonth()]} ${d.getFullYear()}`; 
                     }
                 }
                 if(!groupedDone[sortKey]) groupedDone[sortKey] = { label: displayLabel, tasks: [] };
@@ -1013,7 +991,7 @@ function renderBoards() {
                 doneHtml += '<div class="kanban-board-wrapper">';
                 sortedKeys.forEach(key => {
                     const group = groupedDone[key]; 
-                    group.tasks.sort((a, b) => { let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31'); let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31'); return dateA - dateB; });
+                    group.tasks.sort((a, b) => { let dateA = a.done_at ? new Date(a.done_at) : new Date('1970-01-01'); let dateB = b.done_at ? new Date(b.done_at) : new Date('1970-01-01'); return dateB - dateA; });
                     
                     doneHtml += `
                     <div class="kanban-column" style="border-top-color: var(--green);">
@@ -1022,16 +1000,30 @@ function renderBoards() {
                             <span class="kanban-column-count" style="background: rgba(16, 185, 129, 0.1); color: var(--green);">${group.tasks.length}</span>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 12px;">
-                            ${group.tasks.map((item, idx) => `
-                                <div class="kanban-drag-card" onclick="openDetailModal('${item.job_id}')" title="Click to view full details" style="border-left-color: var(--green); cursor: pointer;">
-                                    <span class="kd-id">[${item.job_id}] ${getFlag(item.region)}</span>
+                            ${group.tasks.map((item, idx) => {
+                                let isJustDone = false;
+                                if (item.done_at) {
+                                    const diffHours = (new Date() - new Date(item.done_at)) / (1000 * 60 * 60);
+                                    if (diffHours <= 24) isJustDone = true;
+                                }
+                                // 🌟 FIX: Guna class CSS baru untuk Kanban Card
+                                const glow = isJustDone ? 'border-left-color: var(--green); background: linear-gradient(90deg, rgba(16,185,129,0.05) 0%, transparent 80%); box-shadow: 0 4px 15px rgba(16,185,129,0.1);' : 'border-left-color: var(--green);';
+                                const badge = isJustDone ? '<span class="badge-recent">✨ RECENTLY DONE</span>' : '';
+                                
+                                return `
+                                <div class="kanban-drag-card" onclick="openDetailModal('${item.job_id}')" title="Click to view full details" style="${glow} cursor: pointer;">
+                                    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                                        <span class="kd-id" style="margin:0; white-space:nowrap;">[${item.job_id}] ${getFlag(item.region)}</span>
+                                        ${badge}
+                                    </div>
                                     <div class="kd-title">${item.client_name}: ${item.project_title}</div>
                                     <div class="kd-footer">
                                         <span><i data-lucide="user" style="width:12px; margin-right:4px;"></i>${item.assignee !== 'null' ? item.assignee : 'Unassigned'}</span>
                                         <span style="color: var(--green); font-weight: 700;"><i data-lucide="check-circle" style="width:12px; margin-right:4px; vertical-align:text-bottom;"></i>Done</span>
                                     </div>
                                 </div>
-                            `).join('')}
+                                `;
+                            }).join('')}
                         </div>
                     </div>`;
                 });
@@ -1039,7 +1031,7 @@ function renderBoards() {
             } else {
                 sortedKeys.forEach(key => {
                     const group = groupedDone[key]; 
-                    group.tasks.sort((a, b) => { let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31'); let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31'); return dateA - dateB; });
+                    group.tasks.sort((a, b) => { let dateA = a.done_at ? new Date(a.done_at) : new Date('1970-01-01'); let dateB = b.done_at ? new Date(b.done_at) : new Date('1970-01-01'); return dateB - dateA; });
                     doneHtml += `<h3 class="month-group-header">${group.label} <span class="month-group-badge">${group.tasks.length} Tasks</span></h3>`;
                     doneHtml += `<div class="project-grid">` + group.tasks.map((item, idx) => generateJobCard(item, true, idx)).join('') + `</div>`;
                 });
@@ -1047,14 +1039,12 @@ function renderBoards() {
             document.getElementById('doneList').innerHTML = doneHtml;
         }
     }
-    
     refreshIcons();
 }
 
 function viewMyRequests() { showPage('workload'); const savedName = localStorage.getItem('adtech_user_name'); if (savedName) { const firstName = extractFirstName(savedName); const searchBox = document.getElementById('searchWorkload'); searchBox.value = firstName; renderBoards(); } }
 
 function generateJobCard(item, isDoneTab = false, index = 0) {
-    // 🌟 LOGIK BARU: Kesan status pending dan letak warna merah
     const isPending = String(item.status || '').toLowerCase() === 'pending';
     const ws = isPending ? 'Inbox (Pending)' : (item.work_status || 'Not started'); 
     
@@ -1064,17 +1054,27 @@ function generateJobCard(item, isDoneTab = false, index = 0) {
     
     const jobTypeStr = String(item.job_type).toLowerCase();
     let typeIcon = '⚡'; 
-    
-    if (jobTypeStr.includes('monthly')) {
-        typeIcon = '📅'; 
-    } else if (jobTypeStr.includes('pitch')) {
-        typeIcon = '🖥️'; 
+    if (jobTypeStr.includes('monthly')) typeIcon = '📅'; 
+    else if (jobTypeStr.includes('pitch')) typeIcon = '🖥️'; 
+
+    let isJustDone = false;
+    if (isDoneTab && item.done_at) {
+        const diffHours = (new Date() - new Date(item.done_at)) / (1000 * 60 * 60);
+        if (diffHours <= 24) isJustDone = true;
     }
+
+    // 🌟 FIX: Guna class CSS baru yang lebih kemas & menyokong Light/Dark Mode
+    const glowStyle = isJustDone ? `border-left-color: var(--green); background: linear-gradient(90deg, rgba(16,185,129,0.05) 0%, transparent 80%); box-shadow: 0 4px 15px rgba(16,185,129,0.1);` : `border-left-color: ${borderColor};`;
+    
+    const newBadge = isJustDone ? `<span class="badge-recent">✨ RECENTLY DONE</span>` : '';
     
     return `
-        <div class="kanban-card stagger-card" style="border-left-color: ${borderColor}; animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${item.job_id}')">
-            <div class="kb-header">
-                <span class="kb-id">${typeIcon} [${item.job_id}] ${getFlag(item.region)}</span>
+        <div class="kanban-card stagger-card" style="${glowStyle} animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${item.job_id}')">
+            <div class="kb-header" style="display:flex; align-items:flex-start; justify-content:space-between; gap: 8px;">
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+                    <span class="kb-id" style="margin:0; white-space:nowrap;">${typeIcon} [${item.job_id}] ${getFlag(item.region)}</span>
+                    ${newBadge}
+                </div>
                 <strong class="ws-badge ${wsClass}" ${isPending ? 'style="background: #ef4444;"' : ''}>${ws}</strong>
             </div>
             <div class="kb-title">${item.client_name}: ${item.project_title}</div>
@@ -2144,13 +2144,28 @@ function copyText(type, jobID, client, title, assignee, deadlineStr, playbookLin
     const link = playbookLink || 'Link not provided'; 
     const deadline = formatDate(deadlineStr);
     
-    if (type === 'requester') msg = `Hi! Your creative request has been APPROVED.\n\nJob ID: ${jobID}\nProject: ${client} - ${title}\nDeadline: ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
-    else if (type === 'team') msg = `[NEW ASSIGNED JOB]\n\nTeam: ${assignee}\nJob ID: ${jobID}\nClient: ${client} - ${title}\nDeadline: ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions.`;
-    else if (type === 'review') msg = `[CREATIVE READY FOR REVIEW]\n\nClient: ${client}\nProject: ${title}\n\nHi ${requesterName}, the creatives are now ready for your review. You can check the drafts via the link below:\n${link}\n\nPlease let us know if there are any further amendments or if we can proceed to final. Thank you!`;
-    else if (type === 'chase') msg = `[FOLLOW UP STATUS]\nHi ${assignee}, just checking on the progress for this job:\n\n*Job ID:* ${jobID}\n*Client:* ${client} - ${title}\n*Deadline:* ${deadline}\n*Playbook:* ${link}\n\nPlease update me on the progress, or let me know if there are any blockers. Thanks!`;
-    else if (type === 'revision_alert') msg = `[REVISION ALERT]\nHi ${assignee}, there is a new revision for this job:\n\n*Job ID:* ${jobID}\n*Client:* ${client} - ${title}\n*Playbook:* ${link}\n\nPlease check the comments inside the Playbook for detailed corrections. Thanks!`;
-    else if (type === 'chase_client') msg = `[FOLLOW UP APPROVAL]\nHi ${requesterName}, just checking if there's any update or feedback from the client for this job:\n\n*Job ID:* ${jobID}\n*Project:* ${client} - ${title}\n*Playbook:* ${link}\n\nPlease let us know so we can proceed. Thanks!`;
-    else if (type === 'done_team') msg = `[JOB COMPLETED 🎉]\n\nGreat job team! This task is officially DONE and closed.\n\n*Job ID:* ${jobID}\n*Client:* ${client} - ${title}\n*PIC:* ${assignee}\n\nThank you for the hard work!`;
+    if (type === 'requester') {
+        msg = `Hi! Your creative request has been APPROVED.\n\nJob ID: ${jobID}\nProject: ${client} - ${title}\nDeadline: ${deadline}\n\nOur creative team (${assignee}) is working on it. Track details here: ${link}`;
+    } 
+    else if (type === 'team') {
+        msg = `📌 NEW ASSIGNED JOB\n\nTeam: ${assignee}\nJob ID: ${jobID}\nClient: ${client} - ${title}\nDeadline: ${deadline}\n\nPlease check the brief and execute in the Playbook here: ${link}\n\nLet me know if you have questions.`;
+    } 
+    else if (type === 'review') {
+        msg = `🔍 CREATIVE READY FOR REVIEW\n\nClient: ${client}\nProject: ${title}\n\nHi ${requesterName}, the creatives are now ready for your review. You can check the drafts via the link below:\n${link}\n\nPlease let us know if there are any further amendments or if we can proceed to final. Thank you!`;
+    } 
+    else if (type === 'chase') {
+        msg = `⏱️ FOLLOW UP STATUS\n\nHi ${assignee}, just checking on the progress for this job:\n\nJob ID: ${jobID}\nClient: ${client} - ${title}\nDeadline: ${deadline}\nPlaybook: ${link}\n\nPlease update me on the progress, or let me know if there are any blockers. Thanks!`;
+    } 
+    else if (type === 'revision_alert') {
+        msg = `⚠️ REVISION ALERT\n\nHi ${assignee}, there is a new revision for this job:\n\nJob ID: ${jobID}\nClient: ${client} - ${title}\nPlaybook: ${link}\n\nPlease check the comments inside the Playbook for detailed corrections. Thanks!`;
+    } 
+    else if (type === 'chase_client') {
+        msg = `⏳ FOLLOW UP APPROVAL\n\nHi ${requesterName}, just checking if there's any update or feedback from the client for this job:\n\nJob ID: ${jobID}\nProject: ${client} - ${title}\nPlaybook: ${link}\n\nPlease let us know so we can proceed. Thanks!`;
+    } 
+    else if (type === 'done_team') {
+        // 🌟 MESEJ DONE YANG DAH DIBERSIHKAN (Tiada bintang) & DITAMBAH LINK/DEADLINE
+        msg = `🎉 JOB COMPLETED\n\nGreat job team! This task is officially DONE and closed.\n\nJob ID: ${jobID}\nClient: ${client} - ${title}\nPIC: ${assignee}\nDeadline: ${deadline}\n\n📂 Playbook Link:\n${link}\n\nThank you for the hard work!`;
+    }
     
     navigator.clipboard.writeText(msg); 
     showNotification('Message Copied', 'Ready to paste');
