@@ -388,7 +388,7 @@
                     <div class="input-group" style="margin-bottom: 20px;">
                         <label>Type of Leave</label>
                         <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
-                            <select id="leaveType" onchange="document.getElementById('leaveOtherInput').style.display = this.value === 'Others' ? 'block' : 'none'" style="flex: 1; min-width: 200px;">
+                            <select id="leaveType" onchange="document.getElementById('leaveOtherInput').style.display = this.value === 'Others' ? 'block' : 'none'; syncLeaveSession();" style="flex: 1; min-width: 200px;">
                                 <option value="Annual Leave">Annual Leave</option>
                                 <option value="Medical Leave">Medical Leave (MC)</option>
                                 <option value="Emergency Leave">Emergency Leave</option>
@@ -402,12 +402,21 @@
                     <div class="form-row">
                         <div class="input-group">
                             <label>Leave Start Date</label>
-                            <input type="date" id="leaveStart">
+                            <input type="date" id="leaveStart" onchange="syncLeaveSession()">
                         </div>
                         <div class="input-group">
                             <label>Leave End Date</label>
-                            <input type="date" id="leaveEnd">
+                            <input type="date" id="leaveEnd" onchange="syncLeaveSession()">
                         </div>
+                    </div>
+
+                    <div class="input-group" id="leaveSessionGroup" style="margin-bottom: 20px; display: none; animation: fadeIn 0.3s ease;">
+                        <label>Time Session (Half Day?)</label>
+                        <select id="leaveSession">
+                            <option value="Full Day">Full Day</option>
+                            <option value="AM (Half)">AM (Half)</option>
+                            <option value="PM (Half)">PM (Half)</option>
+                        </select>
                     </div>
                     
                     <div class="form-navigation" style="justify-content: flex-end; gap: 15px;">
@@ -415,7 +424,7 @@
                         <button class="btn-nav btn-submit" id="btnSetLeave" onclick="submitLeave('On Leave')" style="background: var(--red);"><i data-lucide="plane"></i> Set On Leave</button>
                     </div>
                 </div>
-
+                
                 <div id="leaveHistoryContainer" style="margin-top: 30px; border-top: 1px dashed var(--border-main); padding-top: 20px; display: none;">
                     <h3 style="font-size: 1rem; color: var(--text-strong); margin-top: 0; margin-bottom: 15px;"><i data-lucide="history" style="width: 18px; display: inline-block; vertical-align: middle; margin-right: 5px;"></i> Upcoming Leaves</h3>
                     <div id="leaveHistoryList" style="display: flex; flex-direction: column; gap: 10px;"></div>

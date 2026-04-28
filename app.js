@@ -155,6 +155,32 @@ function extractFirstName(fullName) {
     return cleanName.split(' ')[0]; 
 }
 
+function syncLeaveSession() {
+    const startInput = document.getElementById('leaveStart');
+    const endInput = document.getElementById('leaveEnd');
+    const typeInput = document.getElementById('leaveType');
+    const sessionGroup = document.getElementById('leaveSessionGroup');
+    const sessionInput = document.getElementById('leaveSession');
+    
+    // Logik asal: halang pilih tarikh belakang
+    if (startInput && endInput && startInput.value) {
+        endInput.min = startInput.value; 
+        if (!endInput.value || endInput.value < startInput.value) {
+            endInput.value = startInput.value; 
+        }
+    }
+
+    // 🌟 Logik Pintar: Tunjuk AM/PM kalau Annual Leave DAN cuti 1 hari sahaja
+    if (startInput && endInput && typeInput && sessionGroup) {
+        if (startInput.value === endInput.value && typeInput.value === 'Annual Leave') {
+            sessionGroup.style.display = 'block';
+        } else {
+            sessionGroup.style.display = 'none';
+            if(sessionInput) sessionInput.value = 'Full Day'; // Auto reset
+        }
+    }
+}
+
 function setPresetDate() {
     const today = new Date(); const offset = today.getTimezoneOffset() * 60000; const localISOTime = (new Date(today - offset)).toISOString().slice(0, -1);
     let minDate = new Date(); let addedDays = 0; const publicHolidays2026 = ["2026-01-01", "2026-02-17", "2026-02-18", "2026-03-17", "2026-03-20", "2026-05-01", "2026-05-31", "2026-06-06", "2026-08-31", "2026-09-16", "2026-10-31", "2026-12-25"];
@@ -166,6 +192,10 @@ function setPresetDate() {
     const pDeadline = document.getElementById('pDeadline'); const leaveStart = document.getElementById('leaveStart'); const leaveEnd = document.getElementById('leaveEnd');
     if(pDeadline) { pDeadline.value = lockedMinDateStr; pDeadline.min = lockedMinDateStr; }
     if(leaveStart) leaveStart.value = localISOTime.split('T')[0]; if(leaveEnd) leaveEnd.value = localISOTime.split('T')[0];
+    
+    // Reset Session & Sync
+    if(document.getElementById('leaveSession')) document.getElementById('leaveSession').value = 'Full Day';
+    syncLeaveSession();
 }
 
 // ========================================================
@@ -2131,6 +2161,9 @@ async function submitLeave(statusParam) {
     let startDate = document.getElementById('leaveStart').value; 
     let endDate = document.getElementById('leaveEnd').value;
     
+    // Tarik nilai kotak Session
+    let sessionValue = document.getElementById('leaveSession') ? document.getElementById('leaveSession').value : 'Full Day';
+
     if(!name || !passcode) return showAppleAlert("Missing Info", "Please enter Name and Passcode.");
     const memberInfo = globalTeamStatus.find(t => t.Name === name);
     if (memberInfo && memberInfo.Passcode && memberInfo.Passcode !== passcode) { return showAppleAlert("Error", "Incorrect passcode."); }
@@ -2146,7 +2179,6 @@ async function submitLeave(statusParam) {
     
     if(statusParam === 'Active') { 
         finalStatus = ""; finalStart = ""; finalEnd = ""; 
-        // 🌟 BILA BALIK CUTI, KITA KEMBALIKAN SEMUA JOB KEPADA NAMA ASAL
         const btnReset = document.getElementById('btnResetLeave');
         btnReset.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Restoring Tasks...';
         btnReset.disabled = true;
@@ -2156,25 +2188,34 @@ async function submitLeave(statusParam) {
         
     } else {
         if(!startDate || !endDate) return showAppleAlert("Missing Dates", "Please select leave start and end dates.");
+        if(endDate < startDate) return showAppleAlert("Invalid Dates", "End Date cannot be before Start Date.");
+
         const lType = document.getElementById('leaveType').value; 
         const lOther = document.getElementById('leaveOtherInput').value.trim().replace(/\|/g, ''); 
-        displayLeave = lType; 
-        if (lType === 'Others' && lOther) { displayLeave = lOther; }
+        let baseLeave = lType; 
+        if (lType === 'Others' && lOther) { baseLeave = lOther; }
+        
+        // 🌟 LOGIK BARU: Hanya letak label AM/PM jika cuti 1 hari dan jenis Annual Leave
+        if (startDate === endDate && sessionValue !== 'Full Day' && lType === 'Annual Leave') {
+            displayLeave = baseLeave + ` - ${sessionValue}`;
+        } else {
+            displayLeave = baseLeave;
+        }
         
         let newStatus = "On Leave (" + displayLeave + ")";
+        
         existingStatuses.push(newStatus); existingStarts.push(startDate); existingEnds.push(endDate);
         
         finalStatus = existingStatuses.join(' | '); 
         finalStart = existingStarts.join(' | '); 
         finalEnd = existingEnds.join(' | ');
 
-        // 🌟 BILA NAK CUTI, SEMAK KALAU ADA KERJA BELUM SIAP (HANDOVER TRIGGER)
         const activeJobs = globalData.filter(d => String(d.status).toLowerCase() === 'approved' && String(d.work_status).toLowerCase() !== 'done' && String(d.assignee).includes(name));
         
         if(activeJobs.length > 0) {
             const payload = { name, passcode, finalStatus, finalStart, finalEnd, startDate, endDate, displayLeave, statusParam };
             openHandoverModal(activeJobs, payload);
-            return; // BERHENTI! Tunggu form Handover diisi
+            return; 
         }
     }
     
