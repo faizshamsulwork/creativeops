@@ -332,7 +332,17 @@ function resetFormUI() {
     document.getElementById('mStatic').value = ''; document.getElementById('mVideo').value = ''; document.getElementById('mCarousel').value = ''; if(document.getElementById('mCaption')) document.getElementById('mCaption').value = ''; document.getElementById('pMonthlyPlan').value = '';
     const sizeContainer = document.getElementById('dynamicSizeContainer');
     sizeContainer.innerHTML = `<div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;"><input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"></div>`;
-    document.getElementById('pBrief').value = "[MAIN MESSAGE / HOOK]: \n\n[TARGET AUDIENCE]: \n\n[TONE & VIBE]: \n\n[MANDATORY LOGO / TEXT]: \n";
+    
+    // 🌟 LOGIK BARU: Kosongkan 4 Kotak Brief Berstruktur
+    if (document.getElementById('briefHook')) {
+        document.getElementById('briefHook').value = '';
+        document.getElementById('briefAudience').value = '';
+        document.getElementById('briefVibe').value = '';
+        document.getElementById('briefMandatory').value = '';
+    } else if (document.getElementById('pBrief')) {
+        document.getElementById('pBrief').value = '';
+    }
+    
     resetRequestGateway(); 
 }
 
@@ -676,7 +686,10 @@ function checkSavedName() {
         if(!found) { document.getElementById('manualName').value = savedName; document.getElementById('manualName').style.display = 'block'; }
         
         document.getElementById('introPage').style.display = 'none'; document.getElementById('app-wrapper').classList.add('app-active'); document.body.classList.remove('no-scroll');
-        showPage('dashboard'); manualSync(); 
+        showPage('dashboard'); 
+        
+        // 🌟 FIX: Sistem akan tarik data dengan betul masa mula-mula masuk
+        fetchSupabaseData(true); 
     } else { 
         showPage('dashboard'); document.getElementById('introPage').style.display = 'flex'; document.body.classList.add('no-scroll'); 
         setTimeout(() => { const overlay = document.getElementById('soft-refresh-overlay'); if (overlay) overlay.classList.remove('show'); }, 500); 
@@ -686,6 +699,69 @@ function checkSavedName() {
 // ========================================================
 // 🌟 6. SUPABASE DATA FETCHING & REAL-TIME
 // ========================================================
+
+// 🌟 FUNGSI: Tarik senarai nama client dari Supabase
+async function fetchClientsList() {
+    try {
+        const { data, error } = await supabaseClient.from('clients').select('name').order('name', { ascending: true });
+        if (error) throw error;
+        
+        const clientList = document.getElementById('customClientList');
+        if (clientList && data) {
+            window.allClients = data.map(c => c.name); // Simpan dalam memori untuk fungsi search
+            renderClientOptions(window.allClients);
+        }
+    } catch (e) {
+        console.error("Gagal load senarai client:", e.message);
+    }
+}
+
+// Render senarai ke dalam kotak dropdown custom
+function renderClientOptions(names) {
+    const list = document.getElementById('customClientList');
+    if(!list) return;
+    
+    // Kalau nama yang ditaip tu tak wujud lagi
+    if(names.length === 0) {
+        list.innerHTML = `<div style="padding:12px 20px; color:var(--text-muted); font-size:0.85rem; font-style:italic;">Type to add this new client...</div>`;
+        return;
+    }
+    
+    // Letak ikon Muji-style kat tepi nama client
+    list.innerHTML = names.map(name => `<div class="dropdown-item" onmousedown="selectClientName('${name.replace(/'/g, "\\'")}')"><i data-lucide="building-2" style="width:16px; height:16px; color:var(--text-muted);"></i> ${name}</div>`).join('');
+    refreshIcons();
+}
+
+// Tunjuk dropdown bila user klik kotak input
+function showClientDropdown() {
+    const list = document.getElementById('customClientList');
+    if(list) list.classList.add('show');
+    if(window.allClients) renderClientOptions(window.allClients);
+}
+
+// Sorok dropdown bila user klik tempat lain
+function hideClientDropdown() {
+    setTimeout(() => {
+        const list = document.getElementById('customClientList');
+        if(list) list.classList.remove('show');
+    }, 150); 
+}
+
+// Tapis nama masa user menaip (Search)
+function filterClientDropdown() {
+    const input = document.getElementById('pClient').value.toLowerCase();
+    if(!window.allClients) return;
+    const filtered = window.allClients.filter(c => c.toLowerCase().includes(input));
+    renderClientOptions(filtered);
+}
+
+// Masukkan nama ke dalam kotak bila user klik pada pilihan
+function selectClientName(name) {
+    document.getElementById('pClient').value = name;
+    hideClientDropdown();
+}
+
+// 🌟 FUNGSI UTAMA: Tarik semua data (YANG TERPADAM TADI)
 async function fetchSupabaseData(force = false, silent = false) {
     const editModal = document.getElementById('editModal');
     if (!force && editModal && editModal.style.display === 'flex') return;
@@ -699,7 +775,7 @@ async function fetchSupabaseData(force = false, silent = false) {
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     if (!force && (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT')) return;
 
-    // 🌟 SILENT SYNC INDICATOR: Pop-up kecil kat bucu skrin
+    // SILENT SYNC INDICATOR
     let syncIndicator = document.getElementById('silent-sync-indicator');
     if (silent) {
         if (!syncIndicator) {
@@ -714,6 +790,9 @@ async function fetchSupabaseData(force = false, silent = false) {
     }
 
     try {
+        // Tarik senarai client setiap kali sync
+        await fetchClientsList();
+
         try {
             const { data: leaveData, error: leaveError } = await supabaseClient.from('team_leaves').select('*');
             if (leaveData) {
@@ -726,7 +805,6 @@ async function fetchSupabaseData(force = false, silent = false) {
        const { data, error } = await supabaseClient.from('creative_requests').select('*').order('created_at', { ascending: false });
         if (error) throw error;
         
-        // 🌟 SMART RENDER: Elak skrin berkelip kalau takde perubahan data baru
         const oldDataString = JSON.stringify(globalData);
         const newDataString = JSON.stringify(data || []);
         
@@ -749,17 +827,6 @@ async function fetchSupabaseData(force = false, silent = false) {
             setTimeout(() => { if(syncIndicator) syncIndicator.remove(); }, 300);
         }
     }
-}
-
-supabaseClient.channel('public:creative_requests').on('postgres_changes', { event: '*', schema: 'public', table: 'creative_requests' }, payload => { fetchSupabaseData(false); }).subscribe();
-supabaseClient.channel('public:team_leaves').on('postgres_changes', { event: '*', schema: 'public', table: 'team_leaves' }, payload => { fetchSupabaseData(false); }).subscribe();
-
-async function manualSync() {
-    const overlay = document.getElementById('soft-refresh-overlay');
-    if(overlay) overlay.classList.add('show'); 
-    setTimeout(() => { if(overlay) overlay.classList.remove('show'); }, 2500);
-    try { await fetchSupabaseData(true); } catch(e) {} 
-    finally { if(overlay) overlay.classList.remove('show'); }
 }
 
 // ========================================================
@@ -1404,11 +1471,34 @@ function openDetailModal(jobID, isUpdate = false) {
 // ========================================================
 async function submitRequest() {
     const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
-    const client = document.getElementById('pClient').value;
+    const client = document.getElementById('pClient').value.trim(); // .trim() supaya takde extra space
     const deadline = document.getElementById('pDeadline').value;
     const region = document.getElementById('pRegion').value || userRegion; 
     
     if(!name || !client || !deadline) return showAppleAlert("Incomplete Fields", "Please fill in Name, Client, and Deadline.");
+
+    // 🌟 LOGIK BARU: Auto-Simpan nama client ke database jika belum wujud
+    try {
+        await supabaseClient.from('clients').upsert([{ name: client, region: region }], { onConflict: 'name', ignoreDuplicates: true });
+        fetchClientsList(); // Refresh datalist secara senyap di background
+    } catch(e) {
+        console.log("Silent error saving new client:", e.message);
+    }
+
+    // Smart Validation untuk Ad-Hoc & Monthly
+    if (currentRequestType !== 'pitch') {
+        const hook = document.getElementById('briefHook') ? document.getElementById('briefHook').value.trim() : '';
+        const audience = document.getElementById('briefAudience') ? document.getElementById('briefAudience').value.trim() : '';
+        const vibe = document.getElementById('briefVibe') ? document.getElementById('briefVibe').value.trim() : '';
+        
+        if (!hook || !audience || !vibe) {
+            return showAppleAlert("Incomplete Brief", "Please fill in The Big Idea, Target Audience, and Tone & Vibe. Designers cannot read minds!");
+        }
+
+        if (!vibe.includes('http') && !vibe.includes('www.')) {
+            return showAppleAlert("Missing Reference", "Please include a valid URL (http/www) in the 'Tone, Vibe & Reference' box. We need a visual reference!");
+        }
+    }
 
     const submitBtn = document.getElementById('submitBtn');
     const originalText = submitBtn.innerHTML; 
@@ -1417,7 +1507,7 @@ async function submitRequest() {
     submitBtn.disabled = true;
 
     try {
-        // 1. LOGIK PENJANAAN ID
+                // 1. LOGIK PENJANAAN ID
         const clientPrefix = client.substring(0, 3).toUpperCase().replace(/\s/g, 'X'); 
         const now = new Date();
         const yy = now.getFullYear().toString().slice(-2); 
@@ -1437,7 +1527,18 @@ async function submitRequest() {
         }
         if (!objective) objective = 'N/A';
 
-        let types = ""; let compiledSizes = ""; let fullBrief = document.getElementById('pBrief').value;
+        let types = ""; let compiledSizes = ""; // 🌟 LOGIK BARU: Cantumkan 4 kotak menjadi satu teks penuh
+        let fullBrief = "";
+        if (currentRequestType !== 'pitch') {
+            const hook = document.getElementById('briefHook') ? document.getElementById('briefHook').value.trim() : '';
+            const audience = document.getElementById('briefAudience') ? document.getElementById('briefAudience').value.trim() : '';
+            const vibe = document.getElementById('briefVibe') ? document.getElementById('briefVibe').value.trim() : '';
+            const mandatory = document.getElementById('briefMandatory') ? document.getElementById('briefMandatory').value.trim() : 'None';
+            
+            fullBrief = `[MAIN MESSAGE / HOOK]:\n${hook}\n\n[TARGET AUDIENCE]:\n${audience}\n\n[TONE, VIBE & REFERENCE]:\n${vibe}\n\n[MANDATORY / NO-GO]:\n${mandatory}`;
+        } else {
+            fullBrief = document.getElementById('pBrief') ? document.getElementById('pBrief').value : '';
+        }
 
         // 🌟 LOGIK BARU: TANGKAP JENIS REQUEST DENGAN BETUL 🌟
         if (currentRequestType === 'monthly') {
@@ -1656,6 +1757,10 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
     
     let updatePayload = { work_status: newStatus };
     const nowISO = new Date().toISOString();
+
+    // 🌟 LOGIK BARU: Rekod masa tepat bila status ditukar / di-drag
+    updatePayload.last_moved_at = nowISO;
+    if (job) job.last_moved_at = nowISO;
 
     if (newStatus === 'Client Review') {
         updatePayload.review_started_at = nowISO;
@@ -2041,6 +2146,14 @@ async function submitLeave(statusParam) {
     
     if(statusParam === 'Active') { 
         finalStatus = ""; finalStart = ""; finalEnd = ""; 
+        // 🌟 BILA BALIK CUTI, KITA KEMBALIKAN SEMUA JOB KEPADA NAMA ASAL
+        const btnReset = document.getElementById('btnResetLeave');
+        btnReset.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Restoring Tasks...';
+        btnReset.disabled = true;
+        await processReturnFromLeave(name);
+        btnReset.innerHTML = '<i data-lucide="check-circle"></i> I\'m Back (Reset)';
+        btnReset.disabled = false;
+        
     } else {
         if(!startDate || !endDate) return showAppleAlert("Missing Dates", "Please select leave start and end dates.");
         const lType = document.getElementById('leaveType').value; 
@@ -2049,24 +2162,32 @@ async function submitLeave(statusParam) {
         if (lType === 'Others' && lOther) { displayLeave = lOther; }
         
         let newStatus = "On Leave (" + displayLeave + ")";
-        existingStatuses.push(newStatus); 
-        existingStarts.push(startDate); 
-        existingEnds.push(endDate);
+        existingStatuses.push(newStatus); existingStarts.push(startDate); existingEnds.push(endDate);
         
         finalStatus = existingStatuses.join(' | '); 
         finalStart = existingStarts.join(' | '); 
         finalEnd = existingEnds.join(' | ');
+
+        // 🌟 BILA NAK CUTI, SEMAK KALAU ADA KERJA BELUM SIAP (HANDOVER TRIGGER)
+        const activeJobs = globalData.filter(d => String(d.status).toLowerCase() === 'approved' && String(d.work_status).toLowerCase() !== 'done' && String(d.assignee).includes(name));
+        
+        if(activeJobs.length > 0) {
+            const payload = { name, passcode, finalStatus, finalStart, finalEnd, startDate, endDate, displayLeave, statusParam };
+            openHandoverModal(activeJobs, payload);
+            return; // BERHENTI! Tunggu form Handover diisi
+        }
     }
     
-    const btnSet = document.getElementById('btnSetLeave'); 
-    const btnReset = document.getElementById('btnResetLeave');
-    const targetBtn = statusParam === 'Active' ? btnReset : btnSet; 
-    const originalText = targetBtn.innerHTML;
+    await processSaveLeave(name, passcode, finalStatus, finalStart, finalEnd, statusParam, startDate, endDate, displayLeave);
+}
+
+// Fungsi asal simpan cuti diasingkan supaya boleh dipanggil lepas handover siap
+async function processSaveLeave(name, passcode, finalStatus, finalStart, finalEnd, statusParam, startDate, endDate, displayLeave) {
+    const btnSet = document.getElementById('btnSetLeave'); const btnReset = document.getElementById('btnResetLeave');
+    const targetBtn = statusParam === 'Active' ? btnReset : btnSet; const originalText = targetBtn.innerHTML;
     
     targetBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Updating...'; 
-    refreshIcons(); 
-    btnSet.disabled = true; 
-    btnReset.disabled = true;
+    refreshIcons(); btnSet.disabled = true; btnReset.disabled = true;
     
     try {
         const { error } = await supabaseClient.from('team_leaves').upsert({ name: name, passcode: passcode, status: finalStatus, start_date: finalStart, end_date: finalEnd, updated_at: new Date().toISOString() }, { onConflict: 'name' });
@@ -2075,12 +2196,7 @@ async function submitLeave(statusParam) {
         let updated = false;
         for (let i = 0; i < globalTeamStatus.length; i++) { 
             if (globalTeamStatus[i].Name === name) { 
-                globalTeamStatus[i].Status = finalStatus; 
-                globalTeamStatus[i].Start_Date = finalStart; 
-                globalTeamStatus[i].End_Date = finalEnd; 
-                globalTeamStatus[i].Passcode = passcode; 
-                updated = true; 
-                break; 
+                globalTeamStatus[i].Status = finalStatus; globalTeamStatus[i].Start_Date = finalStart; globalTeamStatus[i].End_Date = finalEnd; globalTeamStatus[i].Passcode = passcode; updated = true; break; 
             } 
         }
         if (!updated) globalTeamStatus.push({ Name: name, Status: finalStatus, Start_Date: finalStart, End_Date: finalEnd, Passcode: passcode });
@@ -2092,21 +2208,10 @@ async function submitLeave(statusParam) {
         }
         
         showNotification('Status Updated', statusParam === 'Active' ? 'Welcome back!' : 'Enjoy your leave!');
-        document.getElementById('leavePasscode').value = ''; 
-        document.getElementById('leaveOtherInput').value = '';
-        
-        setPresetDate(); 
-        renderLeaveHistory(); 
-        renderDashboard(); 
-        setTimeout(() => showPage('dashboard'), 1500);
-    } catch(e) { 
-        showAppleAlert("Submission Failed", e.message); 
-    } finally { 
-        targetBtn.innerHTML = originalText; 
-        btnSet.disabled = false; 
-        btnReset.disabled = false; 
-        refreshIcons(); 
-    } 
+        document.getElementById('leavePasscode').value = ''; document.getElementById('leaveOtherInput').value = '';
+        setPresetDate(); renderLeaveHistory(); renderDashboard(); setTimeout(() => showPage('dashboard'), 1500);
+    } catch(e) { showAppleAlert("Submission Failed", e.message); 
+    } finally { targetBtn.innerHTML = originalText; btnSet.disabled = false; btnReset.disabled = false; refreshIcons(); } 
 }
 
 // ========================================================
@@ -2330,14 +2435,21 @@ function renderKanbanBoard() {
         activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW));
     }
 
-    // Susun mengikut deadline
+    // 🌟 FIX BARU: Susun ikut masa digerakkan (Terkini atas sekali), kemudian baru ikut deadline
     activeData.sort((a, b) => {
-        let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31');
-        let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31');
+        let movedA = a.last_moved_at ? new Date(a.last_moved_at).getTime() : 0;
+        let movedB = b.last_moved_at ? new Date(b.last_moved_at).getTime() : 0;
+
+        if (movedA !== movedB) {
+            return movedB - movedA; // Yang paling baru digerakkan akan duduk atas
+        }
+        
+        let dateA = a.deadline ? new Date(a.deadline).getTime() : new Date('9999-12-31').getTime();
+        let dateB = b.deadline ? new Date(b.deadline).getTime() : new Date('9999-12-31').getTime();
         return dateA - dateB;
     });
 
-    // 🌟 PETA WARNA: TAMBAH ZON 'INBOX' DI PALING KIRI
+    // 🌟 PETA WARNA KANBAN
     const statusConfig = [
         { name: 'Inbox (Pending)', isPending: true, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
         { name: 'Not started', isPending: false, color: '#64748b', bg: 'rgba(100, 116, 139, 0.1)' },
@@ -2352,7 +2464,6 @@ function renderKanbanBoard() {
     statusConfig.forEach(cfg => {
         const statusName = cfg.name;
         
-        // Asingkan kad ikut status Pending vs Approved
         let colTasks = [];
         if (cfg.isPending) {
             colTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'pending');
@@ -2363,7 +2474,6 @@ function renderKanbanBoard() {
         const isDoneZone = statusName === 'Done';
         const emptyDoneUI = isDoneZone ? `<div style="text-align:center; padding: 40px 10px; color: var(--green); font-weight: 600; font-size: 0.85rem; border: 2px dashed rgba(16, 185, 129, 0.4); border-radius: 12px; margin-top: 10px;"><i data-lucide="check-circle" style="width:28px; height:28px; margin-bottom:10px; opacity:0.8;"></i><br>Drop here to complete!</div>` : '';
 
-        // 🔒 KAWALAN KESELAMATAN: Kad Pending tak boleh di-drag, dan kolum Pending tak boleh di-drop
         const dragDropEvents = cfg.isPending ? '' : `ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, '${statusName}')"`;
 
         html += `
@@ -2376,9 +2486,24 @@ function renderKanbanBoard() {
                 const cardDragAttr = cfg.isPending ? 'draggable="false"' : 'draggable="true" ondragstart="drag(event)"';
                 const cursorStyle = cfg.isPending ? 'cursor: pointer;' : 'cursor: grab;';
                 
+                // 🌟 LOGIK LENCANA & CAHAYA (JUST MOVED)
+                let isJustMoved = false;
+                if (t.last_moved_at) {
+                    const diffHours = (new Date() - new Date(t.last_moved_at)) / (1000 * 60 * 60);
+                    // Kad akan menyala selama 2 jam selepas kau drop
+                    if (diffHours <= 2) isJustMoved = true; 
+                }
+
+                // Warna lencana akan ikut warna kolum supaya nampak sangat seragam dan premium
+                const glow = isJustMoved ? `border-left-color: ${cfg.color}; background: linear-gradient(90deg, ${cfg.bg} 0%, transparent 80%); box-shadow: 0 4px 15px ${cfg.bg.replace('0.1', '0.2')};` : `border-left-color: ${cfg.color};`;
+                const badge = isJustMoved ? `<span style="background: ${cfg.color}; color: #ffffff; border: none; font-size: 0.55rem; font-weight: 800; padding: 2px 6px; border-radius: 10px; letter-spacing: 0.5px; box-shadow: 0 2px 6px ${cfg.bg.replace('0.1', '0.3')}; white-space: nowrap; margin-left:6px;">✨ JUST MOVED</span>` : '';
+
                 return `
-                <div class="kanban-drag-card" id="${t.job_id}" ${cardDragAttr} onclick="openDetailModal('${t.job_id}')" title="Click to view full details" style="border-left-color: ${cfg.color}; ${cursorStyle}">
-                    <span class="kd-id">[${t.job_id}] ${getFlag(t.region)}</span>
+                <div class="kanban-drag-card" id="${t.job_id}" ${cardDragAttr} onclick="openDetailModal('${t.job_id}')" title="Click to view full details" style="${glow} ${cursorStyle}">
+                    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                        <span class="kd-id" style="margin:0; white-space:nowrap;">[${t.job_id}] ${getFlag(t.region)}</span>
+                        ${badge}
+                    </div>
                     <div class="kd-title">${t.client_name}: ${t.project_title}</div>
                     <div class="kd-footer">
                         <span><i data-lucide="user" style="width:12px; margin-right:4px;"></i>${t.assignee !== 'null' ? t.assignee : 'Unassigned'}</span>
@@ -2496,5 +2621,161 @@ function toggleDoneView() {
     
     // Refresh paparan dengan gaya baru
     renderBoards();
+}
+
+// ========================================================
+// 🌟 16. SMART HANDOVER SYSTEM
+// ========================================================
+let pendingLeavePayload = null; 
+
+function closeHandoverModal() {
+    const modal = document.getElementById('handoverModal');
+    if(modal) modal.classList.remove('show');
+    setTimeout(() => { 
+        if(modal) modal.style.display = 'none'; 
+        document.body.classList.remove('no-scroll'); 
+        pendingLeavePayload = null; 
+    }, 300);
+}
+
+function openHandoverModal(activeJobs, leavePayload) {
+    pendingLeavePayload = leavePayload; 
+    
+    const modal = document.getElementById('handoverModal');
+    const container = document.getElementById('handoverJobsContainer');
+    
+    let html = '';
+    activeJobs.forEach(job => {
+        const staffName = leavePayload.name;
+        // Gabungkan semua designer dan buang nama orang yang nak cuti tu dari senarai
+        const allDesigners = [...new Set([...дизайнериMY, ...дизайнериID])];
+        const availableDesigners = allDesigners.filter(d => d !== staffName);
+        
+        html += `
+        <div class="handover-job-item" data-jobid="${job.job_id}" style="background: var(--bg-card); padding: 15px; border-radius: 12px; border: 1px solid var(--border-main); margin-bottom: 10px;">
+            <div style="font-weight: 700; color: var(--text-strong); margin-bottom: 5px; font-size: 0.95rem;">[${job.job_id}] ${job.client_name}: ${job.project_title}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px;"><span style="background: var(--bg-box); padding: 3px 8px; border-radius: 6px;">${job.work_status}</span></div>
+            
+            <div class="input-group" style="margin-bottom: 12px;">
+                <label>Takeover PIC <span style="color: var(--red);">*</span></label>
+                <select class="ho-pic">
+                    <option value="">-- Select Designer to Cover --</option>
+                    ${availableDesigners.map(d => `<option value="${d}">${d}</option>`).join('')}
+                </select>
+            </div>
+            
+            <div class="input-group" style="margin-bottom: 12px;">
+                <label>Working File Link <span style="color: var(--red);">*</span></label>
+                <input type="text" class="ho-file" placeholder="Paste Drive / Figma / Canva link here">
+            </div>
+            
+            <div class="input-group">
+                <label>Brief Notes / Instructions (Optional)</label>
+                <input type="text" class="ho-notes" placeholder="e.g. Waiting for client to approve colors...">
+            </div>
+        </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    
+    modal.style.display = 'flex';
+    modal.offsetHeight; 
+    modal.classList.add('show');
+    document.body.classList.add('no-scroll');
+    refreshIcons();
+}
+
+async function executeHandover() {
+    const btn = document.getElementById('btnConfirmHandover');
+    const originalHtml = btn.innerHTML;
+    
+    // 1. Kumpul Data dari Form
+    const jobItems = document.querySelectorAll('.handover-job-item');
+    let handoverDataList = [];
+    let isValid = true;
+    
+    jobItems.forEach(item => {
+        const jobId = item.getAttribute('data-jobid');
+        const pic = item.querySelector('.ho-pic').value;
+        const file = item.querySelector('.ho-file').value.trim();
+        const notes = item.querySelector('.ho-notes').value.trim();
+        
+        if(!pic || !file) isValid = false;
+        
+        handoverDataList.push({
+            job_id: jobId,
+            requester_name: pendingLeavePayload.name,
+            takeover_pic: pic,
+            working_file: file,
+            handover_notes: notes
+        });
+    });
+    
+    if(!isValid) return showAppleAlert("Incomplete Handover", "Please assign a Takeover PIC and provide the Working File link for ALL active jobs before taking leave.");
+    
+    btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Processing...';
+    btn.disabled = true;
+    refreshIcons();
+    
+    try {
+        // 2. Simpan rekod dalam handover_logs
+        const { error: hoError } = await supabaseClient.from('handover_logs').insert(handoverDataList);
+        if (hoError) throw hoError;
+        
+        // 3. Update Assignee dalam tiket Kanban supaya nampak "Cover"
+        for (const ho of handoverDataList) {
+            const newAssignee = `[Cover] ${ho.takeover_pic} (for ${ho.requester_name})`;
+            const job = globalData.find(d => d.job_id === ho.job_id);
+            if(job) job.assignee = newAssignee; // Optimistic update
+            await supabaseClient.from('creative_requests').update({ assignee: newAssignee }).eq('job_id', ho.job_id);
+        }
+        
+        // 4. Teruskan simpan cuti ke pangkalan data
+        const l = pendingLeavePayload;
+        await processSaveLeave(l.name, l.passcode, l.finalStatus, l.finalStart, l.finalEnd, l.statusParam, l.startDate, l.endDate, l.displayLeave);
+        
+        // 5. Hantar Notifikasi Telegram Khas (Handover)
+        const flag = getFlag(userRegion);
+        let tgMsg = `✈️ *LEAVE & HANDOVER ALERT* ${flag}\n\n*Staff:* ${l.name}\n*Type:* ${l.displayLeave}\n*From:* ${formatDate(l.startDate)}\n*To:* ${formatDate(l.endDate)}\n\n📌 *Handover Tasks:*\n`;
+        
+        handoverDataList.forEach((ho, index) => {
+            tgMsg += `${index + 1}. [${ho.job_id}] Handed to ${ho.takeover_pic}\n    └ 🔗 File: ${ho.working_file}\n`;
+        });
+        tgMsg += `\n🔗 [Open Adtechinno App](https://adtechinno-creativeengine.vercel.app/)`;
+        
+        fetch(TELEGRAM_API, { method: 'POST', body: JSON.stringify({ action: 'send_telegram', text: tgMsg }) });
+        
+        closeHandoverModal();
+        
+    } catch (e) {
+        showAppleAlert("Handover Error", e.message);
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+        refreshIcons();
+    }
+}
+
+// 🌟 FUNGSI RESET: PULANGKAN NAMA BILA BALIK CUTI
+async function processReturnFromLeave(staffName) {
+    try {
+        const { data, error } = await supabaseClient.from('handover_logs').select('*').eq('requester_name', staffName);
+        if (error || !data) return;
+        
+        for (const log of data) {
+            const job = globalData.find(d => d.job_id === log.job_id);
+            // Pulangkan tiket KALAU ia belum siap di tangan orang yang cover
+            if (job && String(job.work_status).toLowerCase() !== 'done') {
+                if (String(job.assignee).includes(`[Cover] ${log.takeover_pic} (for ${staffName})`)) {
+                    job.assignee = staffName; 
+                    await supabaseClient.from('creative_requests').update({ assignee: staffName }).eq('job_id', log.job_id);
+                }
+            }
+        }
+        
+        // Buang rekod handover
+        await supabaseClient.from('handover_logs').delete().eq('requester_name', staffName);
+        
+    } catch (e) { console.log("Error returning from leave:", e.message); }
 }
 

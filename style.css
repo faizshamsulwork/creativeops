@@ -109,7 +109,13 @@
 ::view-transition-old(root) { z-index: 1; }
 ::view-transition-new(root) { z-index: 2; }
 
-[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) brightness(0.8); cursor: pointer; }
+/* Tukar warna ikon kalendar untuk semua jenis input masa di Dark Mode */
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator { 
+    filter: invert(1) brightness(0.9); 
+    cursor: pointer; 
+}
 input[type="date"], input[type="number"] { -webkit-appearance: none; appearance: none; width: 100%; max-width: 100%; display: block; box-sizing: border-box; }
 
 /* 🌟 SCROLL FIX & BODY LOCK 🌟 */
@@ -1247,3 +1253,53 @@ html::before { top: 20%; left: 30%; width: 40vw; height: 40vh; background: var(-
     border-color: rgba(52, 211, 153, 0.4);
     box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
 }
+
+/* 🌟 PREMIUM CUSTOM DROPDOWN (CLIENT LIST) 🌟 */
+.premium-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    max-height: 250px;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-radius: 12px;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+    z-index: 9999;
+    visibility: hidden;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0.2s;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 8px 0;
+}
+
+.premium-dropdown.show {
+    visibility: visible;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.dropdown-item {
+    padding: 12px 20px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-strong);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.dropdown-item:hover {
+    background: var(--bg-box);
+    color: var(--link-color);
+    padding-left: 25px;
+}
+
+.premium-dropdown::-webkit-scrollbar { width: 6px; }
+.premium-dropdown::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 6px; }
+[data-theme="dark"] .premium-dropdown { box-shadow: 0 15px 40px rgba(0,0,0,0.4); }
