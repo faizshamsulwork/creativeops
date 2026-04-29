@@ -857,6 +857,43 @@ async function fetchSupabaseData(force = false, silent = false) {
             setTimeout(() => { if(syncIndicator) syncIndicator.remove(); }, 300);
         }
     }
+// 🌟 FUNGSI BARU: SUPABASE REAL-TIME LISTENER (MAGIC SYNC)
+let isRealtimeSubscribed = false;
+
+function setupRealtimeSubscription() {
+    if (isRealtimeSubscribed) return;
+    
+    // Kita arahkan sistem untuk "mendengar" sebarang perubahan pada pangkalan data
+    supabaseClient
+        .channel('adtech-live-sync')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'creative_requests' },
+            (payload) => {
+                console.log('Magik Real-Time: Perubahan dikesan pada tiket!', payload);
+                // Tarik data baru secara senyap (silent = true) supaya skrin tak kelip
+                fetchSupabaseData(true, true);
+            }
+        )
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'team_leaves' },
+            (payload) => {
+                console.log('Magik Real-Time: Perubahan cuti dikesan!', payload);
+                fetchSupabaseData(true, true);
+            }
+        )
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('🚀 Berjaya sambung ke Supabase Real-Time!');
+                isRealtimeSubscribed = true;
+            }
+        });
+}
+
+// Aktifkan Real-Time ini secara automatik 2 saat selepas website dibuka
+setTimeout(setupRealtimeSubscription, 2000);
+
 }
 
 // ========================================================
