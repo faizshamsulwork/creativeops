@@ -14,6 +14,7 @@ const дизайнериID = ["Miftahul Fikri", "Youke Yap", "Annisya Y."];
 
 let globalData = []; 
 let globalTeamStatus = []; 
+let globalHandovers = [];
 let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
 let currentRegionFilter = 'all';
@@ -426,6 +427,11 @@ function showPage(id) {
     if(globalData && globalData.length > 0) { 
         if(id === 'dashboard') renderDashboard(); 
         if(id === 'workload' || id === 'done') renderBoards(); 
+        // 🌟 KOD BARU: Paksa sistem susun Handover List bila tab Leave ditekan
+        if(id === 'leave') {
+            if(typeof renderLeaveHistory === 'function') renderLeaveHistory();
+            if(typeof renderHandoverList === 'function') renderHandoverList();
+        }
     }
 }
 
@@ -751,25 +757,21 @@ function renderClientOptions(names) {
     const list = document.getElementById('customClientList');
     if(!list) return;
     
-    // Kalau nama yang ditaip tu tak wujud lagi
     if(names.length === 0) {
         list.innerHTML = `<div style="padding:12px 20px; color:var(--text-muted); font-size:0.85rem; font-style:italic;">Type to add this new client...</div>`;
         return;
     }
     
-    // Letak ikon Muji-style kat tepi nama client
     list.innerHTML = names.map(name => `<div class="dropdown-item" onmousedown="selectClientName('${name.replace(/'/g, "\\'")}')"><i data-lucide="building-2" style="width:16px; height:16px; color:var(--text-muted);"></i> ${name}</div>`).join('');
     refreshIcons();
 }
 
-// Tunjuk dropdown bila user klik kotak input
 function showClientDropdown() {
     const list = document.getElementById('customClientList');
     if(list) list.classList.add('show');
     if(window.allClients) renderClientOptions(window.allClients);
 }
 
-// Sorok dropdown bila user klik tempat lain
 function hideClientDropdown() {
     setTimeout(() => {
         const list = document.getElementById('customClientList');
@@ -777,7 +779,6 @@ function hideClientDropdown() {
     }, 150); 
 }
 
-// Tapis nama masa user menaip (Search)
 function filterClientDropdown() {
     const input = document.getElementById('pClient').value.toLowerCase();
     if(!window.allClients) return;
@@ -785,13 +786,12 @@ function filterClientDropdown() {
     renderClientOptions(filtered);
 }
 
-// Masukkan nama ke dalam kotak bila user klik pada pilihan
 function selectClientName(name) {
     document.getElementById('pClient').value = name;
     hideClientDropdown();
 }
 
-// 🌟 FUNGSI UTAMA: Tarik semua data (YANG TERPADAM TADI)
+// 🌟 FUNGSI UTAMA: Tarik semua data
 async function fetchSupabaseData(force = false, silent = false) {
     const editModal = document.getElementById('editModal');
     if (!force && editModal && editModal.style.display === 'flex') return;
@@ -820,17 +820,21 @@ async function fetchSupabaseData(force = false, silent = false) {
     }
 
     try {
-        // Tarik senarai client setiap kali sync
         await fetchClientsList();
 
         try {
-            const { data: leaveData, error: leaveError } = await supabaseClient.from('team_leaves').select('*');
+            const { data: leaveData } = await supabaseClient.from('team_leaves').select('*');
             if (leaveData) {
                 globalTeamStatus = leaveData.map(row => ({
                     Name: row.name, Status: row.status || "", Start_Date: row.start_date || "", End_Date: row.end_date || "", Passcode: row.passcode || ""
                 }));
             }
-        } catch (e) { console.log("Gagal tarik data cuti Supabase:", e.message); }
+            
+            // 🌟 LOGIK BARU: Tarik data Handover
+            const { data: hoData } = await supabaseClient.from('handover_logs').select('*');
+            if (hoData) globalHandovers = hoData;
+            
+        } catch (e) { console.log("Gagal tarik data sampingan Supabase:", e.message); }
 
        const { data, error } = await supabaseClient.from('creative_requests').select('*').order('created_at', { ascending: false });
         if (error) throw error;
@@ -840,10 +844,14 @@ async function fetchSupabaseData(force = false, silent = false) {
         
         globalData = data || [];
         
-        if (oldDataString !== newDataString) {
+        if (oldDataString !== newDataString || force) {
             if(document.getElementById('dashboard').classList.contains('active')) renderDashboard();
             if(document.getElementById('workload').classList.contains('active') || document.getElementById('done').classList.contains('active')) renderBoards();
-            if(document.getElementById('leave').classList.contains('active') && typeof renderLeaveHistory === 'function') renderLeaveHistory();
+            if(document.getElementById('leave').classList.contains('active')) {
+                if(typeof renderLeaveHistory === 'function') renderLeaveHistory();
+                // PAKSA RENDER HANDOVER BILA TAB INI AKTIF
+                if(typeof renderHandoverList === 'function') renderHandoverList();
+            }
         }
 
     } catch (e) { 
@@ -857,32 +865,28 @@ async function fetchSupabaseData(force = false, silent = false) {
             setTimeout(() => { if(syncIndicator) syncIndicator.remove(); }, 300);
         }
     }
+}
+
 // 🌟 FUNGSI BARU: SUPABASE REAL-TIME LISTENER (MAGIC SYNC)
 let isRealtimeSubscribed = false;
 
 function setupRealtimeSubscription() {
     if (isRealtimeSubscribed) return;
     
-    // Kita arahkan sistem untuk "mendengar" sebarang perubahan pada pangkalan data
     supabaseClient
         .channel('adtech-live-sync')
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'creative_requests' },
-            (payload) => {
-                console.log('Magik Real-Time: Perubahan dikesan pada tiket!', payload);
-                // Tarik data baru secara senyap (silent = true) supaya skrin tak kelip
-                fetchSupabaseData(true, true);
-            }
-        )
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'team_leaves' },
-            (payload) => {
-                console.log('Magik Real-Time: Perubahan cuti dikesan!', payload);
-                fetchSupabaseData(true, true);
-            }
-        )
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'creative_requests' }, (payload) => {
+            console.log('Magik Real-Time: Perubahan dikesan pada tiket!', payload);
+            fetchSupabaseData(true, true);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_leaves' }, (payload) => {
+            console.log('Magik Real-Time: Perubahan cuti dikesan!', payload);
+            fetchSupabaseData(true, true);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'handover_logs' }, (payload) => {
+            console.log('Magik Real-Time: Perubahan handover dikesan!', payload);
+            fetchSupabaseData(true, true);
+        })
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('🚀 Berjaya sambung ke Supabase Real-Time!');
@@ -893,8 +897,6 @@ function setupRealtimeSubscription() {
 
 // Aktifkan Real-Time ini secara automatik 2 saat selepas website dibuka
 setTimeout(setupRealtimeSubscription, 2000);
-
-}
 
 // ========================================================
 // 🌟 7. RENDER FUNCTIONS (DASHBOARD & BOARDS)
@@ -2857,3 +2859,91 @@ async function processReturnFromLeave(staffName) {
     } catch (e) { console.log("Error returning from leave:", e.message); }
 }
 
+// ========================================================
+// 🌟 17. ACTIVE HANDOVER LIST UI (GROUPED BY NAME)
+// ========================================================
+function renderHandoverList() {
+    const container = document.getElementById('activeHandoverContainer');
+    const list = document.getElementById('activeHandoverList');
+    
+    if (!container || !list) return;
+
+    if (!globalHandovers || globalHandovers.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+    // Tukar parent grid kepada block supaya kita boleh buat tajuk Grouping
+    list.style.display = 'block'; 
+    
+    let html = '';
+
+    // 🌟 LOGIK BARU: Kumpulkan data ikut nama (Group by Requester Name)
+    const groupedHandovers = {};
+    globalHandovers.forEach(ho => {
+        if (!groupedHandovers[ho.requester_name]) {
+            groupedHandovers[ho.requester_name] = [];
+        }
+        groupedHandovers[ho.requester_name].push(ho);
+    });
+
+    // 🌟 LOGIK BARU: Render setiap group dengan tajuk
+    for (const [personName, handovers] of Object.entries(groupedHandovers)) {
+        
+        // Tajuk Group (Contoh: ✈️ Alya's Handover Tasks)
+        html += `
+            <div style="margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid var(--border-light); padding-bottom: 8px;">
+                <h4 style="margin: 0; color: var(--text-strong); font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="user-check" style="width: 16px; color: var(--text-muted);"></i> 
+                    Handed over by <span style="color: var(--link-color);">${personName}</span>
+                </h4>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+        `;
+
+        handovers.forEach(ho => {
+            const job = globalData.find(d => d.job_id === ho.job_id);
+            const title = job ? `${job.client_name}: ${job.project_title}` : 'Unknown Project';
+            const rawStatus = job ? job.work_status : 'Unknown';
+            
+            let statusColor = 'var(--text-muted)';
+            let statusBg = 'var(--bg-box)';
+            if (rawStatus.toLowerCase() === 'done') { statusColor = 'var(--green)'; statusBg = 'rgba(16, 185, 129, 0.1)'; }
+            else if (rawStatus.toLowerCase() === 'client review') { statusColor = '#8b5cf6'; statusBg = 'rgba(139, 92, 246, 0.1)'; }
+            else if (rawStatus.toLowerCase() === 'drafting') { statusColor = '#f59e0b'; statusBg = 'rgba(245, 158, 11, 0.1)'; }
+            else if (rawStatus.toLowerCase() === 'revision') { statusColor = '#ea580c'; statusBg = 'rgba(234, 88, 12, 0.1)'; }
+            else if (rawStatus.toLowerCase() === 'internal review') { statusColor = '#0ea5e9'; statusBg = 'rgba(14, 165, 233, 0.1)'; }
+
+            html += `
+            <div class="handover-card" style="background: var(--bg-card); border: 1px solid var(--border-light); border-left: 4px solid var(--orange); padding: 18px; border-radius: 12px; box-shadow: var(--shadow); transition: transform 0.2s; display: flex; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 8px;">
+                    <span style="font-size: 0.75rem; font-family: monospace; background: var(--bg-box); padding: 4px 8px; border-radius: 6px; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px;">[${ho.job_id}]</span>
+                    <span style="font-size: 0.7rem; font-weight: 800; text-transform: uppercase; background: ${statusBg}; color: ${statusColor}; padding: 4px 10px; border-radius: 8px; letter-spacing: 0.5px;">${rawStatus}</span>
+                </div>
+                
+                <div style="font-weight: 800; color: var(--text-strong); font-size: 1rem; margin-bottom: 15px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${title}</div>
+                
+                <div style="font-size: 0.8rem; margin-bottom: 15px; background: var(--bg-box); padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem;">Covered By</span> 
+                    <strong style="color: var(--link-color); font-size: 0.9rem;">${ho.takeover_pic}</strong>
+                </div>
+                
+                <div style="flex-grow: 1; font-size: 0.85rem; margin-bottom: 15px; background: rgba(245, 158, 11, 0.05); padding: 10px; border-radius: 8px; border: 1px dashed rgba(245, 158, 11, 0.2); max-height: 80px; overflow-y: auto;">
+                    <span style="color: var(--orange); font-weight: 700; font-size: 0.75rem; text-transform: uppercase; display: block; margin-bottom: 4px;">Notes:</span> 
+                    <span style="color: var(--text-main); font-weight: 500;">${ho.handover_notes || 'No extra notes provided.'}</span>
+                </div>
+                
+                <a href="${ho.working_file}" target="_blank" style="margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: white; text-decoration: none; background: var(--link-color); padding: 12px; border-radius: 8px; transition: 0.2s; box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);">
+                    <i data-lucide="external-link" style="width: 16px; height: 16px;"></i> Open Working File
+                </a>
+            </div>
+            `;
+        });
+        
+        html += `</div>`; // Tutup grid untuk orang ni
+    }
+
+    list.innerHTML = html;
+    refreshIcons();
+}
