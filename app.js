@@ -364,12 +364,13 @@ function resetFormUI() {
     const sizeContainer = document.getElementById('dynamicSizeContainer');
     sizeContainer.innerHTML = `<div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;"><input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"></div>`;
     
-    // 🌟 LOGIK BARU: Kosongkan 4 Kotak Brief Berstruktur
+    // 🌟 LOGIK BARU: Kosongkan 4 Kotak Brief Berstruktur + Copywriting Style
     if (document.getElementById('briefHook')) {
         document.getElementById('briefHook').value = '';
         document.getElementById('briefAudience').value = '';
         document.getElementById('briefVibe').value = '';
         document.getElementById('briefMandatory').value = '';
+        if (document.getElementById('copyStyleInput')) document.getElementById('copyStyleInput').value = '';
     } else if (document.getElementById('pBrief')) {
         document.getElementById('pBrief').value = '';
     }
@@ -1540,28 +1541,29 @@ function openDetailModal(jobID, isUpdate = false) {
 // ========================================================
 async function submitRequest() {
     const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
-    const client = document.getElementById('pClient').value.trim(); // .trim() supaya takde extra space
+    const client = document.getElementById('pClient').value.trim();
     const deadline = document.getElementById('pDeadline').value;
     const region = document.getElementById('pRegion').value || userRegion; 
     
     if(!name || !client || !deadline) return showAppleAlert("Incomplete Fields", "Please fill in Name, Client, and Deadline.");
 
-    // 🌟 LOGIK BARU: Auto-Simpan nama client ke database jika belum wujud
+    // Auto-Simpan nama client ke database jika belum wujud
     try {
         await supabaseClient.from('clients').upsert([{ name: client, region: region }], { onConflict: 'name', ignoreDuplicates: true });
-        fetchClientsList(); // Refresh datalist secara senyap di background
+        fetchClientsList(); 
     } catch(e) {
         console.log("Silent error saving new client:", e.message);
     }
 
-    // Smart Validation untuk Ad-Hoc & Monthly
+    // 🌟 LOGIK BARU: Smart Validation untuk Ad-Hoc & Monthly (Masuk Copywriting Style)
     if (currentRequestType !== 'pitch') {
         const hook = document.getElementById('briefHook') ? document.getElementById('briefHook').value.trim() : '';
         const audience = document.getElementById('briefAudience') ? document.getElementById('briefAudience').value.trim() : '';
         const vibe = document.getElementById('briefVibe') ? document.getElementById('briefVibe').value.trim() : '';
+        const copyStyle = document.getElementById('copyStyleInput') ? document.getElementById('copyStyleInput').value : '';
         
-        if (!hook || !audience || !vibe) {
-            return showAppleAlert("Incomplete Brief", "Please fill in The Big Idea, Target Audience, and Tone & Vibe. Designers cannot read minds!");
+        if (!copyStyle || !hook || !audience || !vibe) {
+            return showAppleAlert("Incomplete Brief", "Please select a Copywriting Tone, and fill in The Big Idea, Target Audience, and Tone & Vibe. Designers cannot read minds!");
         }
 
         if (!vibe.includes('http') && !vibe.includes('www.')) {
@@ -1576,7 +1578,7 @@ async function submitRequest() {
     submitBtn.disabled = true;
 
     try {
-                // 1. LOGIK PENJANAAN ID
+        // 1. LOGIK PENJANAAN ID
         const clientPrefix = client.substring(0, 3).toUpperCase().replace(/\s/g, 'X'); 
         const now = new Date();
         const yy = now.getFullYear().toString().slice(-2); 
@@ -1596,20 +1598,23 @@ async function submitRequest() {
         }
         if (!objective) objective = 'N/A';
 
-        let types = ""; let compiledSizes = ""; // 🌟 LOGIK BARU: Cantumkan 4 kotak menjadi satu teks penuh
+        let types = ""; let compiledSizes = ""; 
         let fullBrief = "";
+        
+        // 🌟 LOGIK BARU: Format Brief beserta Copywriting Tone
         if (currentRequestType !== 'pitch') {
             const hook = document.getElementById('briefHook') ? document.getElementById('briefHook').value.trim() : '';
             const audience = document.getElementById('briefAudience') ? document.getElementById('briefAudience').value.trim() : '';
             const vibe = document.getElementById('briefVibe') ? document.getElementById('briefVibe').value.trim() : '';
             const mandatory = document.getElementById('briefMandatory') ? document.getElementById('briefMandatory').value.trim() : 'None';
+            const copyStyle = document.getElementById('copyStyleInput') ? document.getElementById('copyStyleInput').value : 'Not specified';
             
-            fullBrief = `[MAIN MESSAGE / HOOK]:\n${hook}\n\n[TARGET AUDIENCE]:\n${audience}\n\n[TONE, VIBE & REFERENCE]:\n${vibe}\n\n[MANDATORY / NO-GO]:\n${mandatory}`;
+            fullBrief = `[COPYWRITING TONE / STYLE]:\n${copyStyle}\n\n[MAIN MESSAGE / HOOK]:\n${hook}\n\n[TARGET AUDIENCE]:\n${audience}\n\n[TONE, VIBE & REFERENCE]:\n${vibe}\n\n[MANDATORY / NO-GO]:\n${mandatory}`;
         } else {
             fullBrief = document.getElementById('pBrief') ? document.getElementById('pBrief').value : '';
         }
 
-        // 🌟 LOGIK BARU: TANGKAP JENIS REQUEST DENGAN BETUL 🌟
+        // TANGKAP JENIS REQUEST DENGAN BETUL
         if (currentRequestType === 'monthly') {
             types = "Monthly Content Plan"; 
             const sCount = document.getElementById('mStatic').value || 0; 
@@ -1730,6 +1735,7 @@ async function submitRequest() {
         submitBtn.disabled = false; 
     } 
 }
+
 async function approveJob(jobID, client, title) {
     const selectedPIC = Array.from(document.querySelectorAll(`.cb-${jobID}:checked`)).map(cb => cb.value).join(', ');
     if(!selectedPIC) return showAppleAlert("Missing Assignee", "Please select at least one creative PIC.");
@@ -1824,10 +1830,51 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
     const job = globalData.find(d => d.job_id === jobID); 
     const oldStatus = job ? job.work_status : 'Not started'; 
     
+    // Kalau user pilih status yang sama, abaikan je
+    if (oldStatus === newStatus) return;
+
     let updatePayload = { work_status: newStatus };
     const nowISO = new Date().toISOString();
 
-    // 🌟 LOGIK BARU: Rekod masa tepat bila status ditukar / di-drag
+    // 🌟 LOGIK BARU: Tanya sebab kalau status ditarik/ditukar ke Revision
+    if (newStatus === 'Revision') {
+        const reasonCode = await showApplePrompt(
+            "Revision Category", 
+            "Type 1, 2, or 3:\n1 = Client Change of Mind\n2 = Internal Error (Team)\n3 = Minor Tweak",
+            false // bukan password
+        );
+        
+        // Kalau user tekan Cancel, batalkan pergerakan tiket dan kembalikan UI
+        if (!reasonCode) {
+            renderBoards();
+            if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+            if (!skipModal) openDetailModal(jobID, true);
+            return; 
+        }
+
+        let reasonText = "";
+        if (reasonCode === '1') reasonText = "Client Change of Mind";
+        else if (reasonCode === '2') reasonText = "Internal Error";
+        else if (reasonCode === '3') reasonText = "Minor Tweak";
+        else reasonText = "Others (" + reasonCode + ")";
+
+        // Tambah count revision automatik
+        let newRev = parseInt(job ? job.revision || 0 : 0) + 1; 
+        const oldReasons = job ? job.revision_reasons || "" : "";
+        const todayStr = nowISO.split('T')[0];
+        const newEntry = `[${todayStr}] ${reasonText}`;
+        let updatedReasons = oldReasons ? oldReasons + " | " + newEntry : newEntry;
+
+        updatePayload.revision = newRev;
+        updatePayload.revision_reasons = updatedReasons;
+
+        if (job) {
+            job.revision = newRev;
+            job.revision_reasons = updatedReasons;
+        }
+    }
+
+    // Rekod masa tepat bila status ditukar / di-drag
     updatePayload.last_moved_at = nowISO;
     if (job) job.last_moved_at = nowISO;
 
@@ -1842,6 +1889,7 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
     if (job) { 
         job.work_status = newStatus; 
         renderBoards(); 
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard(); 
         renderDashboard(); 
         // Hanya buka modal jika bukan dipanggil dari Drag & Drop
         if (!skipModal) openDetailModal(jobID, true); 
@@ -1853,7 +1901,13 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
         if(error) throw error; 
     } catch(e) { 
         showAppleAlert("Status Update Error", e.message); 
-        if(job) { job.work_status = oldStatus; renderBoards(); renderDashboard(); if(!skipModal) openDetailModal(jobID, true); } 
+        if(job) { 
+            job.work_status = oldStatus; 
+            renderBoards(); 
+            if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+            renderDashboard(); 
+            if(!skipModal) openDetailModal(jobID, true); 
+        } 
     }
 }
 
