@@ -8,9 +8,9 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_
 const GAS_API = 'https://script.google.com/macros/s/AKfycbwKNzX9BsgsTz2Cu-L_egPvrwKe-hrcsVMSEAxVy7sDgdCYd8TYyzWAnxJwjf1wOlXx/exec'; 
 const TELEGRAM_API = 'https://script.google.com/macros/s/AKfycbyC-UgaT5QWgaWqfAQN2K-tRE2BhFYumAWzDxM6GBApTddvI9SmQHcAyMoh1sN2UML1/exec'; 
 
-const PIC_LIST = ["Abel", "Aaron", "Simon", "Alya", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y."]; 
-const дизайнериMY = ["Abel", "Aaron", "Simon", "Alya", "Steven", "Faiz Shamsul"];
-const дизайнериID = ["Miftahul Fikri", "Youke Yap", "Annisya Y."];
+let PIC_LIST = []; 
+let дизайнериMY = [];
+let дизайнериID = [];
 
 let globalData = []; 
 let globalTeamStatus = []; 
@@ -640,9 +640,12 @@ function chooseCountry(country) {
         document.getElementById('welcomeTitle').innerText = `Global Team`; nameSelect.style.display = 'none'; globalRegionSelect.style.display = 'block'; manualName.style.display = 'block'; manualName.placeholder = "Type your full name...";
     } else {
         document.getElementById('welcomeTitle').innerText = `Adtechinno ${country}`; globalRegionSelect.style.display = 'none'; nameSelect.style.display = 'block'; manualName.style.display = 'none';
+        
         let names = [];
-        if (country === 'Malaysia') names = ["Aaron", "Abel", "Ain Sabrina", "Alya", "Ammelia", "Angie Ng", "Bernice Mah", "Boon Jie Xin", "Chong Jia Jun", "Darren (Boo Hwa Chian)", "Dillon Frederick Kugan", "Faiz Shamsul", "Hao Yun", "Joanne Yap", "Joseph Chong", "Kevin Tan", "Lina Leong", "Nurul Iman Natasha", "Simon", "Steven", "Syaheerah Atiqah", "Wilson Ng Guan De", "Xuan Lee", "Zulkarnain Mustapa"];
-        else if (country === 'Indonesia') names = ["Angelina", "Annisya Y.", "Arbaasya D.F.", "Areta G.P.", "Ashley Karamoy", "Avira P.P.", "Ayu Aprillia", "Fadhil Zuhayr", "Fajar Abhirama", "Jap Hetty", "Joanne Chan", "Lutfan Allen R.", "Marlina S.", "Miftahul Fikri", "Moh. Reza P.", "Naufal Hilmy", "Tiffani Y.", "Verincia T.", "Youke Yap"];
+        // 🌟 FIX BARU: Guna senarai hidup dari Supabase, bukan hardcode lama
+        if (country === 'Malaysia') names = дизайнериMY;
+        else if (country === 'Indonesia') names = дизайнериID;
+        
         nameSelect.innerHTML = `<option value="">Select your name...</option>` + names.map(n => `<option value="${n}">${n}</option>`).join('') + `<option value="manual">I'm not in the list</option>`;
     }
     countryStep.style.display = 'none'; nameStep.style.display = 'block';
@@ -687,6 +690,18 @@ async function startApp() {
         
         userRegion = finalRegion; localStorage.setItem('adtech_user_name', userName); localStorage.setItem('adtech_region', finalRegion);
         setGreetingAndDate(userName); 
+
+        // 🌟 LOGIK BARU: SPECIAL WELCOME MESSAGE UNTUK SEMUA STAF (First Time Login)
+        const cleanUserKey = userName.replace(/\s+/g, '').toLowerCase();
+        if (!localStorage.getItem(`adtech_welcomed_${cleanUserKey}`)) {
+            setTimeout(() => {
+                showAppleAlert(
+                    "🎉 Welcome to AdTechinno!", 
+                    `Hi ${extractFirstName(userName)}! We are thrilled to have you onboard. Let's make some magic together! ✨`
+                );
+                localStorage.setItem(`adtech_welcomed_${cleanUserKey}`, 'true');
+            }, 1500);
+        }
         
         // Pastikan fungsi ini wujud di bahagian 4 nanti
         if(typeof checkLeaveAccess === 'function') checkLeaveAccess(userName);
@@ -822,6 +837,70 @@ async function fetchSupabaseData(force = false, silent = false) {
 
     try {
         await fetchClientsList();
+
+        // 🌟 LOGIK BARU: Tarik senarai nama staf dari Supabase
+        try {
+            const { data: teamData, error: teamError } = await supabaseClient.from('team_members').select('*').order('name', { ascending: true });
+            if (!teamError && teamData) {
+                PIC_LIST = teamData.map(t => t.name);
+                дизайнериMY = teamData.filter(t => String(t.region).toLowerCase() === 'malaysia').map(t => t.name);
+                дизайнериID = teamData.filter(t => String(t.region).toLowerCase() === 'indonesia').map(t => t.name);
+
+                // Render nama ke dalam kotak dropdown di UI
+                const reqSelect = document.getElementById('requesterName');
+                if (reqSelect) {
+                    reqSelect.innerHTML = `<option value="">-- Select Name --</option>
+                        <optgroup label="Malaysia">${дизайнериMY.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>
+                        <optgroup label="Indonesia">${дизайнериID.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>`;
+                }
+
+                const editAssignee = document.getElementById('editAssignee');
+                if (editAssignee) {
+                    editAssignee.innerHTML = `<option value="Unassigned">-- Unassigned --</option>
+                        <optgroup label="Malaysia">${дизайнериMY.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>
+                        <optgroup label="Indonesia">${дизайнериID.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>`;
+                }
+
+                const leaveSelect = document.getElementById('leaveName');
+                if (leaveSelect) {
+                    leaveSelect.innerHTML = `<option value="">-- Select Name --</option>
+                        <optgroup label="Malaysia">${дизайнериMY.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>
+                        <optgroup label="Indonesia">${дизайнериID.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>`;
+                }
+
+                // 🌟 FIX BARU: Auto-Select nama dari Local Storage selepas kotak dah siap diisi
+                const savedName = localStorage.getItem('adtech_user_name');
+                if (savedName) {
+                    if (reqSelect) {
+                        let found = false;
+                        for(let i=0; i<reqSelect.options.length; i++) {
+                            if(reqSelect.options[i].value === savedName) { 
+                                reqSelect.selectedIndex = i; 
+                                found = true; 
+                                break; 
+                            }
+                        }
+                        // Kalau nama takde dalam list (manual input)
+                        if(!found) {
+                            const manualInput = document.getElementById('manualName');
+                            if (manualInput) { 
+                                manualInput.value = savedName; 
+                                manualInput.style.display = 'block'; 
+                            }
+                        }
+                    }
+                    // Auto-select kat kotak Leave Team juga
+                    if (leaveSelect) {
+                        for(let i=0; i<leaveSelect.options.length; i++) {
+                            if(leaveSelect.options[i].value === savedName) { 
+                                leaveSelect.selectedIndex = i; 
+                                break; 
+                            }
+                        }
+                    }
+                }
+            }
+        } catch(e) { console.error("Gagal load senarai team:", e.message); }
 
         try {
             const { data: leaveData } = await supabaseClient.from('team_leaves').select('*');
@@ -2413,11 +2492,22 @@ function copyText(type, jobID, client, title, assignee, deadlineStr, playbookLin
 // ========================================================
 // 🌟 13. INITIALIZATION (MAIN BOOT)
 // ========================================================
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     try {
         initTheme(); 
         checkAdminUI(); 
         setPresetDate();
+        
+        // 🌟 FIX BARU: Tarik data staf SEBELUM sistem boot sepenuhnya 
+        // Ini elakkan butang Leave disorok atau nama tak keluar di Intro Page
+        try {
+            const { data: teamData } = await supabaseClient.from('team_members').select('*').order('name', { ascending: true });
+            if (teamData) {
+                PIC_LIST = teamData.map(t => t.name);
+                дизайнериMY = teamData.filter(t => String(t.region).toLowerCase() === 'malaysia').map(t => t.name);
+                дизайнериID = teamData.filter(t => String(t.region).toLowerCase() === 'indonesia').map(t => t.name);
+            }
+        } catch(e) { console.log("Gagal load pre-boot team data:", e.message); }
         
         const savedName = localStorage.getItem('adtech_user_name');
         if (savedName) { 
@@ -2459,6 +2549,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
 });
+
 // ==========================================
 // BRANDING ASSETS GATEKEEPER LOGIC
 // ==========================================
