@@ -11,6 +11,8 @@ const TELEGRAM_API = 'https://script.google.com/macros/s/AKfycbyC-UgaT5QWgaWqfAQ
 let PIC_LIST = []; 
 let дизайнериMY = [];
 let дизайнериID = [];
+let allStaffMY = []; 
+let allStaffID = [];
 
 let globalData = []; 
 let globalTeamStatus = []; 
@@ -642,11 +644,11 @@ function chooseCountry(country) {
         document.getElementById('welcomeTitle').innerText = `Adtechinno ${country}`; globalRegionSelect.style.display = 'none'; nameSelect.style.display = 'block'; manualName.style.display = 'none';
         
         let names = [];
-        // 🌟 FIX BARU: Guna senarai hidup dari Supabase, bukan hardcode lama
-        if (country === 'Malaysia') names = дизайнериMY;
-        else if (country === 'Indonesia') names = дизайнериID;
-        
-        nameSelect.innerHTML = `<option value="">Select your name...</option>` + names.map(n => `<option value="${n}">${n}</option>`).join('') + `<option value="manual">I'm not in the list</option>`;
+            // 🌟 FIX BARU: Guna senarai SEMUA STAF (Bukan Creative je)
+            if (country === 'Malaysia') names = allStaffMY;
+            else if (country === 'Indonesia') names = allStaffID;
+            
+            nameSelect.innerHTML = `<option value="">Select your name...</option>` + names.map(n => `<option value="${n}">${n}</option>`).join('') + `<option value="manual">I'm not in the list</option>`;
     }
     countryStep.style.display = 'none'; nameStep.style.display = 'block';
 }
@@ -842,18 +844,26 @@ async function fetchSupabaseData(force = false, silent = false) {
         try {
             const { data: teamData, error: teamError } = await supabaseClient.from('team_members').select('*').order('name', { ascending: true });
             if (!teamError && teamData) {
-                PIC_LIST = teamData.map(t => t.name);
-                дизайнериMY = teamData.filter(t => String(t.region).toLowerCase() === 'malaysia').map(t => t.name);
-                дизайнериID = teamData.filter(t => String(t.region).toLowerCase() === 'indonesia').map(t => t.name);
+                // Senarai eksklusif Creative Team (termasuk Liew Hui Yin)
+                const creativeTeam = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
 
-                // Render nama ke dalam kotak dropdown di UI
+                // Asingkan: Semua Staf (Untuk borang request) vs Creative Team (Untuk assign task)
+                allStaffMY = teamData.filter(t => String(t.region).toLowerCase() === 'malaysia').map(t => t.name);
+                allStaffID = teamData.filter(t => String(t.region).toLowerCase() === 'indonesia').map(t => t.name);
+                
+                PIC_LIST = teamData.filter(t => creativeTeam.includes(t.name)).map(t => t.name);
+                дизайнериMY = teamData.filter(t => String(t.region).toLowerCase() === 'malaysia' && creativeTeam.includes(t.name)).map(t => t.name);
+                дизайнериID = teamData.filter(t => String(t.region).toLowerCase() === 'indonesia' && creativeTeam.includes(t.name)).map(t => t.name);
+
+                // Render nama ke dalam kotak Requester (Tunjuk SEMUA ORANG)
                 const reqSelect = document.getElementById('requesterName');
                 if (reqSelect) {
                     reqSelect.innerHTML = `<option value="">-- Select Name --</option>
-                        <optgroup label="Malaysia">${дизайнериMY.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>
-                        <optgroup label="Indonesia">${дизайнериID.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>`;
+                        <optgroup label="Malaysia">${allStaffMY.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>
+                        <optgroup label="Indonesia">${allStaffID.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>`;
                 }
 
+                // Render Edit Assignee (Tunjuk CREATIVE SAHAJA)
                 const editAssignee = document.getElementById('editAssignee');
                 if (editAssignee) {
                     editAssignee.innerHTML = `<option value="Unassigned">-- Unassigned --</option>
@@ -861,6 +871,7 @@ async function fetchSupabaseData(force = false, silent = false) {
                         <optgroup label="Indonesia">${дизайнериID.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>`;
                 }
 
+                // Render Leave Select (Tunjuk CREATIVE SAHAJA)
                 const leaveSelect = document.getElementById('leaveName');
                 if (leaveSelect) {
                     leaveSelect.innerHTML = `<option value="">-- Select Name --</option>
@@ -868,34 +879,22 @@ async function fetchSupabaseData(force = false, silent = false) {
                         <optgroup label="Indonesia">${дизайнериID.map(n => `<option value="${n}">${n}</option>`).join('')}</optgroup>`;
                 }
 
-                // 🌟 FIX BARU: Auto-Select nama dari Local Storage selepas kotak dah siap diisi
+                // Auto-Select nama dari Local Storage
                 const savedName = localStorage.getItem('adtech_user_name');
                 if (savedName) {
                     if (reqSelect) {
                         let found = false;
                         for(let i=0; i<reqSelect.options.length; i++) {
-                            if(reqSelect.options[i].value === savedName) { 
-                                reqSelect.selectedIndex = i; 
-                                found = true; 
-                                break; 
-                            }
+                            if(reqSelect.options[i].value === savedName) { reqSelect.selectedIndex = i; found = true; break; }
                         }
-                        // Kalau nama takde dalam list (manual input)
                         if(!found) {
                             const manualInput = document.getElementById('manualName');
-                            if (manualInput) { 
-                                manualInput.value = savedName; 
-                                manualInput.style.display = 'block'; 
-                            }
+                            if (manualInput) { manualInput.value = savedName; manualInput.style.display = 'block'; }
                         }
                     }
-                    // Auto-select kat kotak Leave Team juga
                     if (leaveSelect) {
                         for(let i=0; i<leaveSelect.options.length; i++) {
-                            if(leaveSelect.options[i].value === savedName) { 
-                                leaveSelect.selectedIndex = i; 
-                                break; 
-                            }
+                            if(leaveSelect.options[i].value === savedName) { leaveSelect.selectedIndex = i; break; }
                         }
                     }
                 }
@@ -2499,13 +2498,17 @@ window.addEventListener('DOMContentLoaded', async () => {
         setPresetDate();
         
         // 🌟 FIX BARU: Tarik data staf SEBELUM sistem boot sepenuhnya 
-        // Ini elakkan butang Leave disorok atau nama tak keluar di Intro Page
         try {
             const { data: teamData } = await supabaseClient.from('team_members').select('*').order('name', { ascending: true });
             if (teamData) {
-                PIC_LIST = teamData.map(t => t.name);
-                дизайнериMY = teamData.filter(t => String(t.region).toLowerCase() === 'malaysia').map(t => t.name);
-                дизайнериID = teamData.filter(t => String(t.region).toLowerCase() === 'indonesia').map(t => t.name);
+                const creativeTeam = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
+                
+                allStaffMY = teamData.filter(t => String(t.region).toLowerCase() === 'malaysia').map(t => t.name);
+                allStaffID = teamData.filter(t => String(t.region).toLowerCase() === 'indonesia').map(t => t.name);
+                
+                PIC_LIST = teamData.filter(t => creativeTeam.includes(t.name)).map(t => t.name);
+                дизайнериMY = teamData.filter(t => String(t.region).toLowerCase() === 'malaysia' && creativeTeam.includes(t.name)).map(t => t.name);
+                дизайнериID = teamData.filter(t => String(t.region).toLowerCase() === 'indonesia' && creativeTeam.includes(t.name)).map(t => t.name);
             }
         } catch(e) { console.log("Gagal load pre-boot team data:", e.message); }
         
