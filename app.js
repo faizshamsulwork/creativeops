@@ -2642,12 +2642,21 @@ function renderKanbanBoard() {
     const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
     data = filterDataByRegion(data, finalRegion);
     
+    // 🌟 FIX BARU: Tapis tiket Kanban supaya staf biasa nampak tiket sendiri je
+    const currentUser = localStorage.getItem('adtech_user_name');
+    if (!isSuperAdmin && currentUser) {
+        data = data.filter(d => 
+            String(d.requester_name).toLowerCase() === currentUser.toLowerCase() || 
+            String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
+        );
+    }
+
     // 🌟 LOGIK BARU: Masukkan data 'pending' ke dalam Kanban
     let activeData = data.filter(d => 
         String(d.status || '').toLowerCase() === 'pending' || 
         (String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() !== 'done')
     );
-    
+
     const qW = document.getElementById('searchWorkload') ? document.getElementById('searchWorkload').value.toLowerCase() : '';
     if(qW) {
         activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW));
