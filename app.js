@@ -526,6 +526,9 @@ function checkAdminUI() {
     const btnExportCSV = document.getElementById('btnExportCSV');
     const btnKanban = document.getElementById('adminKanbanToggle'); 
 
+    // 🌟 KOD BARU: Sentiasa tunjuk butang Kanban untuk semua (Admin & Team biasa)
+    if(btnKanban) btnKanban.style.display = 'block'; 
+
     if(securePin) { 
         btn.innerHTML = '<i data-lucide="unlock"></i> <span>Admin Unlocked</span>'; 
         btn.classList.add('unlocked'); 
@@ -535,15 +538,8 @@ function checkAdminUI() {
         
         if(btnLoadArchive) btnLoadArchive.style.display = 'inline-flex';
         if(btnExportCSV) btnExportCSV.style.display = 'inline-flex';
-        if(btnKanban) btnKanban.style.display = 'block'; 
         
         isSuperAdmin = true;
-
-        // 🌟 AUTO-TRIGGER: Tukar ke Kanban secara automatik
-        if (typeof isKanbanMode !== 'undefined' && !isKanbanMode) {
-            if (typeof toggleKanbanMode === 'function') toggleKanbanMode();
-        }
-        
     } else { 
         btn.innerHTML = '<i data-lucide="lock"></i> <span>Admin Access</span>'; 
         btn.classList.remove('unlocked'); 
@@ -553,14 +549,8 @@ function checkAdminUI() {
         
         if(btnLoadArchive) btnLoadArchive.style.display = 'none';
         if(btnExportCSV) btnExportCSV.style.display = 'none';
-        if(btnKanban) btnKanban.style.display = 'none'; 
         
         isSuperAdmin = false;
-        
-        // 🌟 AUTO-TRIGGER: Kembali ke paparan biasa jika Admin dikunci
-        if(typeof isKanbanMode !== 'undefined' && isKanbanMode) {
-            if (typeof toggleKanbanMode === 'function') toggleKanbanMode();
-        }
     }
     if (typeof updateLiveClock === 'function') updateLiveClock(); 
     if (typeof refreshIcons === 'function') refreshIcons();
@@ -1123,7 +1113,7 @@ function renderBoards() {
         }
 
         const statusOrder = {
-            'pending': 0, 'not started': 1, 'drafting': 2, 'internal review': 3, 'revision': 4, 'client review': 5
+            'pending': 0, 'not started': 1, 'drafting': 2, 'revision': 3, 'internal review': 4, 'client review': 5
         };
 
         activeData.sort((a, b) => {
@@ -1151,8 +1141,8 @@ function renderBoards() {
                     { id: 'pending', label: 'Inbox (Pending)', color: 'var(--red)', bg: 'rgba(239, 68, 68, 0.1)' },
                     { id: 'not started', label: 'Not Started', color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.1)' },
                     { id: 'drafting', label: 'Drafting', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
-                    { id: 'internal review', label: 'Internal Review', color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
                     { id: 'revision', label: 'Revision', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.1)' },
+                    { id: 'internal review', label: 'Internal Review', color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
                     { id: 'client review', label: 'Client Review', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' }
                 ];
 
@@ -1556,7 +1546,7 @@ function openDetailModal(jobID, isUpdate = false) {
             const formattedBrief = briefText ? briefText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--link-color); text-decoration:underline; word-break:break-all;">$1</a>').replace(/\n/g, '<br>') : 'No brief provided.';
             formattedBriefHTML = `<p><strong>Creative Brief & Plan:</strong><br>${formattedBrief}</p>`;
         }
-        // --- TAMAT LOGIK FORMAT BRIEF ---
+       // --- TAMAT LOGIK FORMAT BRIEF ---
 
         let bodyHtml = `
             ${playbookBtnHtml}
@@ -1565,7 +1555,7 @@ function openDetailModal(jobID, isUpdate = false) {
                 <div class="detail-item"><span>Requester</span><strong>${actualRequester}</strong></div>
                 <div class="detail-item"><span>Job Type</span><strong>${item.job_type}</strong></div>
                 <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${formatDate(item.deadline)}</strong></div>
-                <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option><option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option><option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option><option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option><option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>
+                <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option><option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option><option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option><option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option><option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>
                 <div class="detail-item"><span>Revision Count</span>${securePin && !isDoneTab ? `<div style="display:flex; align-items:center; gap:8px; margin-top:2px;"><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, -1)">-</button><strong style="min-width:15px; text-align:center;">${item.revision || 0}</strong><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, 1)">+</button></div>` : `<strong>${item.revision || 0}</strong>`}</div>
                 ${(item.approver) ? `<div class="detail-item"><span>Approved By</span><strong>${item.approver}</strong></div>` : ''}
             </div>
@@ -2632,12 +2622,12 @@ function toggleKanbanMode() {
     const kanbanView = document.getElementById('kanbanBoardContainer');
 
     if (isKanbanMode) {
-        btnText.innerText = "Admin: Switch to Normal View";
+        btnText.innerText = "Switch to Normal View";
         normalView.style.display = 'none';
         kanbanView.style.display = 'flex';
         renderKanbanBoard();
     } else {
-        btnText.innerText = "Admin: Kanban View";
+        btnText.innerText = "Kanban/Board View";
         normalView.style.display = 'block';
         kanbanView.style.display = 'none';
         renderBoards();
@@ -2677,13 +2667,13 @@ function renderKanbanBoard() {
         return dateA - dateB;
     });
 
-    // 🌟 PETA WARNA KANBAN
+    // 🌟 PETA WARNA KANBAN (Dah ditukar susunan)
     const statusConfig = [
         { name: 'Inbox (Pending)', isPending: true, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' },
         { name: 'Not started', isPending: false, color: '#64748b', bg: 'rgba(100, 116, 139, 0.1)' },
         { name: 'Drafting', isPending: false, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' },
-        { name: 'Internal Review', isPending: false, color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
         { name: 'Revision', isPending: false, color: '#ea580c', bg: 'rgba(234, 88, 12, 0.1)' },
+        { name: 'Internal Review', isPending: false, color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
         { name: 'Client Review', isPending: false, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' },
         { name: 'Done', isPending: false, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' }
     ];
