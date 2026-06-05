@@ -1677,7 +1677,8 @@ async function submitRequest() {
             const mandatory = document.getElementById('briefMandatory') ? document.getElementById('briefMandatory').value.trim() : 'None';
             const copyStyle = document.getElementById('copyStyleInput') ? document.getElementById('copyStyleInput').value : 'Not specified';
             
-            fullBrief = `[COPYWRITING TONE / STYLE]:\n${copyStyle}\n\n[MAIN MESSAGE / HOOK]:\n${hook}\n\n[TARGET AUDIENCE]:\n${audience}\n\n[TONE, VIBE & REFERENCE]:\n${vibe}\n\n[MANDATORY / NO-GO]:\n${mandatory}`;
+            // 🌟 FIX FORMAT: Buang titik bertindih (:)
+            fullBrief = `[COPYWRITING TONE / STYLE]\n${copyStyle}\n\n[MAIN MESSAGE / HOOK]\n${hook}\n\n[TARGET AUDIENCE]\n${audience}\n\n[TONE, VIBE & REFERENCE]\n${vibe}\n\n[MANDATORY / NO-GO]\n${mandatory}`;
         } else {
             fullBrief = document.getElementById('pBrief') ? document.getElementById('pBrief').value : '';
         }
@@ -1690,7 +1691,8 @@ async function submitRequest() {
             const cCount = document.getElementById('mCarousel').value || 0;
             const capCount = document.getElementById('mCaption') ? document.getElementById('mCaption').value : 0; 
             
-            compiledSizes = `- Static Posters: ${sCount}\n- Videos / Reels: ${vCount}\n- Carousels: ${cCount}\n- Caption Only: ${capCount}\n`;
+            // 🌟 FIX FORMAT: Bentuk bullet point untuk plan bulanan
+            compiledSizes = `• Static Posters — ${sCount}\n• Videos / Reels — ${vCount}\n• Carousels — ${cCount}\n• Caption Only — ${capCount}\n`;
             
         } else if (currentRequestType === 'pitch') {
             types = "Pitch Deck Proposal";
@@ -1704,7 +1706,8 @@ async function submitRequest() {
             
             if(!pitchDraft || !pitchAsset) throw new Error("Draft Deck Link and Brand Assets are mandatory for Pitch Deck.");
             
-            fullBrief = `[PITCH STRATEGY / BIG IDEA]:\n${pitchIdea || 'N/A'}\n\n[PITCH SUPPORT NEEDED]:\n${pitchSupport || 'N/A'}\n\n[DRAFT DECK LINK]:\n${pitchDraft}\n\n[BRAND ASSETS]:\n${pitchAsset}\n\n[ACTUAL PITCH DATE]:\n${pitchDate ? formatDate(pitchDate) : 'Not specified'}`;
+            // 🌟 FIX FORMAT: Buang titik bertindih (:)
+            fullBrief = `[PITCH STRATEGY / BIG IDEA]\n${pitchIdea || 'N/A'}\n\n[PITCH SUPPORT NEEDED]\n${pitchSupport || 'N/A'}\n\n[DRAFT DECK LINK]\n${pitchDraft}\n\n[BRAND ASSETS]\n${pitchAsset}\n\n[ACTUAL PITCH DATE]\n${pitchDate ? formatDate(pitchDate) : 'Not specified'}`;
             
         } else {
             types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', '); 
@@ -1713,16 +1716,24 @@ async function submitRequest() {
                 const sDetail = row.querySelector('.dyn-size-detail').value.trim(); 
                 const sInput = row.querySelector('.dyn-size-input').value.trim(); 
                 const sNotes = row.querySelector('.dyn-size-notes').value.trim();
-                if (sDetail || sInput) compiledSizes += `- Detail: ${sDetail || 'N/A'}, Size: ${sInput || 'N/A'}, Notes: ${sNotes || '-'}\n`;
+                
+                if (sDetail || sInput) {
+                    // 🌟 FIX FORMAT: Gaya bullet point kemas & sembunyikan Note kalau kosong
+                    let noteStr = (sNotes && sNotes !== '-') ? ` *(Note: ${sNotes})*` : '';
+                    let formatDetail = sDetail || 'N/A';
+                    let formatSize = sInput ? ` — ${sInput}` : '';
+                    
+                    compiledSizes += `• ${formatDetail}${formatSize}${noteStr}\n`;
+                }
             });
         }
 
         // Cantumkan brief mengikut jenis
-        if (compiledSizes) fullBrief = "[DELIVERABLES REQUIRED]:\n" + compiledSizes + "\n\n" + fullBrief;
+        if (compiledSizes) fullBrief = "[DELIVERABLES REQUIRED]\n" + compiledSizes + "\n" + fullBrief;
         
         if (currentRequestType !== 'pitch') {
             const monthlyPlan = document.getElementById('pMonthlyPlan') ? document.getElementById('pMonthlyPlan').value : ''; 
-            if(monthlyPlan) fullBrief += "\n\n[Monthly Plan Details]:\n" + monthlyPlan;
+            if(monthlyPlan) fullBrief += "\n\n[MONTHLY PLAN DETAILS]\n" + monthlyPlan;
         }
 
         const payload = {
