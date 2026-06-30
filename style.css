@@ -911,18 +911,29 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 .pic-check { padding: 10px 14px; border-radius: 12px; font-size: 0.78rem; min-height: 38px; box-sizing: border-box; }
 .pic-save-btn { width: fit-content; min-width: 150px; padding: 10px 14px; font-size: 0.82rem; }
 .pic-helper-text { color: var(--text-muted); font-size: 0.75rem; font-weight: 600; }
-.task-notes-box { background: var(--bg-card); border: 1px solid var(--border-light); padding: 20px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.02); }
-.task-notes-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
-.task-notes-header span { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; display: block; margin-bottom: 4px; }
-.task-notes-header strong { color: var(--text-strong); font-size: 1rem; }
-.task-notes-header i { width: 20px; height: 20px; color: var(--link-color); flex-shrink: 0; }
-.task-note-textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
-.task-note-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
-.task-note-actions .btn-action { flex: 0 0 auto; min-width: 140px; }
-.task-note-readonly { background: var(--bg-box); border: 1px dashed var(--border-main); color: var(--text-main); border-radius: 12px; padding: 14px; line-height: 1.5; white-space: pre-wrap; }
+.task-notes-box { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: 16px; margin-bottom: 20px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.02); }
+.task-notes-box summary { list-style: none; cursor: pointer; padding: 17px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-strong); font-weight: 850; }
+.task-notes-box summary::-webkit-details-marker { display: none; }
+.task-notes-box summary span { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.task-notes-box summary i { width: 18px; height: 18px; color: var(--link-color); }
+.task-notes-box summary em { font-style: normal; color: var(--text-muted); font-size: 0.72rem; font-weight: 800; background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 999px; padding: 5px 9px; white-space: nowrap; }
+.task-note-latest { padding: 0 20px 14px 20px; color: var(--text-muted); font-size: 0.8rem; font-weight: 650; line-height: 1.45; }
+.task-note-latest small { display: block; background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 12px; padding: 11px 12px; white-space: pre-wrap; }
+.task-note-textarea { min-height: 76px; resize: vertical; line-height: 1.5; margin: 0 20px; width: calc(100% - 40px); box-sizing: border-box; }
+.task-note-actions { display: flex; justify-content: flex-end; padding: 12px 20px 16px 20px; }
+.task-note-actions .btn-action { flex: 0 0 auto; min-width: 130px; }
+.task-note-readonly { margin: 0 20px 16px 20px; background: var(--bg-box); border: 1px dashed var(--border-main); color: var(--text-main); border-radius: 12px; padding: 14px; line-height: 1.5; white-space: pre-wrap; }
+.task-note-thread-head { border-top: 1px solid var(--border-light); color: var(--text-muted); font-size: 0.7rem; font-weight: 850; text-transform: uppercase; letter-spacing: 0.6px; padding: 14px 20px 6px 20px; }
+.task-note-thread { padding: 0 20px 18px 20px; display: grid; gap: 8px; max-height: 280px; overflow-y: auto; }
+.task-note-thread-row { background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 12px; padding: 12px; }
+.task-note-thread-row div { display: flex; justify-content: space-between; gap: 10px; color: var(--text-strong); font-size: 0.82rem; }
+.task-note-thread-row span { color: var(--text-muted); font-size: 0.72rem; font-weight: 650; }
+.task-note-thread-row p { margin: 8px 0 0 0; color: var(--text-main); line-height: 1.45; white-space: pre-wrap; }
+.task-note-empty { color: var(--text-muted); font-size: 0.82rem; background: var(--bg-box); border: 1px dashed var(--border-main); border-radius: 12px; padding: 12px; }
 .task-note-preview { display: flex; align-items: flex-start; gap: 7px; background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 10px; padding: 9px 10px; margin: 0 0 14px 0; color: var(--text-muted); font-size: 0.78rem; font-weight: 600; line-height: 1.35; }
 .task-note-preview i { width: 14px; height: 14px; color: var(--link-color); flex-shrink: 0; margin-top: 1px; }
 .task-note-preview span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.task-note-preview strong { color: var(--text-strong); }
 .monthly-flow-panel {
     background: linear-gradient(135deg, rgba(20, 184, 166, 0.1), rgba(14, 165, 233, 0.06));
     border: 1px solid rgba(20, 184, 166, 0.24);

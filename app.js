@@ -2148,7 +2148,30 @@ function setLocalTaskNote(jobID, note) {
 
 function getTaskNoteValue(item) {
     if (!item) return '';
-    return item.status_notes || item.task_notes || getLocalTaskNotes()[item.job_id] || '';
+    const latestLog = getTaskNoteLogs(item.job_id)[0];
+    return latestLog?.note_text || item.status_notes || item.task_notes || getLocalTaskNotes()[item.job_id] || '';
+}
+
+function getLatestTaskNote(item) {
+    if (!item) return null;
+    const latestLog = getTaskNoteLogs(item.job_id)[0];
+    if (latestLog?.note_text) return latestLog;
+    const fallback = item.status_notes || item.task_notes || getLocalTaskNotes()[item.job_id] || '';
+    if (!fallback) return null;
+    return normalizeNoteRow({
+        job_id: item.job_id,
+        actor_name: item.updated_by || item.approver || item.requester_name || 'Unknown',
+        note_text: fallback,
+        status_at_time: item.work_status || item.status || 'No status',
+        created_at: item.updated_at || item.last_moved_at || item.created_at || new Date().toISOString()
+    });
+}
+
+function getTaskNoteCount(item) {
+    if (!item) return 0;
+    const logs = getTaskNoteLogs(item.job_id);
+    if (logs.length) return logs.length;
+    return getTaskNoteValue(item) ? 1 : 0;
 }
 
 function getLocalActivityLogs() {
@@ -2231,7 +2254,7 @@ async function logTaskActivity(jobID, actionType, oldValue = '', newValue = '', 
 }
 
 async function logTaskNote(job, noteText) {
-    if (!job) return;
+    if (!job) return null;
 
     const row = normalizeNoteRow({
         job_id: job.job_id,
@@ -2257,7 +2280,8 @@ async function logTaskNote(job, noteText) {
         console.warn('Note log saved locally only:', e.message);
     }
 
-    logTaskActivity(job.job_id, 'notes_updated', '', '', noteText, { status_at_time: row.status_at_time });
+    await logTaskActivity(job.job_id, 'note_added', '', row.status_at_time, noteText, { status_at_time: row.status_at_time });
+    return row;
 }
 
 function getTaskLogs(jobID) {
@@ -2354,23 +2378,13 @@ function renderAdminTrackingPanel(item) {
     `;
 }
 
-function canEditTaskNote(item) {
-    if (!item) return false;
-    if (localStorage.getItem('adtech_lead_pin')) return true;
-
-    const currentUser = localStorage.getItem('adtech_user_name');
-    if (!currentUser) return false;
-
-    return String(item.assignee || '').toLowerCase().includes(currentUser.toLowerCase());
-}
-
 function renderTaskNotePreview(item) {
-    if (!localStorage.getItem('adtech_lead_pin')) return '';
-    const note = getTaskNoteValue(item).trim();
-    if (!note) return '';
+    const latest = getLatestTaskNote(item);
+    if (!latest?.note_text) return '';
 
-    const preview = note.length > 110 ? note.slice(0, 107) + '...' : note;
-    return `<div class="task-note-preview"><i data-lucide="sticky-note"></i><span>${escapeHtml(preview)}</span></div>`;
+    const noteCount = getTaskNoteCount(item);
+    const preview = latest.note_text.length > 96 ? latest.note_text.slice(0, 93) + '...' : latest.note_text;
+    return `<div class="task-note-preview"><i data-lucide="message-square-text"></i><span><strong>${noteCount} note${noteCount === 1 ? '' : 's'}</strong> · ${escapeHtml(preview)}</span></div>`;
 }
 
 function getRequestTypeMeta(item) {
@@ -2401,7 +2415,7 @@ function getMonthlyDeliverableSummary(item) {
 
 function getMonthlyReadyCount(item, total = 0) {
     const note = getTaskNoteValue(item);
-    const match = note.match(/(?:monthly\s*)?(?:progress|ready|done)?\s*:?\s*(\d+)\s*\/\s*(\d+)/i) || note.match(/\b(\d+)\s*\/\s*(\d+)\b/);
+    const match = note.match(/(?:monthly\s*)?(?:progress|ready|done)?\s*:?\s*(\d+)\s*\/\s*(\d+)/i) || note.match(/(\d+)\s*\/\s*(\d+)/);
     if (!match) return '';
     return Math.min(Number(match[1] || 0), total || Number(match[2] || 0));
 }
@@ -2434,27 +2448,56 @@ function renderMonthlyFlowPanel(item) {
     `;
 }
 
+function canAddTaskNote(item) {
+    return Boolean(item && localStorage.getItem('adtech_user_name'));
+}
+
 function renderTaskNotesBox(item) {
-    if (!localStorage.getItem('adtech_lead_pin')) return '';
-    const note = getTaskNoteValue(item);
-    const safeNote = escapeHtml(note);
-    const editable = canEditTaskNote(item);
+    const noteLogs = getTaskNoteLogs(item.job_id);
+    const latest = getLatestTaskNote(item);
+    const noteCount = getTaskNoteCount(item);
+    const canAdd = canAddTaskNote(item);
+
+    const rows = noteLogs.length ? noteLogs.slice(0, 12).map(log => `
+        <div class="task-note-thread-row">
+            <div>
+                <strong>${escapeHtml(log.actor_name || 'Unknown')}</strong>
+                <span>${formatDateTime(log.created_at)} · ${escapeHtml(log.status_at_time || 'No status')}</span>
+            </div>
+            <p>${escapeHtml(log.note_text)}</p>
+        </div>
+    `).join('') : (latest?.note_text ? `
+        <div class="task-note-thread-row">
+            <div>
+                <strong>${escapeHtml(latest.actor_name || 'Unknown')}</strong>
+                <span>${formatDateTime(latest.created_at)} · ${escapeHtml(latest.status_at_time || 'No status')}</span>
+            </div>
+            <p>${escapeHtml(latest.note_text)}</p>
+        </div>
+    ` : '<div class="task-note-empty">No notes yet. Add the first update for this task.</div>');
+
+    const latestPreview = latest?.note_text
+        ? `<small>${escapeHtml(latest.note_text.length > 120 ? latest.note_text.slice(0, 117) + '...' : latest.note_text)}</small>`
+        : '<small>No notes yet</small>';
 
     return `
-        <div class="task-notes-box">
-            <div class="task-notes-header">
-                <div><span>Status Notes</span><strong>Latest task context</strong></div>
-                <i data-lucide="sticky-note"></i>
-            </div>
-            ${editable ? `
-                <textarea id="task-note-${item.job_id}" class="task-note-textarea" placeholder="Example: Waiting for client feedback on KV direction...">${safeNote}</textarea>
+        <details class="task-notes-box">
+            <summary>
+                <span><i data-lucide="message-square-text"></i><strong>Task Notes</strong></span>
+                <em>${noteCount} update${noteCount === 1 ? '' : 's'}</em>
+            </summary>
+            <div class="task-note-latest">${latestPreview}</div>
+            ${canAdd ? `
+                <textarea id="task-note-${item.job_id}" class="task-note-textarea" placeholder="Add a quick update. Example: 2/10 visuals ready, waiting for client feedback, or checking copy direction..."></textarea>
                 <div class="task-note-actions">
-                    <button type="button" id="btn-note-${item.job_id}" onclick="saveTaskNote(event, '${item.job_id}')" class="btn-action btn-copy"><i data-lucide="save"></i> Save Notes</button>
+                    <button type="button" id="btn-note-${item.job_id}" onclick="saveTaskNote(event, '${item.job_id}')" class="btn-action btn-copy"><i data-lucide="send"></i> Add Note</button>
                 </div>
             ` : `
-                <div class="task-note-readonly">${safeNote || 'No status notes yet.'}</div>
+                <div class="task-note-readonly">Sign in to add notes.</div>
             `}
-        </div>
+            <div class="task-note-thread-head">History</div>
+            <div class="task-note-thread">${rows}</div>
+        </details>
     `;
 }
 
@@ -2467,37 +2510,44 @@ async function saveTaskNote(event, jobID) {
     const note = input.value.trim();
     const job = globalData.find(d => d.job_id === jobID);
     if (!job) return showAppleAlert("Missing Task", "This task could not be found.");
+    if (!note) return showAppleAlert("Empty Note", "Please write a short update before adding it.");
 
     const btn = document.getElementById(`btn-note-${jobID}`);
     const originalHtml = btn ? btn.innerHTML : '';
 
     if (btn) {
-        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Saving...';
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Adding...';
         btn.disabled = true;
         refreshIcons();
     }
 
+    const previousNote = job.status_notes || '';
     job.status_notes = note;
     setLocalTaskNote(jobID, note);
-    renderDashboard();
-    renderBoards();
 
     try {
+        await logTaskNote(job, note);
+
         const { error } = await supabaseClient
             .from('creative_requests')
             .update({ status_notes: note })
             .eq('job_id', jobID);
 
-        if (error) throw error;
+        if (error) {
+            console.warn('Latest status note update failed:', error.message);
+            job.status_notes = note || previousNote;
+            setLocalTaskNote(jobID, note || previousNote);
+            showNotification('Note Added', 'History saved; latest preview is local only until status_notes column exists');
+        } else {
+            showNotification('Note Added', 'Task update saved');
+        }
 
-        logTaskNote(job, note);
-        showNotification('Notes Saved', 'Task status updated');
+        input.value = '';
+        renderDashboard();
+        renderBoards();
+        openDetailModal(jobID, true);
     } catch(e) {
-        job.status_notes = note;
-        setLocalTaskNote(jobID, note);
-        logTaskNote(job, note);
-        showNotification('Notes Saved Locally', 'Add status_notes column in Supabase to share');
-        console.warn('Supabase status_notes save failed:', e.message);
+        showAppleAlert('Note Save Failed', e.message);
     } finally {
         if (btn) {
             btn.innerHTML = originalHtml;
@@ -3449,6 +3499,57 @@ function getTaskOverdueDays(task) {
     return Math.max(0, diff);
 }
 
+function getHoursBetween(startStr, endStr = new Date().toISOString()) {
+    if (!startStr) return '';
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+    if (isNaN(start) || isNaN(end)) return '';
+    return Math.round(((end - start) / (1000 * 60 * 60)) * 10) / 10;
+}
+
+function getMonthlyDeliverableTotalForReport(task) {
+    const summary = getMonthlyDeliverableSummary(task);
+    return summary?.total || '';
+}
+
+function getMonthlyReadyForReport(task) {
+    const summary = getMonthlyDeliverableSummary(task);
+    if (!summary?.total) return '';
+    const ready = getMonthlyReadyCount(task, summary.total);
+    return ready === '' ? '' : ready;
+}
+
+function getReportingDataGapRows(tasks) {
+    return tasks.map(task => {
+        const gaps = [];
+        const recommendations = [];
+        const status = String(task.status || '').toLowerCase();
+        const workStatus = String(task.work_status || '').toLowerCase();
+        const noteCount = getTaskNoteCount(task);
+
+        if (!task.requester_name) { gaps.push('requester_name'); recommendations.push('Select/requester name is required.'); }
+        if (!task.region) { gaps.push('region'); recommendations.push('Set office/region for regional reporting.'); }
+        if (!task.job_type) { gaps.push('job_type'); recommendations.push('Use request type consistently: Monthly, Ad-hoc, Pitch.'); }
+        if (!task.deadline) { gaps.push('deadline'); recommendations.push('Deadline is needed for SLA and overdue reporting.'); }
+        if (!task.brief) { gaps.push('brief'); recommendations.push('Brief quality affects revision and cycle-time analysis.'); }
+        if (status === 'approved' && (!task.assignee || task.assignee === 'Unassigned')) { gaps.push('assignee'); recommendations.push('Assign a PIC before work starts.'); }
+        if (status === 'approved' && !task.playbook_link) { gaps.push('playbook_link'); recommendations.push('Add playbook/working link for audit and handover.'); }
+        if (workStatus === 'done' && !task.done_at) { gaps.push('done_at'); recommendations.push('Capture done_at when closing task.'); }
+        if (noteCount === 0 && status === 'approved') { gaps.push('notes_history'); recommendations.push('Add at least one task note for monthly reporting context.'); }
+        if (Number(task.revision || 0) > 0 && !task.revision_reasons) { gaps.push('revision_reasons'); recommendations.push('Record revision reasons to identify brief/client/workflow issues.'); }
+
+        return {
+            job_id: task.job_id,
+            client_name: task.client_name,
+            project_title: task.project_title,
+            status: task.status,
+            work_status: task.work_status,
+            missing_fields: gaps.join(' | '),
+            recommendation: recommendations.join(' | ')
+        };
+    }).filter(row => row.missing_fields);
+}
+
 function buildTeamSummaryRows(tasks) {
     const summary = {};
     tasks.forEach(task => {
@@ -3544,14 +3645,15 @@ Suggested prompt:
 "You are a creative operations analyst. Analyze these exported files from our creative request system. Identify workload trends, bottlenecks by status, overdue patterns, revision causes, team capacity issues, and recommendations to improve speed, productivity, and efficiency. Then propose whether team expansion is justified, which roles/regions need support, and what workflow changes would give the highest impact."
 
 ## Files
-- tasks.csv: One row per task with lifecycle, status, deadline, assignee, revision, notes, and completion metrics.
-- activity_logs.csv: Admin tracking timeline of actions.
-- notes_history.csv: Historical task notes with author/status/time.
+- tasks.csv: One row per task with lifecycle, status, deadline, assignee, revision, latest note, note count, monthly progress, and completion metrics.
+- activity_logs.csv: Admin/system tracking timeline of actions.
+- notes_history.csv: Full public task notes thread with author/status/time.
 - team_summary.csv: Workload and completion summary by PIC.
 - status_aging.csv: Time spent in current or historical statuses.
+- data_gaps.csv: Missing fields that weaken reporting quality.
 
 ## Reporting Principles
-Use this data for capacity planning and process improvement, not individual blame. Separate creative workload delays from client review delays, unclear briefs, revision causes, and leave/handover impact.
+Use this data for capacity planning and process improvement, not individual blame. Separate creative workload delays from client review delays, unclear briefs, revision causes, notes context, and leave/handover impact.
 `;
 }
 
@@ -3568,30 +3670,41 @@ function exportReportPack() {
     const region = (isSuperAdmin ? currentRegionFilter : userRegion).replace(/\s+/g, '_');
     const base = `Adtechinno_${region}_Report_${date}`;
 
-    const taskRows = tasks.map(task => ({
-        job_id: task.job_id,
-        client_name: task.client_name,
-        project_title: task.project_title,
-        requester_name: task.requester_name,
-        region: task.region,
-        job_type: task.job_type,
-        status: task.status,
-        work_status: task.work_status,
-        assignee: getAssigneeDisplay(task.assignee),
-        deadline: task.deadline,
-        created_at: task.created_at,
-        approved_by: task.approver,
-        review_started_at: task.review_started_at,
-        done_at: task.done_at,
-        completion_hours: getTaskCompletionHours(task),
-        overdue_days: getTaskOverdueDays(task),
-        revision: task.revision || 0,
-        revision_reasons: task.revision_reasons || '',
-        status_notes: getTaskNoteValue(task),
-        playbook_link: task.playbook_link || '',
-        last_update_at: getLastUpdateAt(task),
-        current_status_age: formatDurationFrom(getStatusStartedAt(task))
-    }));
+    const taskRows = tasks.map(task => {
+        const latestNote = getLatestTaskNote(task);
+        const statusStartedAt = getStatusStartedAt(task);
+        return {
+            job_id: task.job_id,
+            client_name: task.client_name,
+            project_title: task.project_title,
+            requester_name: task.requester_name,
+            region: task.region,
+            job_type: task.job_type,
+            status: task.status,
+            work_status: task.work_status,
+            assignee: getAssigneeDisplay(task.assignee),
+            deadline: task.deadline,
+            created_at: task.created_at,
+            approved_by: task.approver,
+            review_started_at: task.review_started_at,
+            done_at: task.done_at,
+            completion_hours: getTaskCompletionHours(task),
+            overdue_days: getTaskOverdueDays(task),
+            revision: task.revision || 0,
+            revision_reasons: task.revision_reasons || '',
+            notes_count: getTaskNoteCount(task),
+            latest_note: latestNote?.note_text || '',
+            latest_note_by: latestNote?.actor_name || '',
+            latest_note_at: latestNote?.created_at || '',
+            monthly_deliverables_total: getMonthlyDeliverableTotalForReport(task),
+            monthly_deliverables_ready: getMonthlyReadyForReport(task),
+            playbook_link: task.playbook_link || '',
+            last_update_at: getLastUpdateAt(task),
+            current_status_started_at: statusStartedAt,
+            current_status_age: formatDurationFrom(statusStartedAt),
+            current_status_age_hours: getHoursBetween(statusStartedAt)
+        };
+    });
 
     const activityRows = activityLogs.map(log => ({
         job_id: log.job_id,
@@ -3603,22 +3716,31 @@ function exportReportPack() {
         created_at: log.created_at
     }));
 
-    const noteRows = noteLogs.map(log => ({
-        job_id: log.job_id,
-        actor_name: log.actor_name,
-        status_at_time: log.status_at_time,
-        note_text: log.note_text,
-        created_at: log.created_at
-    }));
+    const taskById = Object.fromEntries(tasks.map(task => [task.job_id, task]));
+    const noteRows = noteLogs.map(log => {
+        const task = taskById[log.job_id] || {};
+        return {
+            job_id: log.job_id,
+            client_name: task.client_name || '',
+            project_title: task.project_title || '',
+            assignee: getAssigneeDisplay(task.assignee),
+            actor_name: log.actor_name,
+            status_at_time: log.status_at_time,
+            note_text: log.note_text,
+            created_at: log.created_at
+        };
+    });
 
     const teamRows = buildTeamSummaryRows(tasks);
     const agingRows = buildStatusAgingRows(tasks);
+    const dataGapRows = getReportingDataGapRows(tasks);
 
     downloadTextFile(`${base}_tasks.csv`, rowsToCSV(Object.keys(taskRows[0]), taskRows), 'text/csv;charset=utf-8;');
     downloadTextFile(`${base}_activity_logs.csv`, rowsToCSV(['job_id', 'action_type', 'actor_name', 'old_value', 'new_value', 'note_text', 'created_at'], activityRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_notes_history.csv`, rowsToCSV(['job_id', 'actor_name', 'status_at_time', 'note_text', 'created_at'], noteRows), 'text/csv;charset=utf-8;');
+    downloadTextFile(`${base}_notes_history.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'assignee', 'actor_name', 'status_at_time', 'note_text', 'created_at'], noteRows), 'text/csv;charset=utf-8;');
     downloadTextFile(`${base}_team_summary.csv`, rowsToCSV(['pic', 'active_tasks', 'completed_tasks', 'overdue_tasks', 'total_revisions', 'avg_completion_hours', 'job_types', 'regions'], teamRows), 'text/csv;charset=utf-8;');
     downloadTextFile(`${base}_status_aging.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'started_at', 'ended_at', 'duration_hours'], agingRows), 'text/csv;charset=utf-8;');
+    downloadTextFile(`${base}_data_gaps.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'work_status', 'missing_fields', 'recommendation'], dataGapRows), 'text/csv;charset=utf-8;');
     downloadTextFile(`${base}_report_context.md`, buildReportContext(tasks), 'text/markdown;charset=utf-8;');
 
     showNotification('Report Pack Exported', 'Upload the files to ChatGPT');
