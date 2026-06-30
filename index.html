@@ -158,7 +158,7 @@
                 <h3 id="welcomeTitle" style="color: var(--text-strong); margin-bottom: 20px; font-weight: 800; letter-spacing: -0.02em;"></h3>
                 <select id="userNameSelect" class="intro-field" onchange="toggleIntroManualInput()"></select>
                 <select id="globalRegionSelect" class="intro-field" style="display:none;">
-                    <option value="">Select your Country...</option><option value="Japan">Japan</option><option value="Singapore">Singapore</option><option value="Hong Kong">Hong Kong</option><option value="China">China</option><option value="Vietnam">Vietnam</option><option value="Others">Others</option>
+                    <option value="">Select your Country...</option><option value="Singapore">Singapore</option><option value="Hong Kong">Hong Kong</option><option value="China">China</option><option value="Vietnam">Vietnam</option><option value="Japan">Japan</option><option value="Thailand">Thailand</option><option value="Philippines">Philippines</option><option value="Taiwan">Taiwan</option><option value="South Korea">South Korea</option><option value="Australia">Australia</option><option value="New Zealand">New Zealand</option>
                 </select>
                 <input type="text" id="introManualName" class="intro-field intro-input" placeholder="Type your name here..." style="display: none;">
                 <button class="intro-btn" onclick="startApp()">Start Now <i data-lucide="arrow-right" style="width: 20px;"></i></button>
@@ -194,6 +194,7 @@
                 <div class="nav-item" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> <span>Done Tasks</span></div>
                 <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
                 <div class="nav-item btn-creative-leave" id="btn-leave" onclick="showPage('leave')"><i data-lucide="user-minus"></i> <span>Creative Team Leave</span></div>
+                <div class="nav-item" id="btn-settings" onclick="showPage('settings')"><i data-lucide="settings"></i> <span>Settings</span></div>
             </div>
             <div class="bottom-actions">
                 <button id="themeBtn" class="action-btn" onclick="toggleTheme(event)"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
@@ -232,30 +233,37 @@
                 </div>
 
                 <div class="stat-banner">
-                    <div class="stat-box" style="border-top: 4px solid #3b82f6;">
+                    <div class="stat-box">
                         <div class="stat-header"><h4>Total Jobs</h4><i data-lucide="folder-open"></i></div>
                         <p id="total-val">0</p>
                     </div>
-                    <div class="stat-box" style="border-top: 4px solid var(--orange);">
+                    <div class="stat-box">
                         <div class="stat-header"><h4>Awaiting Approval</h4><i data-lucide="clock"></i></div>
                         <p id="pending-val">0</p>
                     </div>
-                    <div class="stat-box" style="border-top: 4px solid var(--green);">
+                    <div class="stat-box">
                         <div class="stat-header"><h4>In Progress (Active)</h4><i data-lucide="activity"></i></div>
                         <p id="active-val">0</p>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-header"><h4>Due Soon</h4><i data-lucide="timer"></i></div>
+                        <p id="due-soon-val">0</p>
                     </div>
                 </div>
 
                 <div class="mobile-dash-tabs">
-                    <button class="dash-tab-btn active" id="btn-tab-recent" onclick="switchDashTab('recent')"><i data-lucide="clock"></i> Latest</button>
+                    <button class="dash-tab-btn active" id="btn-tab-recent" onclick="switchDashTab('recent')"><i data-lucide="layout-list"></i> Overview</button>
                     <button class="dash-tab-btn" id="btn-tab-cal" onclick="switchDashTab('cal')"><i data-lucide="calendar"></i> Calendar</button>
-                    <button class="dash-tab-btn" id="btn-tab-radar" onclick="switchDashTab('radar')"><i data-lucide="activity"></i> Radar</button>
+                    <button class="dash-tab-btn" id="btn-tab-radar" onclick="switchDashTab('radar')"><i data-lucide="users"></i> Team</button>
                 </div>
 
                 <div id="section-recent" class="dash-section active-section">
                     <div class="dash-grid-top">
                         <div class="dash-card">
-                            <h3>5 Latest Requests</h3>
+                            <h3>
+                                <span>Latest Requests</span>
+                                <span class="dashboard-chip">Latest 5</span>
+                            </h3>
                             <div class="table-responsive">
                                 <table class="recent-table">
                                     <thead><tr><th>Job ID</th><th>Client / Title</th><th>Deadline</th><th style="text-align:center;">Status</th></tr></thead>
@@ -267,8 +275,8 @@
                         </div>
                         <div class="dash-card">
                             <h3>
-                                <span style="display:flex; align-items:center; gap:8px;"><i data-lucide="alert-circle" style="color:var(--orange); width:18px;"></i> Urgent Deadlines</span> 
-                                <span style="font-size:0.75rem; font-weight:500; color:var(--text-muted); background:var(--bg-box); padding:4px 8px; border-radius:4px;">Next 7 Days</span>
+                                <span>Needs Attention</span>
+                                <span class="dashboard-chip">Next 7 Days</span>
                             </h3>
                             <div id="urgent-list">
                                 <div class="skeleton-table-row" style="height: 60px;"></div>
@@ -279,7 +287,7 @@
                 
                 <div id="section-cal" class="dash-section">
                     <div class="dash-card" style="margin-bottom: 25px;">
-                        <h3><span style="display:flex; align-items:center; gap:8px;"><i data-lucide="calendar-days" style="color:var(--link-color); width:18px;"></i> Calendar</span></h3>
+                        <h3><span>Calendar</span></h3>
                         <div id="deadline-calendar" class="calendar-wrapper">
                             <div class="skeleton-table-row" style="height: 300px;"></div>
                         </div>
@@ -288,8 +296,20 @@
 
                 <div id="section-radar" class="dash-section">
                     <div class="dash-grid-bottom" id="radarContainer">
+                        <div class="dash-card admin-health-card" id="adminHealthCard" style="display:none;">
+                            <h3>
+                                <span>Admin Health</span>
+                                <span id="healthScoreBadge" class="health-score-badge">--</span>
+                            </h3>
+                            <div id="adminHealthDashboard">
+                                <div class="skeleton-table-row"></div>
+                            </div>
+                        </div>
                         <div class="dash-card">
-                            <h3>Team Capacity Radar (Active Jobs)</h3>
+                            <h3>
+                                <span>Team Capacity</span>
+                                <span class="dashboard-chip">Active Jobs</span>
+                            </h3>
                             <div class="workload-grid" id="team-workload">
                                 <div class="skeleton-table-row"></div>
                             </div>
@@ -343,6 +363,7 @@
                         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                             <button onclick="loadArchivedJobs()" class="premium-admin-btn" id="btnLoadArchive" style="display:none;"><i data-lucide="clock-4"></i> Load Archived</button>
                             <button onclick="exportToCSV()" class="premium-admin-btn" id="btnExportCSV" style="display:none;"><i data-lucide="download"></i> Export CSV</button>
+                            <button onclick="exportReportPack()" class="premium-admin-btn" id="btnExportReportPack" style="display:none;"><i data-lucide="file-down"></i> Export Report Pack</button>
                         </div>
                     </div>
                 </div>
@@ -350,6 +371,128 @@
                 <div id="doneList">
                     <div class="project-grid">
                         <div class="skeleton-card"><div class="skeleton-row"></div><div class="skeleton-row full"></div><div class="skeleton-row half"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="settings" class="page">
+                <div class="settings-hero">
+                    <div>
+                        <h1>Settings</h1>
+                        <p>Manage workspace access, team members, and admin tools.</p>
+                    </div>
+                    <span id="settingsAdminState" class="settings-state-pill">View Mode</span>
+                </div>
+
+                <div class="settings-grid">
+                    <div class="settings-panel">
+                        <div class="settings-panel-head">
+                            <div>
+                                <span>People</span>
+                                <h3>Add Team Member</h3>
+                            </div>
+                            <i data-lucide="user-plus"></i>
+                        </div>
+                        <form class="settings-form" onsubmit="addTeamMember(event)">
+                            <div class="input-group">
+                                <label>Name</label>
+                                <input type="text" id="settingsMemberName" placeholder="e.g. New Creative Name">
+                            </div>
+                            <div class="settings-form-row">
+                                <div class="input-group">
+                                    <label>Region</label>
+                                    <select id="settingsMemberRegion">
+                                        <option value="Malaysia">Malaysia</option>
+                                        <option value="Indonesia">Indonesia</option>
+                                        <option value="Singapore">Singapore</option>
+                                        <option value="Hong Kong">Hong Kong</option>
+                                        <option value="China">China</option>
+                                        <option value="Vietnam">Vietnam</option>
+                                        <option value="Japan">Japan</option>
+                                        <option value="Thailand">Thailand</option>
+                                        <option value="Philippines">Philippines</option>
+                                        <option value="Taiwan">Taiwan</option>
+                                        <option value="South Korea">South Korea</option>
+                                        <option value="Australia">Australia</option>
+                                        <option value="New Zealand">New Zealand</option>
+                                    </select>
+                                </div>
+                                <div class="input-group">
+                                    <label>Access Type</label>
+                                    <select id="settingsMemberRole">
+                                        <option value="Creative">Creative PIC</option>
+                                        <option value="Requester">Requester Only</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button type="submit" id="btnAddTeamMember" class="settings-primary-btn"><i data-lucide="plus"></i> Add Member</button>
+                        </form>
+                    </div>
+
+                    <div class="settings-panel">
+                        <div class="settings-panel-head">
+                            <div>
+                                <span>Access</span>
+                                <h3>Admin Access</h3>
+                            </div>
+                            <i data-lucide="shield"></i>
+                        </div>
+                        <div class="settings-form">
+                            <div class="input-group">
+                                <label>Team Member</label>
+                                <select id="settingsAdminMember"></select>
+                            </div>
+                            <div class="settings-actions settings-actions-inline">
+                                <button type="button" id="btnGrantAdmin" onclick="setMemberAdminAccess(true)" class="settings-action-btn"><i data-lucide="user-check"></i><span>Make Admin</span></button>
+                                <button type="button" id="btnRevokeAdmin" onclick="setMemberAdminAccess(false)" class="settings-action-btn"><i data-lucide="user-x"></i><span>Remove</span></button>
+                            </div>
+                            <div id="settingsAdminHelp" class="settings-note"></div>
+                            <div id="settingsAdminList" class="settings-admin-list"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-panel">
+                        <div class="settings-panel-head">
+                            <div>
+                                <span>Coverage</span>
+                                <h3>Workspace Countries</h3>
+                            </div>
+                            <i data-lucide="globe-2"></i>
+                        </div>
+                        <div id="settingsCountryList" class="settings-country-list"></div>
+                    </div>
+
+                    <div class="settings-panel">
+                        <div class="settings-panel-head">
+                            <div>
+                                <span>Workspace</span>
+                                <h3>Admin Tools</h3>
+                            </div>
+                            <i data-lucide="sliders-horizontal"></i>
+                        </div>
+                        <div class="settings-actions">
+                            <button type="button" onclick="fetchSupabaseData(true)" class="settings-action-btn"><i data-lucide="refresh-cw"></i><span>Refresh Data</span></button>
+                            <button type="button" onclick="exportReportPack()" class="settings-action-btn settings-admin-only"><i data-lucide="file-down"></i><span>Export Report Pack</span></button>
+                            <button type="button" onclick="openArchiveModal()" class="settings-action-btn settings-admin-only"><i data-lucide="archive"></i><span>Archive Data</span></button>
+                            <button type="button" onclick="toggleTheme(event)" class="settings-action-btn"><i data-lucide="sun"></i><span>Toggle Theme</span></button>
+                        </div>
+                        <div class="settings-note">
+                            <i data-lucide="shield-check"></i>
+                            <span>Daily auto sign-out is active for every user.</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-panel settings-wide">
+                        <div class="settings-panel-head">
+                            <div>
+                                <span>Roster</span>
+                                <h3>Current Team</h3>
+                            </div>
+                            <i data-lucide="users"></i>
+                        </div>
+                        <div id="settingsTeamList" class="settings-team-list">
+                            <div class="skeleton-table-row"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -492,7 +635,7 @@
                         <div class="form-row">
                             <div class="input-group">
                                 <label>Office / Region</label>
-                                <select id="pRegion"><option>Malaysia</option><option>Hong Kong</option><option>Singapore</option><option>Indonesia</option><option>Vietnam</option><option>Japan</option><option>China</option></select>
+                                <select id="pRegion"><option>Malaysia</option><option>Indonesia</option><option>Singapore</option><option>Hong Kong</option><option>China</option><option>Vietnam</option><option>Japan</option><option>Thailand</option><option>Philippines</option><option>Taiwan</option><option>South Korea</option><option>Australia</option><option>New Zealand</option></select>
                             </div>
                         </div>
                         <div class="form-navigation" style="justify-content: flex-end;">
@@ -733,6 +876,41 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
             <button class="btn-nav btn-prev" onclick="closeHandoverModal()"><i data-lucide="x"></i> Cancel Leave</button>
             <button class="btn-nav btn-submit" id="btnConfirmHandover" onclick="executeHandover()" style="background: var(--orange);"><i data-lucide="plane"></i> Confirm & Set Leave</button>
         </div>
+    </div>
+</div>
+<div class="modal-overlay" id="returnLeaveOverlay" style="z-index: 9999; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+    <div class="custom-modal" style="text-align: center; max-width: 400px; padding: 40px 30px;">
+        <div style="background: rgba(16, 185, 129, 0.1); width: 70px; height: 70px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px auto;">
+            <i data-lucide="sun" style="width: 35px; height: 35px; color: var(--green);"></i>
+        </div>
+        <h2 style="margin-bottom: 10px; color: var(--text-strong); font-size: 1.5rem;">Welcome Back!</h2>
+        <p style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 25px; line-height: 1.5;">You are currently marked as <strong>On Leave</strong>. Enter your passcode to unlock your workspace and pull back your handed-over tasks.</p>
+
+        <input type="password" id="returnPasscodeInput" placeholder="Enter Passcode" style="width: 100%; text-align: center; margin-bottom: 25px; font-size: 1.1rem; padding: 12px; letter-spacing: 2px;">
+
+        <div class="action-buttons" style="justify-content: center; flex-direction: column; gap: 10px;">
+            <button class="btn-action btn-submit" id="btnConfirmReturn" onclick="confirmReturnFromLeave()" style="background: var(--green); border-color: var(--green); width: 100%; padding: 12px; font-size: 1rem;"><i data-lucide="check-circle"></i> I'm Back to Work</button>
+            <button class="btn-action" onclick="peekWorkspace()" style="background: transparent; color: var(--text-muted); border: 1px solid transparent; font-size: 0.85rem; width: 100%; padding: 10px; transition: 0.2s;" onmouseover="this.style.color='var(--text-main)'" onmouseout="this.style.color='var(--text-muted)'"><i data-lucide="eye" style="width:16px;"></i> Just peeking (Keep me on leave)</button>
+        </div>
+        <div class="modal-overlay" id="returnLeaveOverlay" style="z-index: 9999; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+    </div>
+
+<script>
+    function peekWorkspace() {
+        const overlay = document.getElementById('returnLeaveOverlay');
+        if (overlay) {
+            // Buang animasi & sorokkan pintu
+            overlay.classList.remove('show');
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 300);
+        }
+        // Tembak notifikasi kalau fungsi showNotification dah sedia
+        if (typeof showNotification === 'function') {
+            showNotification('View Only Mode', 'You are still on leave. Relax!');
+        }
+    }
+</script>
     </div>
 </div>
 

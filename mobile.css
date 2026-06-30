@@ -68,6 +68,17 @@
 /* 5. ELEMEN LAIN (Saiz font & card) */
 input, select, textarea { font-size: 16px !important; }
 .kanban-card { padding: 18px !important; border-radius: 12px !important; }
+.request-type-pill.compact { font-size: 0.58rem !important; min-height: 21px !important; }
+.monthly-progress-mini > div:first-child {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+}
+.monthly-progress-mini strong { text-align: left !important; }
+.monthly-flow-head {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+}
 
 /* 6. KEMASKINI RUANG KOSONG (TOP SPACING FIX) */
 .main-content { 
