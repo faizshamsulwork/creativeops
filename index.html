@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Adtechinno | Creative Engine 2.0</title>
     <link rel="icon" type="image/png" href="AdTechinno-globe.png">
-    
+
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -14,7 +14,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <link rel="stylesheet" href="style.css?v=2">
@@ -138,7 +138,7 @@
     <div id="introPage" class="intro-overlay">
         <div class="intro-content" id="introBox">
             <img src="AdTechinno.png" alt="Logo" class="intro-logo">
-            
+
             <div id="countrySelectStep">
                 <h2 style="color: var(--text-strong); font-weight: 800; letter-spacing: -0.02em;">Select Region</h2>
                 <div class="country-grid">
@@ -149,7 +149,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div id="nameSelectStep" style="display: none;">
                 <button onclick="backToRegion()" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 5px; margin: 0 auto 15px auto; font-size: 0.85rem; font-weight: 600; transition: 0.2s;">
                     <i data-lucide="arrow-left" style="width: 16px;"></i> Change Region
@@ -163,7 +163,7 @@
                 <input type="text" id="introManualName" class="intro-field intro-input" placeholder="Type your name here..." style="display: none;">
                 <button class="intro-btn" onclick="startApp()">Start Now <i data-lucide="arrow-right" style="width: 20px;"></i></button>
             </div>
-            
+
             <div id="syncStep" style="display: none;">
                 <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-strong); margin-top: 20px; letter-spacing: -0.02em;" id="syncMsg"></div>
                 <span style="font-size: 0.95rem; color: var(--text-muted); font-weight: 600; margin-top: 15px; display: flex; align-items: center; justify-content: center; gap: 8px;">
@@ -178,7 +178,7 @@
                     </div>
                 </div>
             </div>
-            
+
         </div> </div> <div id="app-wrapper">
         <div class="sidebar">
             <div class="logo-container">
@@ -194,6 +194,7 @@
                 <div class="nav-item" id="btn-done" onclick="showPage('done')"><i data-lucide="check-circle"></i> <span>Done Tasks</span></div>
                 <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
                 <div class="nav-item btn-creative-leave" id="btn-leave" onclick="showPage('leave')"><i data-lucide="user-minus"></i> <span>Creative Team Leave</span></div>
+                <div class="nav-item" id="btn-team-review" onclick="showPage('team-review')"><i data-lucide="clipboard-check"></i> <span>Team Review</span></div>
                 <div class="nav-item" id="btn-settings" onclick="showPage('settings')"><i data-lucide="settings"></i> <span>Settings</span></div>
             </div>
             <div class="bottom-actions">
@@ -205,7 +206,7 @@
         </div>
 
         <div class="main-content">
-            
+
             <div id="dashboard" class="page active">
                 <div class="welcome-banner">
                     <div class="welcome-text">
@@ -284,7 +285,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div id="section-cal" class="dash-section">
                     <div class="dash-card" style="margin-bottom: 25px;">
                         <h3><span>Calendar</span></h3>
@@ -321,7 +322,7 @@
             <div id="workload" class="page">
                 <h1 style="margin-bottom: 5px;">Request Status Board</h1>
                 <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Track progress. Click any card to view full details.</p>
-                
+
                 <div class="controls-container">
                     <div class="search-box">
                         <i data-lucide="search"></i>
@@ -344,22 +345,22 @@
                 <div id="kanbanBoardContainer" class="kanban-board-wrapper" style="display: none;">
                     </div>
             </div>
-            
+
             <div id="done" class="page">
                 <h1 style="margin-bottom: 5px;">Done Tasks</h1>
                 <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Archive of completed creative requests.</p>
-                
+
                 <div class="controls-container" style="flex-direction: column; align-items: stretch; gap: 15px;">
                     <div class="search-box">
                         <i data-lucide="search"></i>
                         <input type="text" id="searchDone" placeholder="Search Client Name, Job ID, or Assignee..." onkeyup="renderBoards()">
                     </div>
-                    
+
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                         <button onclick="toggleDoneView()" class="premium-admin-btn" style="background: var(--bg-card); color: var(--text-main); width: auto; min-width: auto; padding: 8px 16px;">
                             <i data-lucide="layout-grid" id="doneViewIcon"></i> <span id="doneViewBtnText">Board View</span>
                         </button>
-                        
+
                         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                             <button onclick="loadArchivedJobs()" class="premium-admin-btn" id="btnLoadArchive" style="display:none;"><i data-lucide="clock-4"></i> Load Archived</button>
                             <button onclick="exportToCSV()" class="premium-admin-btn" id="btnExportCSV" style="display:none;"><i data-lucide="download"></i> Export CSV</button>
@@ -372,6 +373,92 @@
                     <div class="project-grid">
                         <div class="skeleton-card"><div class="skeleton-row"></div><div class="skeleton-row full"></div><div class="skeleton-row half"></div></div>
                     </div>
+                </div>
+            </div>
+
+            <div id="team-review" class="page">
+                <div class="team-review-hero">
+                    <div>
+                        <span>Team Feedback</span>
+                        <h1>Team Review</h1>
+                        <p>Simple review rounds with private passes, clean tracking, and export-ready reporting.</p>
+                    </div>
+                    <button type="button" onclick="exportTeamReviewPack()" class="review-export-btn settings-admin-only"><i data-lucide="file-down"></i><span>Export Review Pack</span></button>
+                </div>
+
+                <div class="team-review-shell">
+                    <section class="review-panel review-access-panel">
+                        <div class="review-panel-head">
+                            <div>
+                                <span>Reviewer</span>
+                                <h3>Paste Review Pass</h3>
+                            </div>
+                            <i data-lucide="key-round"></i>
+                        </div>
+                        <div class="review-simple-steps reviewer-flow">
+                            <div><strong>1</strong><span>Pass</span></div>
+                            <div><strong>2</strong><span>Rate</span></div>
+                            <div><strong>3</strong><span>Submit</span></div>
+                        </div>
+                        <div class="review-code-box">
+                            <div class="review-code-input-row">
+                                <input type="password" id="teamReviewCodeInput" placeholder="Review pass" autocomplete="off" onkeypress="if(event.key==='Enter') unlockTeamReviewCode()">
+                                <button type="button" onclick="unlockTeamReviewCode()"><i data-lucide="unlock"></i><span>Open</span></button>
+                            </div>
+                            <small>Each pass opens one assigned review.</small>
+                        </div>
+                        <div id="activeReviewForm" class="active-review-form"></div>
+                    </section>
+
+                    <section id="teamReviewAdminPanel" class="review-panel review-admin-panel settings-admin-only">
+                        <div class="review-panel-head">
+                            <div>
+                                <span>Admin</span>
+                                <h3>Create Review Round</h3>
+                            </div>
+                            <i data-lucide="shield-check"></i>
+                        </div>
+
+                        <div id="teamReviewMetrics" class="review-metrics-grid"></div>
+
+                        <div class="review-simple-steps admin-flow">
+                            <div><strong>1</strong><span>Round</span></div>
+                            <div><strong>2</strong><span>Pairs</span></div>
+                            <div><strong>3</strong><span>Passes</span></div>
+                        </div>
+
+                        <form class="review-cycle-form" onsubmit="createTeamReviewCycle(event)">
+                            <div class="review-form-grid">
+                                <div class="input-group">
+                                    <label>Review Round</label>
+                                    <input type="text" id="reviewCycleTitle" placeholder="July 2026 Team Review">
+                                </div>
+                                <div class="input-group">
+                                    <label>Deadline</label>
+                                    <input type="date" id="reviewCycleDeadline">
+                                </div>
+                            </div>
+
+                            <div class="review-pair-builder">
+                                <div class="review-pair-grid">
+                                    <div class="input-group">
+                                        <label>Reviewer</label>
+                                        <select id="reviewReviewerSelect"></select>
+                                    </div>
+                                    <div class="input-group">
+                                        <label>Team Member To Review</label>
+                                        <select id="reviewRevieweeSelect"></select>
+                                    </div>
+                                    <button type="button" onclick="addReviewPairDraft()" class="review-add-pair-btn"><i data-lucide="user-plus"></i><span>Add Pair</span></button>
+                                </div>
+                                <div id="reviewPairDraftList" class="review-pair-draft-list"></div>
+                            </div>
+
+                            <button type="submit" id="btnCreateReviewCycle" class="review-create-btn"><i data-lucide="plus-circle"></i><span>Create Round & Passes</span></button>
+                        </form>
+
+                        <div id="teamReviewCycleList" class="review-cycle-list"></div>
+                    </section>
                 </div>
             </div>
 
@@ -496,11 +583,11 @@
                     </div>
                 </div>
             </div>
-            
+
             <div id="leave" class="page">
                 <h1 style="margin-bottom: 5px;">Creative Team Leave</h1>
                 <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;">Update your availability status here.</p>
-                
+
                 <div class="card-form" style="border-left: 1px solid var(--border-main);">
                     <div class="form-row">
                         <div class="input-group">
@@ -527,7 +614,7 @@
                             <input type="password" id="leavePasscode" placeholder="Enter your secret PIN">
                         </div>
                     </div>
-                    
+
                     <div class="input-group" style="margin-bottom: 20px;">
                         <label>Type of Leave</label>
                         <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
@@ -561,13 +648,13 @@
                             <option value="PM (Half)">PM (Half)</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-navigation" style="justify-content: flex-end; gap: 15px;">
                         <button class="btn-nav btn-prev" id="btnResetLeave" onclick="submitLeave('Active')" style="border-color: var(--accent);"><i data-lucide="check-circle"></i> I'm Back (Reset)</button>
                         <button class="btn-nav btn-submit" id="btnSetLeave" onclick="submitLeave('On Leave')" style="background: var(--red);"><i data-lucide="plane"></i> Set On Leave</button>
                     </div>
                 </div>
-                
+
                 <div id="leaveHistoryContainer" style="margin-top: 30px; border-top: 1px dashed var(--border-main); padding-top: 20px; display: none;">
                     <h3 style="font-size: 1rem; color: var(--text-strong); margin-top: 0; margin-bottom: 15px;"><i data-lucide="history" style="width: 18px; display: inline-block; vertical-align: middle; margin-right: 5px;"></i> Upcoming Leaves</h3>
                     <div id="leaveHistoryList" style="display: flex; flex-direction: column; gap: 10px;"></div>
@@ -586,7 +673,7 @@
             <div id="request" class="page">
                 <h1 style="margin-bottom: 10px;">Create New Request</h1>
                 <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 0.9rem;" id="requestSubtitle">Please select the type of campaign you want to request.</p>
-                
+
                <div id="request-gateway" class="gateway-grid">
                     <div class="gateway-card" onclick="selectRequestType('adhoc')">
                         <div class="gateway-icon"><i data-lucide="zap" style="width: 30px; height: 30px;"></i></div>
@@ -606,9 +693,9 @@
                 </div>
 
                 <div class="card-form" id="request-form-area" style="display:none; border-left: 1px solid var(--border-main); padding-top: 40px; margin-top: 20px;">
-                    
+
                     <button onclick="resetRequestGateway()" style="position: absolute; top: 15px; left: 15px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 0.8rem; font-weight: 600; transition: 0.2s;"><i data-lucide="arrow-left" style="width: 14px;"></i> Back to Options</button>
-                    
+
                     <div style="text-align: center; margin-bottom: 30px;">
                         <span id="formBadge" style="background: var(--bg-box); color: var(--accent); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; border: 1px solid var(--border-main); letter-spacing: 0.5px;">AD-HOC REQUEST</span>
                     </div>
@@ -646,22 +733,22 @@
                     <div class="form-step" id="step2">
                         <h3 class="section-title">2. Project Details</h3>
                         <div class="form-row">
-                            
+
                             <div class="input-group" style="position: relative;">
                                 <label>Client Name</label>
                                 <input type="text" id="pClient" placeholder="Select or type client name..." autocomplete="off" onfocus="showClientDropdown()" onkeyup="filterClientDropdown()" onblur="hideClientDropdown()">
                                 <div id="customClientList" class="premium-dropdown"></div>
                             </div>
-                            
+
                             <div class="input-group">
                                 <label>Project Title</label>
                                 <input type="text" id="pTitle" placeholder="e.g. Q3 Promo Campaign">
                             </div>
-                            
+
                         </div>
-                        
+
                         <h3 class="section-title" style="margin-top: 10px;">3. Job Specifications</h3>
-                        
+
                         <div id="jobTypesContainer">
                             <div class="input-group" style="margin-bottom: 20px;">
                                 <label>Job Type (Select all that apply)</label>
@@ -718,7 +805,7 @@
 
                     <div class="form-step" id="step3">
                         <h3 class="section-title">4. Creative Brief & Timeline</h3>
-                        
+
                         <div id="standardBriefContainer">
                             <div class="input-group" style="margin-bottom: 20px;">
                                 <label>Objective (Select all that apply)</label>
@@ -759,7 +846,7 @@
                             </div>
                             <div class="input-group" id="structuredBriefContainer" style="margin-bottom: 20px; padding: 20px; background: rgba(14, 165, 233, 0.03); border: 1px dashed var(--link-color); border-radius: 12px;">
     <label style="color: var(--link-color); margin-bottom: 15px;"><i data-lucide="layout-template" style="width: 18px;"></i> 5-Point Creative Brief</label>
-    
+
     <div style="display: flex; flex-direction: column; gap: 15px;">
         <div>
             <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">1. The "Big Idea" / Main Message <span style="color:var(--red);">*</span></label>
@@ -783,16 +870,16 @@
             <textarea id="briefMandatory" rows="2" placeholder="e.g. Must include new logo. DO NOT use the color red or cursive fonts." style="font-size: 0.9rem; padding: 10px;"></textarea>
         </div>
     </div>
-    
+
     <input type="hidden" id="pBrief">
 </div>
 </div> <div id="pitchBriefContainer" style="display: none; padding: 20px; background: rgba(245, 158, 11, 0.05); border: 1px dashed var(--orange); border-radius: 12px; margin-bottom: 20px;">
     <div class="input-group" style="margin-bottom: 20px;">
-        <label>The "Big Idea" / Core Strategy 
+        <label>The "Big Idea" / Core Strategy
             <div class="tooltip-container">
                                         <i data-lucide="help-circle" class="info-tooltip"></i>
                                         <div class="tooltip-box">What is the single most important message you want the client to remember?
-                                        
+
 Good Example: "We want to position the brand as the No.1 lifestyle choice for Gen-Z in Malaysia by leveraging TikTok culture and gamification."</div>
                                     </div>
                                 </label>
@@ -809,7 +896,7 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
                                 </div>
                             </div>
                             <div class="input-group">
-                                <label>Actual Pitch Date 
+                                <label>Actual Pitch Date
                                     <div class="tooltip-container">
                                         <i data-lucide="help-circle" class="info-tooltip"></i>
                                         <div class="tooltip-box">When is the actual presentation meeting with the client? Giving the exact date helps the Creative Lead prioritize and schedule this deck against other urgent ad-hoc tasks.</div>
@@ -830,7 +917,7 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
                             <input type="hidden" id="pRefLink">
                         </div>
                         <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
-                        
+
                         <div class="form-navigation">
                             <button class="btn-nav btn-prev" onclick="goToStep(2)"><i data-lucide="arrow-left"></i> Back</button>
                             <button class="btn-nav btn-submit" id="submitBtn" onclick="submitRequest()"><i data-lucide="send"></i> Submit Request</button>
@@ -839,16 +926,16 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
 
                 </div>
                    </div>
-                    </div> </div> </div> </div> </div> 
+                    </div> </div> </div> </div> </div>
 
 <div class="modal-overlay" id="assetGateOverlay">
     <div class="custom-modal" style="text-align: center; max-width: 350px;">
         <i data-lucide="folder-lock" style="width: 50px; height: 50px; color: var(--orange); margin: 0 auto 15px auto;"></i>
         <h3 style="margin-bottom: 10px;">Creative Team Only</h3>
         <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">Enter the passcode to access AdTechinno branding assets.</p>
-        
+
         <input type="password" id="assetPasscodeInput" placeholder="Enter Passcode" style="width: 100%; text-align: center; margin-bottom: 20px;">
-        
+
         <div class="action-buttons" style="justify-content: center;">
             <button class="btn-action" onclick="closeAssetGate()" style="background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-main);">Cancel</button>
             <button class="btn-action btn-submit" onclick="verifyAssetPasscode()" style="background: var(--orange); border-color: var(--orange);">Access Vault</button>
@@ -859,11 +946,11 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
     <div class="custom-modal" style="max-width: 600px;">
         <div class="modal-header">
             <h3 style="display: flex; align-items: center; gap: 10px;">
-                <i data-lucide="clipboard-check" style="color: var(--orange);"></i> 
+                <i data-lucide="clipboard-check" style="color: var(--orange);"></i>
                 Handover Checklist
             </h3>
             </div>
-        
+
         <div style="margin-bottom: 20px; font-size: 0.9rem; color: var(--text-strong); background: rgba(245, 158, 11, 0.1); padding: 15px; border-radius: 12px; border: 1px dashed var(--orange);">
             <p style="margin:0;"><strong>Wait! You still have active jobs.</strong><br><span style="color: var(--text-muted);">Before you go on leave, you MUST assign a takeover PIC and provide the working file links (Drive/Figma/Canva) for the tasks below.</span></p>
         </div>

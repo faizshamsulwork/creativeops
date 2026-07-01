@@ -20,6 +20,12 @@ let globalTeamStatus = [];
 let globalHandovers = [];
 let globalActivityLogs = [];
 let globalNoteLogs = [];
+let globalReviewCycles = [];
+let globalReviewAssignments = [];
+let globalReviewResponses = [];
+let reviewPairDraft = [];
+let activeReviewAssignment = null;
+let activeReviewDraft = null;
 let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
 let currentRegionFilter = 'all';
@@ -29,6 +35,8 @@ let currentRequestType = 'adhoc';
 const CORE_CREATIVE_NAMES = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
 const SUPER_ADMIN_NAMES = ["Faiz Shamsul"];
 const ADMIN_ACCESS_STORAGE_KEY = 'adtech_admin_members_override';
+const TEAM_REVIEW_LOCAL_KEY = 'adtech_team_review_store';
+const TEAM_REVIEW_CODE_VAULT_KEY = 'adtech_team_review_code_vault';
 const WORKSPACE_COUNTRIES = [
     { name: 'Malaysia', code: 'MY', flag: '🇲🇾', timezone: 'Asia/Kuala_Lumpur', primary: true },
     { name: 'Indonesia', code: 'ID', flag: '🇮🇩', timezone: 'Asia/Jakarta', primary: true },
@@ -43,6 +51,49 @@ const WORKSPACE_COUNTRIES = [
     { name: 'South Korea', code: 'KR', flag: '🇰🇷', timezone: 'Asia/Seoul' },
     { name: 'Australia', code: 'AU', flag: '🇦🇺', timezone: 'Australia/Sydney' },
     { name: 'New Zealand', code: 'NZ', flag: '🇳🇿', timezone: 'Pacific/Auckland' }
+];
+
+const TEAM_REVIEW_QUESTION_GROUPS = [
+    {
+        key: 'work_quality',
+        title: 'Work Quality & Reliability',
+        tone: 'blue',
+        questions: [
+            { id: 'accurate_consistent', text: 'Deliverables are accurate and consistent' },
+            { id: 'meets_deadlines', text: 'Meets deadlines consistently' },
+            { id: 'trusted_tasks', text: 'Can be trusted with important tasks' }
+        ]
+    },
+    {
+        key: 'ownership',
+        title: 'Ownership & Communication',
+        tone: 'green',
+        questions: [
+            { id: 'clear_updates', text: 'Gives clear progress updates' },
+            { id: 'owns_blockers', text: 'Flags blockers early and takes ownership' },
+            { id: 'responsive', text: 'Responds well when collaboration is needed' }
+        ]
+    },
+    {
+        key: 'teamwork',
+        title: 'Teamwork & Collaboration',
+        tone: 'purple',
+        questions: [
+            { id: 'supports_team', text: 'Supports other team members when needed' },
+            { id: 'feedback_attitude', text: 'Handles feedback professionally' },
+            { id: 'positive_working_style', text: 'Contributes to a productive team environment' }
+        ]
+    },
+    {
+        key: 'growth',
+        title: 'Growth & Initiative',
+        tone: 'orange',
+        questions: [
+            { id: 'proactive_ideas', text: 'Brings proactive ideas or improvements' },
+            { id: 'adapts_scope', text: 'Adapts well to changing scope or priorities' },
+            { id: 'keeps_improving', text: 'Shows consistent improvement over time' }
+        ]
+    }
 ];
 
 // ========================================================
@@ -714,6 +765,7 @@ function showPage(id) {
     else if(id === 'workload') navItem = document.getElementById('btn-workload');
     else if(id === 'done') navItem = document.getElementById('btn-done');
     else if(id === 'leave') navItem = document.getElementById('btn-leave');
+    else if(id === 'team-review') navItem = document.getElementById('btn-team-review');
     else if(id === 'settings') navItem = document.getElementById('btn-settings');
 
     if(navItem) navItem.classList.add('active');
@@ -725,6 +777,7 @@ function showPage(id) {
 
     // Render semula data mengikut tab yang aktif
     if (id === 'settings') renderSettingsPage();
+    if (id === 'team-review') renderTeamReviewPage();
 
     if(globalData && globalData.length > 0) {
         if(id === 'dashboard') renderDashboard();
@@ -1218,6 +1271,10 @@ async function fetchSupabaseData(force = false, silent = false) {
                 globalNoteLogs = localNotes;
             }
 
+            if (typeof fetchTeamReviewData === 'function') {
+                await fetchTeamReviewData();
+            }
+
         } catch (e) { console.log("Gagal tarik data sampingan Supabase:", e.message); }
 
        const { data, error } = await supabaseClient.from('creative_requests').select('*').order('created_at', { ascending: false });
@@ -1231,6 +1288,7 @@ async function fetchSupabaseData(force = false, silent = false) {
         if (oldDataString !== newDataString || force) {
             if(document.getElementById('dashboard').classList.contains('active')) renderDashboard();
             if(document.getElementById('workload').classList.contains('active') || document.getElementById('done').classList.contains('active')) renderBoards();
+            if(document.getElementById('team-review')?.classList.contains('active')) renderTeamReviewPage();
             if(document.getElementById('leave').classList.contains('active')) {
                 if(typeof renderLeaveHistory === 'function') renderLeaveHistory();
                 // PAKSA RENDER HANDOVER BILA TAB INI AKTIF
@@ -1273,6 +1331,9 @@ function setupRealtimeSubscription() {
             console.log('Magik Real-Time: Perubahan handover dikesan!', payload);
             fetchSupabaseData(true, true);
         })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_cycles' }, () => fetchSupabaseData(true, true))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_assignments' }, () => fetchSupabaseData(true, true))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_responses' }, () => fetchSupabaseData(true, true))
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('🚀 Berjaya sambung ke Supabase Real-Time!');
@@ -2132,6 +2193,980 @@ async function addTeamMember(event) {
             refreshIcons();
         }
     }
+}
+
+
+// ========================================================
+// 🌟 TEAM REVIEW - PRIVATE FEEDBACK WORKFLOW
+// ========================================================
+function getTeamReviewQuestionList() {
+    return TEAM_REVIEW_QUESTION_GROUPS.flatMap(group => group.questions.map(question => ({
+        ...question,
+        category: group.key,
+        categoryLabel: group.title
+    })));
+}
+
+function getLocalTeamReviewStore() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(TEAM_REVIEW_LOCAL_KEY) || '{}');
+        return {
+            cycles: Array.isArray(parsed.cycles) ? parsed.cycles.map(normalizeReviewCycle) : [],
+            assignments: Array.isArray(parsed.assignments) ? parsed.assignments.map(normalizeReviewAssignment) : [],
+            responses: Array.isArray(parsed.responses) ? parsed.responses.map(normalizeReviewResponse) : []
+        };
+    } catch(e) {
+        return { cycles: [], assignments: [], responses: [] };
+    }
+}
+
+function saveLocalTeamReviewStore(store) {
+    localStorage.setItem(TEAM_REVIEW_LOCAL_KEY, JSON.stringify({
+        cycles: store.cycles || [],
+        assignments: store.assignments || [],
+        responses: store.responses || []
+    }));
+}
+
+function getReviewCodeVault() {
+    try { return JSON.parse(localStorage.getItem(TEAM_REVIEW_CODE_VAULT_KEY) || '{}'); }
+    catch(e) { return {}; }
+}
+
+function setReviewCodeInVault(assignmentId, code) {
+    const vault = getReviewCodeVault();
+    vault[assignmentId] = normalizeReviewCode(code);
+    localStorage.setItem(TEAM_REVIEW_CODE_VAULT_KEY, JSON.stringify(vault));
+}
+
+function getReviewCodeFromVault(assignmentId) {
+    return getReviewCodeVault()[assignmentId] || '';
+}
+
+function mergeRowsById(primaryRows = [], fallbackRows = []) {
+    const map = new Map();
+    [...fallbackRows, ...primaryRows].forEach(row => {
+        if (row?.id) map.set(row.id, row);
+    });
+    return [...map.values()];
+}
+
+function normalizeReviewCycle(row = {}) {
+    return {
+        id: row.id || generateTeamReviewId('cycle'),
+        title: row.title || row.cycle_title || 'Team Review Cycle',
+        status: row.status || 'active',
+        deadline: row.deadline || '',
+        created_by: row.created_by || '',
+        created_at: row.created_at || new Date().toISOString(),
+        updated_at: row.updated_at || row.created_at || new Date().toISOString()
+    };
+}
+
+function normalizeReviewAssignment(row = {}) {
+    return {
+        id: row.id || generateTeamReviewId('assignment'),
+        cycle_id: row.cycle_id || '',
+        reviewer_name: row.reviewer_name || '',
+        reviewer_region: row.reviewer_region || '',
+        reviewee_name: row.reviewee_name || '',
+        reviewee_region: row.reviewee_region || '',
+        review_code_hash: row.review_code_hash || '',
+        review_code_hint: row.review_code_hint || '',
+        status: row.status || 'pending',
+        submitted_at: row.submitted_at || '',
+        created_at: row.created_at || new Date().toISOString()
+    };
+}
+
+function normalizeReviewResponse(row = {}) {
+    return {
+        id: row.id || generateTeamReviewId('response'),
+        assignment_id: row.assignment_id || '',
+        cycle_id: row.cycle_id || '',
+        reviewer_name: row.reviewer_name || '',
+        reviewee_name: row.reviewee_name || '',
+        ratings: parseReviewJson(row.ratings),
+        comments: parseReviewJson(row.comments),
+        strengths: row.strengths || '',
+        improvements: row.improvements || '',
+        final_comment: row.final_comment || '',
+        average_score: Number(row.average_score || 0),
+        submitted_at: row.submitted_at || row.created_at || new Date().toISOString()
+    };
+}
+
+function parseReviewJson(value) {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try { return JSON.parse(value); }
+    catch(e) { return {}; }
+}
+
+function generateTeamReviewId(prefix = 'review') {
+    const randomPart = Math.random().toString(36).slice(2, 9);
+    return `${prefix}_${Date.now()}_${randomPart}`;
+}
+
+function normalizeReviewCode(rawCode) {
+    return String(rawCode || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function generateReviewCode(reviewerName = '') {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const pick = (length) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+    const initials = String(reviewerName || 'RV').replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase().padEnd(2, 'R');
+    return `TR-${initials}-${pick(4)}-${pick(4)}`;
+}
+
+function getReviewCodeHint(code) {
+    const clean = normalizeReviewCode(code);
+    if (clean.length <= 6) return clean;
+    return `${clean.slice(0, 5)}...${clean.slice(-3)}`;
+}
+
+async function hashReviewCode(rawCode) {
+    const normalized = normalizeReviewCode(rawCode);
+    if (!normalized) return '';
+    if (window.crypto?.subtle && window.TextEncoder) {
+        const buffer = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
+        return [...new Uint8Array(buffer)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+
+    let hash = 0;
+    for (let i = 0; i < normalized.length; i++) {
+        hash = ((hash << 5) - hash) + normalized.charCodeAt(i);
+        hash |= 0;
+    }
+    return `fallback-${Math.abs(hash)}-${normalized.length}`;
+}
+
+async function fetchTeamReviewData() {
+    const local = getLocalTeamReviewStore();
+    let cycles = local.cycles;
+    let assignments = local.assignments;
+    let responses = local.responses;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('team_review_cycles')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        cycles = mergeRowsById((data || []).map(normalizeReviewCycle), local.cycles);
+    } catch(e) {
+        if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review cycles fallback:', e.message);
+    }
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('team_review_assignments')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        assignments = mergeRowsById((data || []).map(normalizeReviewAssignment), local.assignments);
+    } catch(e) {
+        if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review assignments fallback:', e.message);
+    }
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('team_review_responses')
+            .select('*')
+            .order('submitted_at', { ascending: false });
+        if (error) throw error;
+        responses = mergeRowsById((data || []).map(normalizeReviewResponse), local.responses);
+    } catch(e) {
+        if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review responses fallback:', e.message);
+    }
+
+    globalReviewCycles = cycles.map(normalizeReviewCycle);
+    globalReviewAssignments = assignments.map(normalizeReviewAssignment);
+    globalReviewResponses = responses.map(normalizeReviewResponse);
+}
+
+function persistReviewDataLocally({ cycles = [], assignments = [], responses = [] }) {
+    const local = getLocalTeamReviewStore();
+    const next = {
+        cycles: mergeRowsById(cycles.map(normalizeReviewCycle), local.cycles),
+        assignments: mergeRowsById(assignments.map(normalizeReviewAssignment), local.assignments),
+        responses: mergeRowsById(responses.map(normalizeReviewResponse), local.responses)
+    };
+    saveLocalTeamReviewStore(next);
+    globalReviewCycles = mergeRowsById(cycles.map(normalizeReviewCycle), globalReviewCycles);
+    globalReviewAssignments = mergeRowsById(assignments.map(normalizeReviewAssignment), globalReviewAssignments);
+    globalReviewResponses = mergeRowsById(responses.map(normalizeReviewResponse), globalReviewResponses);
+}
+
+async function persistTeamReviewCycle(cycle, assignments) {
+    let savedToSupabase = false;
+    let lastError = null;
+    try {
+        const { error: cycleError } = await supabaseClient
+            .from('team_review_cycles')
+            .upsert([cycle], { onConflict: 'id' });
+        if (cycleError) throw cycleError;
+
+        const { error: assignmentError } = await supabaseClient
+            .from('team_review_assignments')
+            .upsert(assignments, { onConflict: 'id' });
+        if (assignmentError) throw assignmentError;
+        savedToSupabase = true;
+    } catch(e) {
+        lastError = e;
+    }
+
+    persistReviewDataLocally({ cycles: [cycle], assignments });
+    return { savedToSupabase, lastError };
+}
+
+async function persistTeamReviewSubmission(assignment, response) {
+    const submittedAt = response.submitted_at || new Date().toISOString();
+    const updatedAssignment = { ...assignment, status: 'submitted', submitted_at: submittedAt };
+    let savedToSupabase = false;
+    let lastError = null;
+
+    try {
+        const { error: responseError } = await supabaseClient
+            .from('team_review_responses')
+            .upsert([{ ...response, submitted_at: submittedAt }], { onConflict: 'id' });
+        if (responseError) throw responseError;
+
+        const { error: assignmentError } = await supabaseClient
+            .from('team_review_assignments')
+            .update({ status: 'submitted', submitted_at: submittedAt })
+            .eq('id', assignment.id);
+        if (assignmentError) throw assignmentError;
+        savedToSupabase = true;
+    } catch(e) {
+        lastError = e;
+    }
+
+    globalReviewAssignments = globalReviewAssignments.map(row => row.id === assignment.id ? normalizeReviewAssignment(updatedAssignment) : row);
+    const withoutOldResponse = globalReviewResponses.filter(row => row.assignment_id !== assignment.id);
+    globalReviewResponses = [normalizeReviewResponse(response), ...withoutOldResponse];
+    persistReviewDataLocally({ assignments: [updatedAssignment], responses: [response] });
+    return { savedToSupabase, lastError };
+}
+
+function getTeamReviewMembers() {
+    const team = (globalTeamMembers || []).map(member => ({
+        name: member.name,
+        region: member.region || 'Global'
+    })).filter(member => member.name);
+
+    if (team.length) {
+        const seen = new Set();
+        return team.filter(member => {
+            const key = normalizeNameKey(member.name);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    }
+
+    return [...new Set([...allStaffMY, ...allStaffID, ...PIC_LIST])].filter(Boolean).map(name => ({
+        name,
+        region: allStaffID.includes(name) || дизайнериID.includes(name) ? 'Indonesia' : 'Malaysia'
+    })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getTeamReviewMemberRegion(name) {
+    const key = normalizeNameKey(name);
+    const member = getTeamReviewMembers().find(row => normalizeNameKey(row.name) === key);
+    return member?.region || 'Global';
+}
+
+function getTeamReviewMemberOptions(selected = '') {
+    const members = getTeamReviewMembers();
+    const grouped = members.reduce((groups, member) => {
+        const region = member.region || 'Global';
+        if (!groups[region]) groups[region] = [];
+        groups[region].push(member);
+        return groups;
+    }, {});
+
+    const orderedRegions = [
+        ...WORKSPACE_COUNTRIES.map(country => country.name).filter(region => grouped[region]),
+        ...Object.keys(grouped).filter(region => !WORKSPACE_COUNTRIES.some(country => country.name === region)).sort()
+    ];
+
+    const optgroups = orderedRegions.map(region => {
+        const rows = grouped[region].sort((a, b) => String(a.name).localeCompare(String(b.name))).map(member => {
+            const selectedAttr = member.name === selected ? 'selected' : '';
+            return `<option value="${escapeHtml(member.name)}" ${selectedAttr}>${escapeHtml(member.name)}</option>`;
+        }).join('');
+        return `<optgroup label="${getFlag(region)} ${escapeHtml(region)}">${rows}</optgroup>`;
+    }).join('');
+
+    return '<option value="">Select member...</option>' + optgroups;
+}
+
+function getReviewCycle(cycleId) {
+    return (globalReviewCycles || []).find(cycle => cycle.id === cycleId) || null;
+}
+
+function getReviewResponseForAssignment(assignmentId) {
+    return (globalReviewResponses || []).find(response => response.assignment_id === assignmentId) || null;
+}
+
+function getReviewCycleAssignments(cycleId) {
+    return (globalReviewAssignments || []).filter(assignment => assignment.cycle_id === cycleId);
+}
+
+function calculateReviewAverage(ratings = {}) {
+    const questionIds = getTeamReviewQuestionList().map(question => question.id);
+    const values = questionIds.map(id => Number(ratings[id])).filter(score => score >= 1 && score <= 5);
+    if (!values.length) return 0;
+    return Math.round((values.reduce((sum, score) => sum + score, 0) / values.length) * 10) / 10;
+}
+
+function getReviewCategoryAverage(ratings = {}, categoryKey) {
+    const group = TEAM_REVIEW_QUESTION_GROUPS.find(item => item.key === categoryKey);
+    if (!group) return '';
+    const values = group.questions.map(question => Number(ratings[question.id])).filter(score => score >= 1 && score <= 5);
+    if (!values.length) return '';
+    return Math.round((values.reduce((sum, score) => sum + score, 0) / values.length) * 10) / 10;
+}
+
+function getDefaultReviewRoundTitle(date = new Date()) {
+    const month = date.toLocaleString('en-MY', { month: 'long' });
+    return `${month} ${date.getFullYear()} Team Review`;
+}
+
+function formatDateForInput(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getDefaultReviewDeadline(date = new Date()) {
+    const deadline = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    return formatDateForInput(deadline);
+}
+
+function setDefaultTeamReviewFields() {
+    const titleInput = document.getElementById('reviewCycleTitle');
+    const deadlineInput = document.getElementById('reviewCycleDeadline');
+    if (titleInput && !titleInput.value.trim()) titleInput.value = getDefaultReviewRoundTitle();
+    if (deadlineInput && !deadlineInput.value) deadlineInput.value = getDefaultReviewDeadline();
+}
+
+function renderTeamReviewPage() {
+    const page = document.getElementById('team-review');
+    if (!page) return;
+
+    const adminAccess = hasAdminAccess();
+    const shell = page.querySelector('.team-review-shell');
+    if (shell) shell.classList.toggle('reviewer-only', !adminAccess);
+    page.querySelectorAll('.settings-admin-only').forEach(el => {
+        if (el.id === 'teamReviewAdminPanel') el.style.display = adminAccess ? 'block' : 'none';
+        else el.style.display = adminAccess ? 'inline-flex' : 'none';
+    });
+
+    setDefaultTeamReviewFields();
+    renderTeamReviewSelectors();
+    renderTeamReviewMetrics();
+    renderReviewPairDraftList();
+    renderTeamReviewCycleList();
+    renderActiveReviewForm();
+    refreshIcons();
+}
+
+function renderTeamReviewSelectors() {
+    const reviewerSelect = document.getElementById('reviewReviewerSelect');
+    const revieweeSelect = document.getElementById('reviewRevieweeSelect');
+    if (reviewerSelect) {
+        const current = reviewerSelect.value;
+        reviewerSelect.innerHTML = getTeamReviewMemberOptions(current);
+        if (current) reviewerSelect.value = current;
+    }
+    if (revieweeSelect) {
+        const current = revieweeSelect.value;
+        revieweeSelect.innerHTML = getTeamReviewMemberOptions(current);
+        if (current) revieweeSelect.value = current;
+    }
+}
+
+function renderTeamReviewMetrics() {
+    const wrap = document.getElementById('teamReviewMetrics');
+    if (!wrap) return;
+
+    const cycles = globalReviewCycles || [];
+    const assignments = globalReviewAssignments || [];
+    const responses = globalReviewResponses || [];
+    const pending = assignments.filter(row => row.status !== 'submitted').length;
+    const submitted = assignments.filter(row => row.status === 'submitted').length;
+    const avgScores = responses.map(row => Number(row.average_score)).filter(Boolean);
+    const avg = avgScores.length ? (avgScores.reduce((sum, score) => sum + score, 0) / avgScores.length).toFixed(1) : '--';
+
+    wrap.innerHTML = `
+        <div class="review-metric"><span>Rounds</span><strong>${cycles.length}</strong></div>
+        <div class="review-metric"><span>Pending</span><strong>${pending}</strong></div>
+        <div class="review-metric"><span>Submitted</span><strong>${submitted}</strong></div>
+        <div class="review-metric"><span>Avg Score</span><strong>${avg}</strong></div>
+    `;
+}
+
+function renderReviewPairDraftList() {
+    const wrap = document.getElementById('reviewPairDraftList');
+    if (!wrap) return;
+
+    if (!reviewPairDraft.length) {
+        wrap.innerHTML = '<div class="review-empty-note">No review pairs added yet.</div>';
+        return;
+    }
+
+    wrap.innerHTML = reviewPairDraft.map((pair, index) => `
+        <div class="review-pair-draft">
+            <span>${escapeHtml(pair.reviewer_name)}</span>
+            <i data-lucide="arrow-right"></i>
+            <strong>${escapeHtml(pair.reviewee_name)}</strong>
+            <button type="button" onclick="removeReviewPairDraft(${index})" aria-label="Remove pair"><i data-lucide="x"></i></button>
+        </div>
+    `).join('');
+    refreshIcons();
+}
+
+function addReviewPairDraft() {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const reviewer = document.getElementById('reviewReviewerSelect')?.value || '';
+    const reviewee = document.getElementById('reviewRevieweeSelect')?.value || '';
+    if (!reviewer || !reviewee) return showAppleAlert('Missing Pair', 'Please select both reviewer and reviewee.');
+    if (normalizeNameKey(reviewer) === normalizeNameKey(reviewee)) return showAppleAlert('Invalid Pair', 'Reviewer and reviewee must be different people.');
+
+    const duplicate = reviewPairDraft.some(pair => normalizeNameKey(pair.reviewer_name) === normalizeNameKey(reviewer) && normalizeNameKey(pair.reviewee_name) === normalizeNameKey(reviewee));
+    if (duplicate) return showAppleAlert('Pair Exists', 'This reviewer pair is already added.');
+
+    reviewPairDraft.push({
+        reviewer_name: reviewer,
+        reviewer_region: getTeamReviewMemberRegion(reviewer),
+        reviewee_name: reviewee,
+        reviewee_region: getTeamReviewMemberRegion(reviewee)
+    });
+    renderReviewPairDraftList();
+}
+
+function removeReviewPairDraft(index) {
+    reviewPairDraft.splice(index, 1);
+    renderReviewPairDraftList();
+}
+
+async function createTeamReviewCycle(event) {
+    if (event) event.preventDefault();
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+
+    const titleInput = document.getElementById('reviewCycleTitle');
+    const deadlineInput = document.getElementById('reviewCycleDeadline');
+    const btn = document.getElementById('btnCreateReviewCycle');
+    const title = titleInput?.value.trim() || '';
+    const deadline = deadlineInput?.value || '';
+
+    if (!title) return showAppleAlert('Missing Round Name', 'Please add a review round name first.');
+    if (!deadline) return showAppleAlert('Missing Deadline', 'Please choose a deadline.');
+    if (!reviewPairDraft.length) return showAppleAlert('Missing Review Pairs', 'Please add at least one reviewer pair.');
+
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Creating passes...</span>';
+        refreshIcons();
+    }
+
+    try {
+        const now = new Date().toISOString();
+        const cycle = normalizeReviewCycle({
+            id: generateTeamReviewId('cycle'),
+            title,
+            status: 'active',
+            deadline,
+            created_by: getCurrentUserName() || 'Admin',
+            created_at: now,
+            updated_at: now
+        });
+
+        const generatedCodes = [];
+        const assignments = [];
+        for (const pair of reviewPairDraft) {
+            const code = generateReviewCode(pair.reviewer_name);
+            const assignment = normalizeReviewAssignment({
+                id: generateTeamReviewId('assignment'),
+                cycle_id: cycle.id,
+                reviewer_name: pair.reviewer_name,
+                reviewer_region: pair.reviewer_region,
+                reviewee_name: pair.reviewee_name,
+                reviewee_region: pair.reviewee_region,
+                review_code_hash: await hashReviewCode(code),
+                review_code_hint: getReviewCodeHint(code),
+                status: 'pending',
+                created_at: now
+            });
+            assignments.push(assignment);
+            generatedCodes.push({ ...assignment, code });
+        }
+
+        const result = await persistTeamReviewCycle(cycle, assignments);
+        generatedCodes.forEach(item => setReviewCodeInVault(item.id, item.code));
+        reviewPairDraft = [];
+        if (titleInput) titleInput.value = '';
+        if (deadlineInput) deadlineInput.value = '';
+        renderTeamReviewPage();
+
+        const codeList = generatedCodes.map(item => `${item.reviewer_name} for ${item.reviewee_name}: ${item.code}`).join('\n');
+        if (!result.savedToSupabase) {
+            showAppleAlert('Saved Locally', `Team Review is ready on this device. Run supabase-team-review.sql once to make it shared for the whole team.\n\n${codeList}`);
+        } else {
+            showAppleAlert('Review Round Created', `Review passes are ready. Share each pass only with the assigned reviewer.\n\n${codeList}`);
+        }
+    } catch(e) {
+        showAppleAlert('Create Review Failed', e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+function renderTeamReviewCycleList() {
+    const wrap = document.getElementById('teamReviewCycleList');
+    if (!wrap) return;
+
+    const cycles = [...(globalReviewCycles || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    if (!cycles.length) {
+        wrap.innerHTML = '<div class="review-empty-state"><i data-lucide="clipboard-check"></i><p>No review rounds yet.</p></div>';
+        refreshIcons();
+        return;
+    }
+
+    wrap.innerHTML = cycles.map(cycle => {
+        const assignments = getReviewCycleAssignments(cycle.id);
+        const submitted = assignments.filter(item => item.status === 'submitted').length;
+        const completion = assignments.length ? Math.round((submitted / assignments.length) * 100) : 0;
+        const rows = assignments.map(assignment => {
+            const code = getReviewCodeFromVault(assignment.id);
+            const statusClass = assignment.status === 'submitted' ? 'submitted' : 'pending';
+            return `
+                <div class="review-assignment-row">
+                    <div>
+                        <strong>${escapeHtml(assignment.reviewer_name)} <span>to</span> ${escapeHtml(assignment.reviewee_name)}</strong>
+                        <small>${assignment.status === 'submitted' ? `Submitted ${formatDate(assignment.submitted_at)}` : `Code ${escapeHtml(assignment.review_code_hint || 'ready')}`}</small>
+                    </div>
+                    <div class="review-assignment-actions">
+                        <span class="review-status-pill ${statusClass}">${assignment.status === 'submitted' ? 'Submitted' : 'Pending'}</span>
+                        <button type="button" onclick="copyReviewInvite('${assignment.id}')"><i data-lucide="copy"></i></button>
+                        <button type="button" onclick="resetReviewCode('${assignment.id}')"><i data-lucide="rotate-cw"></i></button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="review-cycle-card">
+                <div class="review-cycle-top">
+                    <div>
+                        <span>${cycle.status === 'active' ? 'Open' : escapeHtml(cycle.status)}</span>
+                        <h4>${escapeHtml(cycle.title)}</h4>
+                        <small>Deadline ${formatDate(cycle.deadline)}</small>
+                    </div>
+                    <div class="review-cycle-actions-top">
+                        <strong>${completion}%</strong>
+                        <button type="button" onclick="deleteTeamReviewCycle('${cycle.id}')" aria-label="Delete review cycle"><i data-lucide="trash-2"></i></button>
+                    </div>
+                </div>
+                <div class="review-cycle-progress"><span style="width:${completion}%"></span></div>
+                <div class="review-assignment-list">${rows}</div>
+            </div>
+        `;
+    }).join('');
+    refreshIcons();
+}
+
+async function deleteTeamReviewCycle(cycleId) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const cycle = getReviewCycle(cycleId);
+    if (!cycle) return;
+    const confirmed = window.confirm(`Delete review round "${cycle.title}"? This removes its assignments and responses from this workspace.`);
+    if (!confirmed) return;
+
+    const assignmentsToRemove = new Set(getReviewCycleAssignments(cycleId).map(assignment => assignment.id));
+    let deletedFromSupabase = false;
+    try {
+        const { error } = await supabaseClient
+            .from('team_review_cycles')
+            .delete()
+            .eq('id', cycleId);
+        if (error) throw error;
+        deletedFromSupabase = true;
+    } catch(e) {
+        deletedFromSupabase = false;
+    }
+
+    const local = getLocalTeamReviewStore();
+    const nextLocal = {
+        cycles: local.cycles.filter(row => row.id !== cycleId),
+        assignments: local.assignments.filter(row => row.cycle_id !== cycleId),
+        responses: local.responses.filter(row => !assignmentsToRemove.has(row.assignment_id))
+    };
+    saveLocalTeamReviewStore(nextLocal);
+
+    const vault = getReviewCodeVault();
+    assignmentsToRemove.forEach(id => delete vault[id]);
+    localStorage.setItem(TEAM_REVIEW_CODE_VAULT_KEY, JSON.stringify(vault));
+
+    globalReviewCycles = (globalReviewCycles || []).filter(row => row.id !== cycleId);
+    globalReviewAssignments = (globalReviewAssignments || []).filter(row => row.cycle_id !== cycleId);
+    globalReviewResponses = (globalReviewResponses || []).filter(row => !assignmentsToRemove.has(row.assignment_id));
+
+    if (activeReviewAssignment && assignmentsToRemove.has(activeReviewAssignment.id)) closeActiveReviewForm();
+    renderTeamReviewPage();
+    showNotification(deletedFromSupabase ? 'Review Cycle Deleted' : 'Review Cycle Removed Locally', cycle.title);
+}
+
+async function resetReviewCode(assignmentId) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const assignment = globalReviewAssignments.find(row => row.id === assignmentId);
+    if (!assignment) return;
+
+    const code = generateReviewCode(assignment.reviewer_name);
+    const updatePayload = {
+        review_code_hash: await hashReviewCode(code),
+        review_code_hint: getReviewCodeHint(code),
+        status: assignment.status || 'pending'
+    };
+
+    let saved = false;
+    try {
+        const { error } = await supabaseClient
+            .from('team_review_assignments')
+            .update(updatePayload)
+            .eq('id', assignment.id);
+        if (error) throw error;
+        saved = true;
+    } catch(e) {
+        saved = false;
+    }
+
+    const updated = normalizeReviewAssignment({ ...assignment, ...updatePayload });
+    setReviewCodeInVault(assignment.id, code);
+    persistReviewDataLocally({ assignments: [updated] });
+    renderTeamReviewPage();
+    showAppleAlert(saved ? 'Review Code Reset' : 'Code Reset Locally', `${assignment.reviewer_name} for ${assignment.reviewee_name}: ${code}`);
+}
+
+function copyReviewInvite(assignmentId) {
+    const assignment = globalReviewAssignments.find(row => row.id === assignmentId);
+    const cycle = assignment ? getReviewCycle(assignment.cycle_id) : null;
+    if (!assignment) return;
+
+    const code = getReviewCodeFromVault(assignment.id);
+    if (!code) {
+        return showAppleAlert('Code Not On This Device', 'For privacy, the full code is only kept on the admin device that created it. Use the reset icon to generate a new code.');
+    }
+
+    const message = `Hi ${assignment.reviewer_name}, please complete your private team review for ${assignment.reviewee_name}.\n\nCycle: ${cycle?.title || 'Team Review'}\nDeadline: ${formatDate(cycle?.deadline)}\nReview Pass: ${code}\n\nOpen Team Review in Creative OS and paste this pass.`;
+    navigator.clipboard.writeText(message);
+    showNotification('Invite Copied', 'Share it with the reviewer only');
+}
+
+async function unlockTeamReviewCode() {
+    const input = document.getElementById('teamReviewCodeInput');
+    const code = normalizeReviewCode(input?.value || '');
+    if (!code) return showAppleAlert('Missing Review Pass', 'Please paste your review pass.');
+
+    const btn = input?.parentElement?.querySelector('button');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Opening...</span>';
+        refreshIcons();
+    }
+
+    try {
+        await fetchTeamReviewData();
+        const hash = await hashReviewCode(code);
+        const assignment = (globalReviewAssignments || []).find(row => row.review_code_hash === hash);
+        if (!assignment) return showAppleAlert('Invalid Review Pass', 'This pass was not found. Please check with the admin.');
+
+        activeReviewAssignment = assignment;
+        const response = getReviewResponseForAssignment(assignment.id);
+        activeReviewDraft = response ? {
+            ratings: { ...response.ratings },
+            comments: { ...response.comments },
+            strengths: response.strengths || '',
+            improvements: response.improvements || '',
+            final_comment: response.final_comment || ''
+        } : { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
+
+        if (input) input.value = '';
+        renderActiveReviewForm();
+    } catch(e) {
+        showAppleAlert('Open Review Failed', e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+function renderActiveReviewForm() {
+    const wrap = document.getElementById('activeReviewForm');
+    if (!wrap) return;
+
+    if (!activeReviewAssignment) {
+        wrap.innerHTML = `
+            <div class="review-placeholder">
+                <i data-lucide="messages-square"></i>
+                <strong>Paste your review pass to begin.</strong>
+                <p>Your assigned review will open here.</p>
+            </div>
+        `;
+        refreshIcons();
+        return;
+    }
+
+    const assignment = activeReviewAssignment;
+    const cycle = getReviewCycle(assignment.cycle_id);
+    const existingResponse = getReviewResponseForAssignment(assignment.id);
+    if (assignment.status === 'submitted' || existingResponse) {
+        const response = existingResponse || {};
+        wrap.innerHTML = `
+            <div class="review-submitted-state">
+                <i data-lucide="check-circle-2"></i>
+                <h3>Review Submitted</h3>
+                <p>Your feedback for ${escapeHtml(assignment.reviewee_name)} has been saved privately.</p>
+                <div><span>Average Score</span><strong>${response.average_score || calculateReviewAverage(activeReviewDraft?.ratings || {}) || '--'}</strong></div>
+                <button type="button" onclick="closeActiveReviewForm()">Close</button>
+            </div>
+        `;
+        refreshIcons();
+        return;
+    }
+
+    activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
+    const questions = getTeamReviewQuestionList();
+    const answered = questions.filter(question => Number(activeReviewDraft.ratings[question.id]) > 0).length;
+    const progress = Math.round((answered / questions.length) * 100);
+
+    const categories = TEAM_REVIEW_QUESTION_GROUPS.map(group => `
+        <div class="review-category-card ${group.tone}">
+            <div class="review-category-head">
+                <div>
+                    <span>${group.questions.length} questions</span>
+                    <h4>${escapeHtml(group.title)}</h4>
+                </div>
+                <strong>${getReviewCategoryAverage(activeReviewDraft.ratings, group.key) || '--'}</strong>
+            </div>
+            ${group.questions.map(question => `
+                <div class="review-question-row">
+                    <p>${escapeHtml(question.text)}</p>
+                    <div class="review-score-set">
+                        ${[1, 2, 3, 4, 5].map(score => `
+                            <button type="button" class="review-score-btn ${Number(activeReviewDraft.ratings[question.id]) === score ? 'active' : ''}" onclick="setReviewScore('${question.id}', ${score})">${score}</button>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('')}
+            <textarea class="review-textarea" placeholder="Optional context for this section" oninput="setReviewCategoryComment('${group.key}', this.value)">${escapeHtml(activeReviewDraft.comments[group.key] || '')}</textarea>
+        </div>
+    `).join('');
+
+    wrap.innerHTML = `
+        <div class="review-form-head">
+            <div>
+                <span>${escapeHtml(cycle?.title || 'Team Review')}</span>
+                <h3>${escapeHtml(assignment.reviewee_name)}</h3>
+                <p>Reviewer: ${escapeHtml(assignment.reviewer_name)} · Deadline ${formatDate(cycle?.deadline)}</p>
+            </div>
+            <button type="button" onclick="closeActiveReviewForm()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="review-progress-wrap">
+            <div><span>${answered}/${questions.length} rated</span><strong>${progress}%</strong></div>
+            <div class="review-progress-bar"><span style="width:${progress}%"></span></div>
+        </div>
+        <div class="review-rating-note"><span>1 = Strongly Disagree</span><span>5 = Strongly Agree</span></div>
+        <div class="review-category-stack">${categories}</div>
+        <div class="review-summary-grid">
+            <label>Strengths<textarea class="review-textarea" placeholder="What should this person continue doing?" oninput="setReviewSummaryField('strengths', this.value)">${escapeHtml(activeReviewDraft.strengths || '')}</textarea></label>
+            <label>Improvement Area<textarea class="review-textarea" placeholder="What should this person improve next?" oninput="setReviewSummaryField('improvements', this.value)">${escapeHtml(activeReviewDraft.improvements || '')}</textarea></label>
+            <label class="full">Additional Comments<textarea class="review-textarea" placeholder="Anything else admin should know?" oninput="setReviewSummaryField('final_comment', this.value)">${escapeHtml(activeReviewDraft.final_comment || '')}</textarea></label>
+        </div>
+        <div class="review-submit-row">
+            <button type="button" onclick="submitTeamReview()" class="review-submit-btn"><i data-lucide="send"></i><span>Submit Review</span></button>
+        </div>
+    `;
+    refreshIcons();
+}
+
+function closeActiveReviewForm() {
+    activeReviewAssignment = null;
+    activeReviewDraft = null;
+    renderActiveReviewForm();
+}
+
+function setReviewScore(questionId, score) {
+    activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
+    activeReviewDraft.ratings[questionId] = score;
+    renderActiveReviewForm();
+}
+
+function setReviewCategoryComment(categoryKey, value) {
+    activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
+    activeReviewDraft.comments[categoryKey] = value;
+}
+
+function setReviewSummaryField(field, value) {
+    activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
+    activeReviewDraft[field] = value;
+}
+
+async function submitTeamReview() {
+    if (!activeReviewAssignment) return;
+    activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
+    const missing = getTeamReviewQuestionList().filter(question => !Number(activeReviewDraft.ratings[question.id]));
+    if (missing.length) return showAppleAlert('Incomplete Review', 'Please rate every question before submitting.');
+
+    const assignment = activeReviewAssignment;
+    const submittedAt = new Date().toISOString();
+    const response = normalizeReviewResponse({
+        id: generateTeamReviewId('response'),
+        assignment_id: assignment.id,
+        cycle_id: assignment.cycle_id,
+        reviewer_name: assignment.reviewer_name,
+        reviewee_name: assignment.reviewee_name,
+        ratings: activeReviewDraft.ratings,
+        comments: activeReviewDraft.comments,
+        strengths: activeReviewDraft.strengths,
+        improvements: activeReviewDraft.improvements,
+        final_comment: activeReviewDraft.final_comment,
+        average_score: calculateReviewAverage(activeReviewDraft.ratings),
+        submitted_at: submittedAt
+    });
+
+    const result = await persistTeamReviewSubmission(assignment, response);
+    activeReviewAssignment = { ...assignment, status: 'submitted', submitted_at: submittedAt };
+    renderTeamReviewPage();
+    showNotification(result.savedToSupabase ? 'Review Submitted' : 'Review Saved Locally', 'Thank you for the honest feedback');
+}
+
+function buildTeamReviewQuestionRows() {
+    return (globalReviewResponses || []).flatMap(response => {
+        const assignment = globalReviewAssignments.find(row => row.id === response.assignment_id) || {};
+        const cycle = getReviewCycle(response.cycle_id) || {};
+        return getTeamReviewQuestionList().map(question => ({
+            cycle_title: cycle.title || '',
+            deadline: cycle.deadline || '',
+            reviewer_name: response.reviewer_name,
+            reviewee_name: response.reviewee_name,
+            reviewer_region: assignment.reviewer_region || '',
+            reviewee_region: assignment.reviewee_region || '',
+            category: question.categoryLabel,
+            question: question.text,
+            rating: response.ratings?.[question.id] || '',
+            category_comment: response.comments?.[question.category] || '',
+            strengths: response.strengths || '',
+            improvements: response.improvements || '',
+            final_comment: response.final_comment || '',
+            average_score: response.average_score || '',
+            submitted_at: response.submitted_at || ''
+        }));
+    });
+}
+
+function buildTeamReviewSummaryRows() {
+    const summary = {};
+    (globalReviewResponses || []).forEach(response => {
+        if (!summary[response.reviewee_name]) {
+            summary[response.reviewee_name] = {
+                reviewee_name: response.reviewee_name,
+                responses: 0,
+                average_score: 0,
+                work_quality_avg: 0,
+                ownership_avg: 0,
+                teamwork_avg: 0,
+                growth_avg: 0,
+                strengths: [],
+                improvements: []
+            };
+        }
+        const row = summary[response.reviewee_name];
+        row.responses += 1;
+        row.average_score += Number(response.average_score || 0);
+        row.work_quality_avg += Number(getReviewCategoryAverage(response.ratings, 'work_quality') || 0);
+        row.ownership_avg += Number(getReviewCategoryAverage(response.ratings, 'ownership') || 0);
+        row.teamwork_avg += Number(getReviewCategoryAverage(response.ratings, 'teamwork') || 0);
+        row.growth_avg += Number(getReviewCategoryAverage(response.ratings, 'growth') || 0);
+        if (response.strengths) row.strengths.push(response.strengths);
+        if (response.improvements) row.improvements.push(response.improvements);
+    });
+
+    return Object.values(summary).map(row => ({
+        reviewee_name: row.reviewee_name,
+        responses: row.responses,
+        average_score: row.responses ? (row.average_score / row.responses).toFixed(1) : '',
+        work_quality_avg: row.responses ? (row.work_quality_avg / row.responses).toFixed(1) : '',
+        ownership_avg: row.responses ? (row.ownership_avg / row.responses).toFixed(1) : '',
+        teamwork_avg: row.responses ? (row.teamwork_avg / row.responses).toFixed(1) : '',
+        growth_avg: row.responses ? (row.growth_avg / row.responses).toFixed(1) : '',
+        strengths: row.strengths.join(' | '),
+        improvements: row.improvements.join(' | ')
+    }));
+}
+
+function buildTeamReviewCompletionRows() {
+    return (globalReviewAssignments || []).map(assignment => {
+        const cycle = getReviewCycle(assignment.cycle_id) || {};
+        return {
+            cycle_title: cycle.title || '',
+            deadline: cycle.deadline || '',
+            reviewer_name: assignment.reviewer_name,
+            reviewee_name: assignment.reviewee_name,
+            reviewer_region: assignment.reviewer_region,
+            reviewee_region: assignment.reviewee_region,
+            status: assignment.status,
+            submitted_at: assignment.submitted_at || '',
+            code_hint: assignment.review_code_hint || ''
+        };
+    });
+}
+
+function buildTeamReviewReportContext() {
+    return `# Adtechinno Team Review Report Pack
+
+Generated: ${new Date().toLocaleString('en-MY')}
+Cycles exported: ${(globalReviewCycles || []).length}
+Assignments exported: ${(globalReviewAssignments || []).length}
+Responses exported: ${(globalReviewResponses || []).length}
+
+## Suggested ChatGPT Prompt
+You are a people operations and creative team performance analyst. Analyze these team review exports confidentially. Identify team strengths, recurring blockers, coaching opportunities, workload or collaboration risks, and recommended actions to improve productivity, quality, ownership, communication, and team expansion planning. Keep feedback constructive and avoid personal blame.
+
+## Files
+- team_review_question_scores.csv: One row per question rating with category comments.
+- team_review_summary.csv: Aggregated scores and comment themes by reviewee.
+- team_review_completion.csv: Reviewer assignment completion and pending status.
+`;
+}
+
+function exportTeamReviewPack() {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    if (!(globalReviewAssignments || []).length) return showAppleAlert('Export Failed', 'No team review data available yet.');
+
+    const date = new Date().toISOString().split('T')[0];
+    const base = `Adtechinno_Team_Review_${date}`;
+    const questionRows = buildTeamReviewQuestionRows();
+    const summaryRows = buildTeamReviewSummaryRows();
+    const completionRows = buildTeamReviewCompletionRows();
+
+    downloadTextFile(`${base}_question_scores.csv`, rowsToCSV(['cycle_title', 'deadline', 'reviewer_name', 'reviewee_name', 'reviewer_region', 'reviewee_region', 'category', 'question', 'rating', 'category_comment', 'strengths', 'improvements', 'final_comment', 'average_score', 'submitted_at'], questionRows), 'text/csv;charset=utf-8;');
+    downloadTextFile(`${base}_summary.csv`, rowsToCSV(['reviewee_name', 'responses', 'average_score', 'work_quality_avg', 'ownership_avg', 'teamwork_avg', 'growth_avg', 'strengths', 'improvements'], summaryRows), 'text/csv;charset=utf-8;');
+    downloadTextFile(`${base}_completion.csv`, rowsToCSV(['cycle_title', 'deadline', 'reviewer_name', 'reviewee_name', 'reviewer_region', 'reviewee_region', 'status', 'submitted_at', 'code_hint'], completionRows), 'text/csv;charset=utf-8;');
+    downloadTextFile(`${base}_report_context.md`, buildTeamReviewReportContext(), 'text/markdown;charset=utf-8;');
+    showNotification('Team Review Exported', 'Ready for ChatGPT reporting');
 }
 
 function getLocalTaskNotes() {
