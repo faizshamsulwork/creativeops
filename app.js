@@ -2164,15 +2164,43 @@ async function addTeamMember(event) {
             access_role: 'member'
         };
         const minimalPayload = { name, region };
+        let memberAlreadyExists = false;
 
-        let { error } = await supabaseClient
-            .from('team_members')
-            .upsert([richPayload], { onConflict: 'name' });
+        const saveTeamMemberPayload = async (payload) => {
+            const { data: existingRows, error: lookupError } = await supabaseClient
+                .from('team_members')
+                .select('name')
+                .eq('name', name)
+                .limit(1);
+
+            if (lookupError) return { error: lookupError };
+            if (existingRows && existingRows.length) {
+                memberAlreadyExists = true;
+                return supabaseClient
+                    .from('team_members')
+                    .update(payload)
+                    .eq('name', existingRows[0].name || name);
+            }
+
+            const insertResult = await supabaseClient
+                .from('team_members')
+                .insert([payload]);
+
+            if (insertResult.error && /duplicate|unique/i.test(insertResult.error.message || '')) {
+                memberAlreadyExists = true;
+                return supabaseClient
+                    .from('team_members')
+                    .update(payload)
+                    .eq('name', name);
+            }
+
+            return insertResult;
+        };
+
+        let { error } = await saveTeamMemberPayload(richPayload);
 
         if (error && /column|schema|cache|is_creative|department|role|team|is_admin|access_role/i.test(error.message || '')) {
-            const retry = await supabaseClient
-                .from('team_members')
-                .upsert([minimalPayload], { onConflict: 'name' });
+            const retry = await saveTeamMemberPayload(minimalPayload);
             error = retry.error;
         }
 
@@ -2183,7 +2211,7 @@ async function addTeamMember(event) {
 
         await fetchSupabaseData(true, true);
         renderSettingsPage();
-        showNotification('Member Added', `${name} is now in the workspace`);
+        showNotification(memberAlreadyExists ? 'Member Updated' : 'Member Added', `${name} is now in the workspace`);
     } catch(e) {
         showAppleAlert('Add Member Failed', e.message);
     } finally {
