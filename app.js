@@ -3462,6 +3462,20 @@ function renderRequestTypePill(item, compact = false) {
     return `<span class="request-type-pill type-${meta.key} ${compact ? 'compact' : ''}"><i data-lucide="${meta.icon}"></i>${compact ? meta.shortLabel : meta.label}</span>`;
 }
 
+function renderJobTypeDetail(item) {
+    const meta = getRequestTypeMeta(item);
+    const rawType = item.job_type || meta.label;
+    return `
+        <div class="job-type-detail-card type-${meta.key}">
+            <div class="job-type-detail-icon"><i data-lucide="${meta.icon}"></i></div>
+            <div>
+                <strong>${escapeHtml(rawType)}</strong>
+                <small>${escapeHtml(meta.label)}</small>
+            </div>
+        </div>
+    `;
+}
+
 function getMonthlyDeliverableSummary(item) {
     if (getRequestTypeMeta(item).key !== 'monthly') return null;
     const brief = String(item.brief || '');
@@ -3478,37 +3492,262 @@ function getMonthlyDeliverableSummary(item) {
 
 function getMonthlyReadyCount(item, total = 0) {
     const note = getTaskNoteValue(item);
-    const match = note.match(/(?:monthly\s*)?(?:progress|ready|done)?\s*:?\s*(\d+)\s*\/\s*(\d+)/i) || note.match(/(\d+)\s*\/\s*(\d+)/);
+    const match = note.match(/(?:monthly\s*)?(?:progress|ready|done)?\s*:?\s*(\d+)\s*\/\s*(\d+)/i) || note.match(/\b(\d+)\s*\/\s*(\d+)\b/);
     if (!match) return '';
     return Math.min(Number(match[1] || 0), total || Number(match[2] || 0));
+}
+
+function clampMonthlyReady(value, total) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.min(Math.max(Math.round(numeric), 0), Number(total || 0));
+}
+
+function normalizeMonthlyFormatLabel(label) {
+    return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function getMonthlyFormatProgressFromNote(note, summary) {
+    const values = {};
+    if (!note || !summary?.parts?.length) return values;
+
+    const validLabels = {};
+    summary.parts.forEach(part => {
+        validLabels[normalizeMonthlyFormatLabel(part.label)] = part;
+    });
+
+    const source = String(note).includes('Breakdown:') ? String(note).split(/Breakdown:/i).pop() : String(note);
+    source.split(/[;\n]/).forEach(chunk => {
+        const cleaned = chunk.replace(/\.+$/g, '').trim();
+        const match = cleaned.match(/^(.+?)\s*:?\s*(\d+)\s*\/\s*(\d+)/);
+        if (!match) return;
+
+        const key = normalizeMonthlyFormatLabel(match[1].replace(/^breakdown\s*/i, ''));
+        const part = validLabels[key];
+        if (!part) return;
+        values[key] = clampMonthlyReady(match[2], part.count);
+    });
+
+    return values;
+}
+
+function getMonthlyProgressState(item, summary) {
+    const parsed = getMonthlyFormatProgressFromNote(getTaskNoteValue(item), summary);
+    let hasFormatProgress = false;
+    let parts = summary.parts.map(part => {
+        const key = normalizeMonthlyFormatLabel(part.label);
+        const hasValue = Object.prototype.hasOwnProperty.call(parsed, key);
+        if (hasValue) hasFormatProgress = true;
+        return { ...part, ready: clampMonthlyReady(hasValue ? parsed[key] : 0, part.count) };
+    });
+
+    let readyTotal = parts.reduce((sum, part) => sum + part.ready, 0);
+    const savedTotal = getMonthlyReadyCount(item, summary.total);
+
+    if (!hasFormatProgress && savedTotal !== '') {
+        let remaining = clampMonthlyReady(savedTotal, summary.total);
+        parts = parts.map(part => {
+            const ready = Math.min(part.count, remaining);
+            remaining -= ready;
+            return { ...part, ready };
+        });
+        readyTotal = clampMonthlyReady(savedTotal, summary.total);
+    }
+
+    return { parts, readyTotal, hasFormatProgress, savedTotal };
+}
+
+function getMonthlyFormatInputs(jobID) {
+    return Array.from(document.querySelectorAll('.monthly-format-input'))
+        .filter(input => input.dataset.monthlyJob === jobID)
+        .sort((a, b) => Number(a.dataset.index || 0) - Number(b.dataset.index || 0));
+}
+
+function updateMonthlyProgressHeader(jobID, ready, total) {
+    const pct = total ? Math.min(Math.round((ready / total) * 100), 100) : 0;
+    const pctEl = document.getElementById(`monthly-pct-${jobID}`);
+    const bar = document.getElementById(`monthly-bar-${jobID}`);
+    const label = document.getElementById(`monthly-label-${jobID}`);
+    if (pctEl) pctEl.textContent = `${pct}%`;
+    if (bar) bar.style.width = `${pct}%`;
+    if (label) label.textContent = `${ready}/${total} deliverables ready`;
+}
+
+function updateMonthlyFormatProgressPreview(jobID, total) {
+    const inputs = getMonthlyFormatInputs(jobID);
+    if (!inputs.length) return updateMonthlyProgressPreview(jobID, total);
+
+    let readyTotal = 0;
+    inputs.forEach(input => {
+        const max = Number(input.dataset.total || input.max || 0);
+        const ready = clampMonthlyReady(input.value, max);
+        const index = input.dataset.index;
+        input.value = ready;
+        readyTotal += ready;
+
+        const countEl = document.getElementById(`monthly-format-ready-${jobID}-${index}`);
+        const bar = document.getElementById(`monthly-format-bar-${jobID}-${index}`);
+        if (countEl) countEl.textContent = ready;
+        if (bar) bar.style.width = `${max ? Math.min(Math.round((ready / max) * 100), 100) : 0}%`;
+    });
+
+    updateMonthlyProgressHeader(jobID, readyTotal, total);
+}
+
+function adjustMonthlyFormatProgress(jobID, index, delta, total) {
+    const input = document.getElementById(`monthly-format-${jobID}-${index}`);
+    if (!input) return;
+    input.value = clampMonthlyReady(Number(input.value || 0) + Number(delta || 0), input.dataset.total || input.max || 0);
+    updateMonthlyFormatProgressPreview(jobID, total);
+}
+
+function updateMonthlyProgressPreview(jobID, total) {
+    const input = document.getElementById(`monthly-ready-${jobID}`);
+    if (!input) return;
+    const ready = clampMonthlyReady(input.value, total);
+    input.value = ready;
+    updateMonthlyProgressHeader(jobID, ready, total);
+}
+
+function adjustMonthlyProgress(jobID, delta, total) {
+    const input = document.getElementById(`monthly-ready-${jobID}`);
+    if (!input) return;
+    input.value = clampMonthlyReady(Number(input.value || 0) + Number(delta || 0), total);
+    updateMonthlyProgressPreview(jobID, total);
 }
 
 function renderMonthlyProgressChip(item) {
     const summary = getMonthlyDeliverableSummary(item);
     if (!summary || !summary.total) return '';
-    const ready = getMonthlyReadyCount(item, summary.total);
-    const pct = ready === '' ? 0 : Math.min(Math.round((ready / summary.total) * 100), 100);
-    const label = ready === '' ? `${summary.total} deliverables` : `${ready}/${summary.total} ready`;
+    const progress = getMonthlyProgressState(item, summary);
+    const pct = Math.min(Math.round((progress.readyTotal / summary.total) * 100), 100);
+    const label = `${progress.readyTotal}/${summary.total} ready`;
     return `<div class="monthly-progress-mini"><div><span>${escapeHtml(label)}</span><strong>Use Partial Ready for partial handoff</strong></div><div class="monthly-progress-track"><i style="width:${pct}%;"></i></div></div>`;
 }
 
 function renderMonthlyFlowPanel(item) {
     const summary = getMonthlyDeliverableSummary(item);
     if (!summary || !summary.total) return '';
-    const ready = getMonthlyReadyCount(item, summary.total);
-    const pct = ready === '' ? 0 : Math.min(Math.round((ready / summary.total) * 100), 100);
-    const breakdown = summary.parts.map(part => `<span>${escapeHtml(part.label)} <strong>${part.count}</strong></span>`).join('');
+    const progress = getMonthlyProgressState(item, summary);
+    const pct = Math.min(Math.round((progress.readyTotal / summary.total) * 100), 100);
+    const canUpdate = canAddTaskNote(item);
+    const readonlyBreakdown = progress.parts.map(part => `<span>${escapeHtml(part.label)} <strong>${part.ready}/${part.count}</strong></span>`).join('');
+    const formatRows = progress.parts.map((part, index) => {
+        const partPct = part.count ? Math.min(Math.round((part.ready / part.count) * 100), 100) : 0;
+        return `
+            <div class="monthly-format-row">
+                <div class="monthly-format-info">
+                    <span>${escapeHtml(part.label)}</span>
+                    <strong><em id="monthly-format-ready-${item.job_id}-${index}">${part.ready}</em>/<b>${part.count}</b> ready</strong>
+                    <div class="monthly-format-track"><i id="monthly-format-bar-${item.job_id}-${index}" style="width:${partPct}%;"></i></div>
+                </div>
+                <div class="monthly-format-stepper">
+                    <button type="button" onclick="adjustMonthlyFormatProgress('${item.job_id}', ${index}, -1, ${summary.total})" aria-label="Decrease ${escapeHtml(part.label)} ready"><i data-lucide="minus"></i></button>
+                    <input class="monthly-format-input" id="monthly-format-${item.job_id}-${index}" data-monthly-job="${escapeHtml(item.job_id)}" data-index="${index}" data-label="${escapeHtml(part.label)}" data-total="${part.count}" type="number" min="0" max="${part.count}" value="${part.ready}" oninput="updateMonthlyFormatProgressPreview('${item.job_id}', ${summary.total})">
+                    <button type="button" onclick="adjustMonthlyFormatProgress('${item.job_id}', ${index}, 1, ${summary.total})" aria-label="Increase ${escapeHtml(part.label)} ready"><i data-lucide="plus"></i></button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
     return `
         <div class="monthly-flow-panel">
             <div class="monthly-flow-head">
-                <div>${renderRequestTypePill(item)}<strong>${ready === '' ? summary.total + ' deliverables planned' : ready + '/' + summary.total + ' deliverables ready'}</strong></div>
-                <span>${pct}%</span>
+                <div>${renderRequestTypePill(item)}<strong id="monthly-label-${item.job_id}">${progress.readyTotal}/${summary.total} deliverables ready</strong></div>
+                <span id="monthly-pct-${item.job_id}">${pct}%</span>
             </div>
-            <div class="monthly-progress-track"><i style="width:${pct}%;"></i></div>
-            <div class="monthly-breakdown">${breakdown}</div>
+            <div class="monthly-progress-track"><i id="monthly-bar-${item.job_id}" style="width:${pct}%;"></i></div>
+            ${canUpdate ? `
+                <div class="monthly-ready-control">
+                    <div class="monthly-ready-head">
+                        <div>
+                            <span>Deliverables Ready</span>
+                            <strong>Update by content format for cleaner reporting</strong>
+                        </div>
+                        <button type="button" id="btn-monthly-progress-${item.job_id}" onclick="saveMonthlyProgress(event, '${item.job_id}', ${summary.total})" class="monthly-save-btn"><i data-lucide="save"></i> Save Progress</button>
+                    </div>
+                    <div class="monthly-format-list">${formatRows}</div>
+                </div>
+            ` : `<div class="monthly-breakdown">${readonlyBreakdown}</div>`}
             <p>For partial completion, keep this request in <strong>Partial Ready</strong>. Move to <strong>Client Review</strong> only when the whole monthly set is ready for client review.</p>
         </div>
     `;
+}
+
+async function saveMonthlyProgress(event, jobID, total) {
+    if (event) event.stopPropagation();
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This monthly task could not be found.');
+
+    const summary = getMonthlyDeliverableSummary(job);
+    const expectedTotal = summary?.total || Number(total || 0);
+    const formatInputs = getMonthlyFormatInputs(jobID);
+    let ready = 0;
+    let breakdown = [];
+
+    if (formatInputs.length) {
+        formatInputs.forEach(input => {
+            const max = Number(input.dataset.total || input.max || 0);
+            const value = clampMonthlyReady(input.value, max);
+            input.value = value;
+            ready += value;
+            breakdown.push(`${input.dataset.label || 'Format'} ${value}/${max}`);
+        });
+        updateMonthlyFormatProgressPreview(jobID, expectedTotal);
+    } else {
+        const input = document.getElementById(`monthly-ready-${jobID}`);
+        if (!input) return showAppleAlert('Missing Progress', 'The monthly progress controls could not be found.');
+        ready = clampMonthlyReady(input.value, expectedTotal);
+        input.value = ready;
+        updateMonthlyProgressHeader(jobID, ready, expectedTotal);
+    }
+
+    const note = breakdown.length
+        ? `Monthly progress: ${ready}/${expectedTotal} deliverables ready. Breakdown: ${breakdown.join('; ')}.`
+        : `Monthly progress: ${ready}/${expectedTotal} deliverables ready.`;
+    const btn = document.getElementById(`btn-monthly-progress-${jobID}`);
+    const originalHtml = btn ? btn.innerHTML : '';
+
+    if (btn) {
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Saving...';
+        btn.disabled = true;
+        refreshIcons();
+    }
+
+    const previousNote = job.status_notes || '';
+    job.status_notes = note;
+    setLocalTaskNote(jobID, note);
+
+    try {
+        await logTaskNote(job, note);
+        const { error } = await supabaseClient
+            .from('creative_requests')
+            .update({ status_notes: note })
+            .eq('job_id', jobID);
+
+        if (error) {
+            console.warn('Monthly progress latest note update failed:', error.message);
+            job.status_notes = note || previousNote;
+            setLocalTaskNote(jobID, note || previousNote);
+            showNotification('Progress Saved', 'History saved; latest progress is local until status_notes column exists');
+        } else {
+            showNotification('Progress Saved', `${ready}/${expectedTotal} deliverables ready`);
+        }
+
+        renderDashboard();
+        renderBoards();
+        openDetailModal(jobID, true);
+    } catch(e) {
+        job.status_notes = previousNote;
+        setLocalTaskNote(jobID, previousNote);
+        showAppleAlert('Progress Save Failed', e.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+            refreshIcons();
+        }
+    }
 }
 
 function canAddTaskNote(item) {
@@ -3830,7 +4069,7 @@ function openDetailModal(jobID, isUpdate = false) {
             <div class="job-details">
                 <div class="detail-item"><span>Region</span><strong>${getFlag(item.region)} ${item.region || 'Malaysia'}</strong></div>
                 <div class="detail-item"><span>Requester</span><strong>${actualRequester}</strong></div>
-                <div class="detail-item"><span>Job Type</span><strong>${renderRequestTypePill(item)}<small class="job-type-raw">${escapeHtml(item.job_type || '')}</small></strong></div>
+                <div class="detail-item"><span>Job Type</span>${renderJobTypeDetail(item)}</div>
                 <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${formatDate(item.deadline)}</strong></div>
                 <div class="detail-item pic-detail"><span>Creative PIC</span>${canEditPIC ? renderPicEditor(item.job_id, actualAssignee) : `<strong>${actualAssignee}</strong>`}</div>
                 <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option><option value="Partial Ready" ${ws === 'Partial Ready' ? 'selected' : ''}>Partial Ready</option><option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option><option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option><option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option><option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>

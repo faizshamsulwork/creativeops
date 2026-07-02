@@ -757,11 +757,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
     --type-ink: #0284c7;
 }
 .request-type-card.type-monthly,
-.request-type-pill.type-monthly { --type-accent: #14b8a6; --type-soft: rgba(20, 184, 166, 0.12); --type-ink: #0f766e; }
+.request-type-pill.type-monthly,
+.job-type-detail-card.type-monthly { --type-accent: #14b8a6; --type-soft: rgba(20, 184, 166, 0.12); --type-ink: #0f766e; }
 .request-type-card.type-pitch,
-.request-type-pill.type-pitch { --type-accent: #f59e0b; --type-soft: rgba(245, 158, 11, 0.13); --type-ink: #b45309; }
+.request-type-pill.type-pitch,
+.job-type-detail-card.type-pitch { --type-accent: #f59e0b; --type-soft: rgba(245, 158, 11, 0.13); --type-ink: #b45309; }
 .request-type-card.type-adhoc,
-.request-type-pill.type-adhoc { --type-accent: #38bdf8; --type-soft: rgba(56, 189, 248, 0.12); --type-ink: #0284c7; }
+.request-type-pill.type-adhoc,
+.job-type-detail-card.type-adhoc { --type-accent: #38bdf8; --type-soft: rgba(56, 189, 248, 0.12); --type-ink: #0284c7; }
 .kanban-card.request-type-card,
 .kanban-drag-card.request-type-card {
     border-top: 1px solid color-mix(in srgb, var(--type-accent) 34%, var(--border-light));
@@ -799,13 +802,44 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
     width: 12px;
     height: 12px;
 }
-.job-type-raw {
+.job-type-detail-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--type-soft);
+    border: 1px solid color-mix(in srgb, var(--type-accent) 34%, transparent);
+    box-sizing: border-box;
+}
+.job-type-detail-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--type-ink);
+    background: rgba(255, 255, 255, 0.5);
+}
+.job-type-detail-icon i { width: 17px; height: 17px; stroke-width: 2.4; }
+.job-type-detail-card strong {
     display: block;
-    margin-top: 7px;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    font-weight: 700;
-    line-height: 1.35;
+    color: var(--text-strong);
+    font-size: 0.86rem;
+    font-weight: 850;
+    line-height: 1.25;
+}
+.job-type-detail-card small {
+    display: block;
+    margin-top: 2px;
+    color: var(--type-ink);
+    font-size: 0.68rem;
+    font-weight: 800;
+    line-height: 1.2;
 }
 .monthly-progress-mini {
     margin: -6px 0 14px 0;
@@ -876,7 +910,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 
 .job-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin-bottom: 25px; font-size: 0.9rem; align-items: start; background: var(--bg-card); padding: 25px; border-radius: 16px; border: 1px solid var(--border-light); box-shadow: 0 4px 15px rgba(0,0,0,0.02);}
 .detail-item { display: flex; flex-direction: column; gap: 6px; }
-.detail-item span { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; display:block; margin-bottom:2px;}
+.detail-item > span { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; display:block; margin-bottom:2px;}
 .detail-item strong { color: var(--text-strong); word-break: break-word; font-size: 0.95rem;}
 
 .brief-box { background: var(--bg-card); border: 1px solid var(--border-light); padding: 25px; border-radius: 16px; margin-bottom: 20px; font-size: 0.95rem; color: var(--text-main); line-height: 1.7; word-break: break-word; box-shadow: 0 4px 15px rgba(0,0,0,0.02);}
@@ -989,6 +1023,148 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
     color: #0f766e;
     font-size: 0.78rem;
 }
+.monthly-ready-control {
+    background: rgba(255, 255, 255, 0.52);
+    border: 1px solid rgba(20, 184, 166, 0.18);
+    border-radius: 14px;
+    padding: 14px;
+    margin: 14px 0;
+}
+.monthly-ready-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.monthly-ready-head span {
+    display: block;
+    color: var(--text-strong);
+    font-size: 0.82rem;
+    font-weight: 850;
+    margin-bottom: 3px;
+}
+.monthly-ready-head strong {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.monthly-format-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 10px;
+}
+.monthly-format-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(20, 184, 166, 0.16);
+    border-radius: 12px;
+    padding: 10px;
+    min-width: 0;
+}
+.monthly-format-info { min-width: 0; }
+.monthly-format-info > span {
+    display: block;
+    color: var(--text-strong);
+    font-size: 0.78rem;
+    font-weight: 850;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.monthly-format-info strong {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    margin-top: 3px;
+}
+.monthly-format-info em,
+.monthly-format-info b {
+    color: #0f766e;
+    font-style: normal;
+    font-weight: 900;
+}
+.monthly-format-track {
+    height: 4px;
+    width: 100%;
+    background: rgba(20, 184, 166, 0.12);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+.monthly-format-track i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #14b8a6, #38bdf8);
+    border-radius: inherit;
+    transition: width 0.18s ease;
+}
+.monthly-format-stepper {
+    display: grid;
+    grid-template-columns: 30px 56px 30px;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-main);
+    border-radius: 999px;
+    padding: 5px;
+    flex-shrink: 0;
+}
+.monthly-format-stepper button {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(20, 184, 166, 0.12);
+    color: #0f766e;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+.monthly-format-stepper button i { width: 15px; height: 15px; }
+.monthly-format-stepper input {
+    width: 56px;
+    min-width: 56px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.05);
+    color: var(--text-strong);
+    text-align: center;
+    font-weight: 900;
+    font-size: 0.95rem;
+    outline: none;
+    padding: 7px 2px;
+    box-sizing: border-box;
+}
+.monthly-format-stepper input::-webkit-outer-spin-button,
+.monthly-format-stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.monthly-save-btn {
+    min-height: 40px;
+    border: 1px solid rgba(20, 184, 166, 0.26);
+    border-radius: 10px;
+    background: rgba(20, 184, 166, 0.14);
+    color: #0f766e;
+    font-weight: 900;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    cursor: pointer;
+    padding: 0 13px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.monthly-save-btn i { width: 16px; height: 16px; }
+.monthly-save-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .monthly-flow-panel p {
     margin: 0;
     color: var(--text-muted);
@@ -1000,11 +1176,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
     color: var(--text-strong);
 }
 [data-theme="dark"] .request-type-card.type-monthly,
-[data-theme="dark"] .request-type-pill.type-monthly { --type-ink: #5eead4; --type-soft: rgba(20, 184, 166, 0.14); }
+[data-theme="dark"] .request-type-pill.type-monthly,
+[data-theme="dark"] .job-type-detail-card.type-monthly { --type-ink: #5eead4; --type-soft: rgba(20, 184, 166, 0.14); }
 [data-theme="dark"] .request-type-card.type-pitch,
-[data-theme="dark"] .request-type-pill.type-pitch { --type-ink: #fbbf24; --type-soft: rgba(245, 158, 11, 0.14); }
+[data-theme="dark"] .request-type-pill.type-pitch,
+[data-theme="dark"] .job-type-detail-card.type-pitch { --type-ink: #fbbf24; --type-soft: rgba(245, 158, 11, 0.14); }
 [data-theme="dark"] .request-type-card.type-adhoc,
-[data-theme="dark"] .request-type-pill.type-adhoc { --type-ink: #7dd3fc; --type-soft: rgba(56, 189, 248, 0.13); }
+[data-theme="dark"] .request-type-pill.type-adhoc,
+[data-theme="dark"] .job-type-detail-card.type-adhoc { --type-ink: #7dd3fc; --type-soft: rgba(56, 189, 248, 0.13); }
 [data-theme="dark"] .request-type-pill {
     border-color: color-mix(in srgb, var(--type-accent) 44%, rgba(255, 255, 255, 0.08));
 }
@@ -1020,6 +1199,30 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 }
 [data-theme="dark"] .monthly-progress-track {
     background: rgba(45, 212, 191, 0.12);
+}
+[data-theme="dark"] .monthly-ready-control {
+    background: rgba(15, 23, 42, 0.54);
+    border-color: rgba(45, 212, 191, 0.18);
+}
+[data-theme="dark"] .monthly-format-row {
+    background: rgba(15, 23, 42, 0.56);
+    border-color: rgba(45, 212, 191, 0.16);
+}
+[data-theme="dark"] .monthly-format-stepper {
+    background: rgba(2, 6, 23, 0.44);
+    border-color: rgba(148, 163, 184, 0.14);
+}
+[data-theme="dark"] .monthly-format-stepper input {
+    background: rgba(15, 23, 42, 0.82);
+}
+[data-theme="dark"] .monthly-format-stepper button,
+[data-theme="dark"] .monthly-save-btn,
+[data-theme="dark"] .monthly-format-info em,
+[data-theme="dark"] .monthly-format-info b {
+    color: #5eead4;
+}
+[data-theme="dark"] .job-type-detail-icon {
+    background: rgba(15, 23, 42, 0.55);
 }
 [data-theme="dark"] .monthly-breakdown span {
     background: rgba(15, 23, 42, 0.68);
@@ -1319,6 +1522,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
     .gateway-icon { width: 55px; height: 55px; margin-bottom: 15px; } /* Ikon kecik sikit */
     .gateway-card h3 { font-size: 1.2rem; } /* Tajuk kecik sikit */
     .dash-card { padding: 18px; width: 100%; box-sizing: border-box; max-width: 100%; overflow: hidden; min-width: 0; }
+    .monthly-ready-head { align-items: stretch; flex-direction: column; }
+    .monthly-save-btn { width: 100%; box-sizing: border-box; }
+    .monthly-format-list { grid-template-columns: minmax(0, 1fr); }
+    .monthly-format-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+    .monthly-format-stepper { grid-template-columns: 34px minmax(0, 1fr) 34px; width: 100%; box-sizing: border-box; }
+    .monthly-format-stepper input { width: 100%; min-width: 0; }
     .health-overview { align-items: flex-start; flex-direction: column; gap: 8px; }
     .health-overview p { text-align: left; }
     .health-signal-row { gap: 6px; }
