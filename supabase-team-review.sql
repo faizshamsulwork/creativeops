@@ -1,5 +1,5 @@
--- Run once in Supabase SQL Editor to enable shared Team Review cycles, private review codes, and review exports.
--- The app stores only a code hash in Supabase. Full private codes are shown to admin at creation time and kept in the admin browser vault.
+-- Run once in Supabase SQL Editor to enable shared Team Review cycles, private review passes, and review exports.
+-- Required because reviewers on other laptops need Supabase records, not local-only browser storage.
 
 create extension if not exists pgcrypto;
 
@@ -56,3 +56,18 @@ create index if not exists idx_team_review_responses_assignment
 
 create index if not exists idx_team_review_responses_reviewee
     on public.team_review_responses (reviewee_name, submitted_at desc);
+
+-- The current app uses the public anon key, so these grants are needed for the browser app to read pass hashes and submit reviews.
+-- Privacy is enforced in the app UI/pass flow. For stronger database-level privacy later, move this flow to Supabase Auth or Edge Functions with RLS.
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on public.team_review_cycles to anon, authenticated;
+grant select, insert, update, delete on public.team_review_assignments to anon, authenticated;
+grant select, insert, update, delete on public.team_review_responses to anon, authenticated;
+
+-- Keep RLS off for this no-login browser flow. Do not enable RLS unless matching policies/functions are added.
+alter table public.team_review_cycles disable row level security;
+alter table public.team_review_assignments disable row level security;
+alter table public.team_review_responses disable row level security;
+
+-- Force PostgREST/Supabase API to refresh schema cache immediately.
+notify pgrst, 'reload schema';
