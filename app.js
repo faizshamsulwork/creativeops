@@ -2587,7 +2587,7 @@ function getReviewCodeVault() {
 
 function setReviewCodeInVault(assignmentId, code) {
     const vault = getReviewCodeVault();
-    vault[assignmentId] = normalizeReviewCode(code);
+    vault[assignmentId] = String(code || '').trim().toUpperCase();
     localStorage.setItem(TEAM_REVIEW_CODE_VAULT_KEY, JSON.stringify(vault));
 }
 
@@ -2661,7 +2661,15 @@ function generateTeamReviewId(prefix = 'review') {
 }
 
 function normalizeReviewCode(rawCode) {
+    return String(rawCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function normalizeReviewCodeLegacy(rawCode) {
     return String(rawCode || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function getReviewCodeLookupValues(rawCode) {
+    return [...new Set([normalizeReviewCode(rawCode), normalizeReviewCodeLegacy(rawCode)].filter(Boolean))];
 }
 
 function generateReviewCode(reviewerName = '') {
@@ -2677,8 +2685,7 @@ function getReviewCodeHint(code) {
     return `${clean.slice(0, 5)}...${clean.slice(-3)}`;
 }
 
-async function hashReviewCode(rawCode) {
-    const normalized = normalizeReviewCode(rawCode);
+async function hashNormalizedReviewCode(normalized) {
     if (!normalized) return '';
     if (window.crypto?.subtle && window.TextEncoder) {
         const buffer = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
@@ -2691,6 +2698,15 @@ async function hashReviewCode(rawCode) {
         hash |= 0;
     }
     return `fallback-${Math.abs(hash)}-${normalized.length}`;
+}
+
+async function hashReviewCode(rawCode) {
+    return hashNormalizedReviewCode(normalizeReviewCode(rawCode));
+}
+
+async function getReviewCodeLookupHashes(rawCode) {
+    const hashes = await Promise.all(getReviewCodeLookupValues(rawCode).map(hashNormalizedReviewCode));
+    return [...new Set(hashes.filter(Boolean))];
 }
 
 async function fetchTeamReviewData(options = {}) {
@@ -2741,6 +2757,12 @@ async function fetchTeamReviewData(options = {}) {
         } catch(e) {
             if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review responses fallback:', e.message);
         }
+
+        if (await syncLocalTeamReviewStoreToSupabase(local)) {
+            cycles = mergeRowsById(local.cycles.map(normalizeReviewCycle), cycles);
+            assignments = mergeRowsById(local.assignments.map(normalizeReviewAssignment), assignments);
+            responses = mergeRowsById(local.responses.map(normalizeReviewResponse), responses);
+        }
     }
 
     globalReviewCycles = cycles.map(normalizeReviewCycle);
@@ -2769,6 +2791,48 @@ async function fetchTeamReviewResponseForAssignment(assignmentId) {
     } catch(e) {
         if (!/does not exist|schema|relation|table|no rows/i.test(e.message || '')) console.log('Team review response lookup fallback:', e.message);
         return null;
+    }
+}
+
+
+async function findTeamReviewAssignmentByCode(rawCode) {
+    const hashes = await getReviewCodeLookupHashes(rawCode);
+    if (!hashes.length) return { assignment: null, error: null };
+
+    const localMatch = (globalReviewAssignments || []).find(row => hashes.includes(row.review_code_hash));
+    if (localMatch) return { assignment: localMatch, error: null };
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('team_review_assignments')
+            .select('*')
+            .in('review_code_hash', hashes)
+            .limit(1);
+        if (error) throw error;
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) return { assignment: null, error: null };
+
+        const assignment = normalizeReviewAssignment(row);
+        globalReviewAssignments = mergeRowsById([assignment], globalReviewAssignments || []);
+
+        if (assignment.cycle_id && !getReviewCycle(assignment.cycle_id)) {
+            try {
+                const { data: cycleData, error: cycleError } = await supabaseClient
+                    .from('team_review_cycles')
+                    .select('*')
+                    .eq('id', assignment.cycle_id)
+                    .limit(1);
+                if (cycleError) throw cycleError;
+                const cycleRow = Array.isArray(cycleData) ? cycleData[0] : cycleData;
+                if (cycleRow) globalReviewCycles = mergeRowsById([normalizeReviewCycle(cycleRow)], globalReviewCycles || []);
+            } catch(e) {
+                console.log('Team review cycle lookup fallback:', e.message);
+            }
+        }
+
+        return { assignment, error: null };
+    } catch(e) {
+        return { assignment: null, error: e };
     }
 }
 
@@ -2834,6 +2898,34 @@ async function persistTeamReviewSubmission(assignment, response) {
     globalReviewResponses = [normalizeReviewResponse(response), ...withoutOldResponse];
     persistReviewDataLocally({ assignments: [updatedAssignment], responses: [response] });
     return { savedToSupabase, lastError };
+}
+
+
+async function syncLocalTeamReviewStoreToSupabase(localStore = getLocalTeamReviewStore()) {
+    if (!hasSuperAdminAccess()) return false;
+    const cycles = (localStore.cycles || []).map(normalizeReviewCycle).filter(row => row.id);
+    const assignments = (localStore.assignments || []).map(normalizeReviewAssignment).filter(row => row.id);
+    const responses = (localStore.responses || []).map(normalizeReviewResponse).filter(row => row.id);
+    if (!cycles.length && !assignments.length && !responses.length) return true;
+
+    try {
+        if (cycles.length) {
+            const { error } = await supabaseClient.from('team_review_cycles').upsert(cycles, { onConflict: 'id' });
+            if (error) throw error;
+        }
+        if (assignments.length) {
+            const { error } = await supabaseClient.from('team_review_assignments').upsert(assignments, { onConflict: 'id' });
+            if (error) throw error;
+        }
+        if (responses.length) {
+            const { error } = await supabaseClient.from('team_review_responses').upsert(responses, { onConflict: 'id' });
+            if (error) throw error;
+        }
+        return true;
+    } catch(e) {
+        console.log('Team review local sync fallback:', e.message);
+        return false;
+    }
 }
 
 function getTeamReviewMembers() {
@@ -3108,7 +3200,7 @@ async function createTeamReviewCycle(event) {
 
         const codeList = generatedCodes.map(item => `${item.reviewer_name} for ${item.reviewee_name}: ${item.code}`).join('\n');
         if (!result.savedToSupabase) {
-            showAppleAlert('Saved Locally', `Team Review is ready on this device. Run supabase-team-review.sql once to make it shared for the whole team.\n\n${codeList}`);
+            showAppleAlert('Not Shared Yet', `The round is saved on this admin device, but the team cannot use these passes until it syncs to Supabase. Run supabase-team-review.sql if needed, then reopen Team Review as superadmin to auto-sync.\n\n${codeList}`);
         } else {
             showAppleAlert('Review Round Created', `Review passes are ready. Share each pass only with the assigned reviewer.\n\n${codeList}`);
         }
@@ -3279,10 +3371,13 @@ async function unlockTeamReviewCode() {
     }
 
     try {
-        await fetchTeamReviewData({ reviewerAccess: true });
-        const hash = await hashReviewCode(code);
-        const assignment = (globalReviewAssignments || []).find(row => row.review_code_hash === hash);
-        if (!assignment) return showAppleAlert('Invalid Review Pass', 'This pass was not found. Please check with the admin.');
+        const { assignment, error } = await findTeamReviewAssignmentByCode(input?.value || code);
+        if (!assignment) {
+            if (error) {
+                return showAppleAlert('Review Sync Issue', `Could not check Supabase for this pass. ${error.message || 'Please ask admin to refresh and sync the review round.'}`);
+            }
+            return showAppleAlert('Review Pass Not Synced', 'This pass was not found in Supabase. Ask admin to open Team Review once as superadmin, or recreate the review round after Supabase sync.');
+        }
 
         activeReviewAssignment = assignment;
         const response = await fetchTeamReviewResponseForAssignment(assignment.id);
