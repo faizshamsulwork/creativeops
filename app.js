@@ -2849,6 +2849,27 @@ function persistReviewDataLocally({ cycles = [], assignments = [], responses = [
     globalReviewResponses = mergeRowsById(responses.map(normalizeReviewResponse), globalReviewResponses);
 }
 
+
+async function upsertTeamReviewRowsViaRest(table, rows = []) {
+    if (!rows.length) return true;
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=id`, {
+        method: 'POST',
+        headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            Prefer: 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify(rows)
+    });
+
+    if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`${table} ${response.status}: ${body || response.statusText}`);
+    }
+    return true;
+}
+
 async function persistTeamReviewCycle(cycle, assignments) {
     let savedToSupabase = false;
     let lastError = null;
@@ -2865,6 +2886,14 @@ async function persistTeamReviewCycle(cycle, assignments) {
         savedToSupabase = true;
     } catch(e) {
         lastError = e;
+        try {
+            await upsertTeamReviewRowsViaRest('team_review_cycles', [cycle]);
+            await upsertTeamReviewRowsViaRest('team_review_assignments', assignments);
+            savedToSupabase = true;
+            lastError = null;
+        } catch(restError) {
+            lastError = restError;
+        }
     }
 
     persistReviewDataLocally({ cycles: [cycle], assignments });
@@ -2923,8 +2952,15 @@ async function syncLocalTeamReviewStoreToSupabase(localStore = getLocalTeamRevie
         }
         return true;
     } catch(e) {
-        console.log('Team review local sync fallback:', e.message);
-        return false;
+        try {
+            await upsertTeamReviewRowsViaRest('team_review_cycles', cycles);
+            await upsertTeamReviewRowsViaRest('team_review_assignments', assignments);
+            await upsertTeamReviewRowsViaRest('team_review_responses', responses);
+            return true;
+        } catch(restError) {
+            console.log('Team review local sync fallback:', restError.message || e.message);
+            return false;
+        }
     }
 }
 
@@ -3200,7 +3236,12 @@ async function createTeamReviewCycle(event) {
 
         const codeList = generatedCodes.map(item => `${item.reviewer_name} for ${item.reviewee_name}: ${item.code}`).join('\n');
         if (!result.savedToSupabase) {
-            showAppleAlert('Not Shared Yet', `The round is saved on this admin device, but the team cannot use these passes until it syncs to Supabase. Run supabase-team-review.sql if needed, then reopen Team Review as superadmin to auto-sync.\n\n${codeList}`);
+            const errorText = result.lastError?.message ? `
+
+Supabase error: ${result.lastError.message}` : '';
+            showAppleAlert('Not Shared Yet', `The round is saved on this admin device, but the team cannot use these passes until it syncs to Supabase. Run supabase-team-review.sql if needed, then reopen Team Review as superadmin to auto-sync.${errorText}
+
+${codeList}`);
         } else {
             showAppleAlert('Review Round Created', `Review passes are ready. Share each pass only with the assigned reviewer.\n\n${codeList}`);
         }
