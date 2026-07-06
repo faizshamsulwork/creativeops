@@ -34,6 +34,9 @@ let isSuperAdmin = false;
 let currentRequestType = 'adhoc';
 const CORE_CREATIVE_NAMES = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
 const SUPER_ADMIN_NAMES = ["Faiz Shamsul"];
+const SUPER_ADMIN_LOGIN_PASSCODE = 'Act3030300!';
+const SUPER_ADMIN_VERIFIED_KEY = 'adtech_superadmin_verified';
+const SUPER_ADMIN_VERIFIED_DATE_KEY = 'adtech_superadmin_verified_date';
 const ADMIN_ACCESS_STORAGE_KEY = 'adtech_admin_members_override';
 const TEAM_REVIEW_LOCAL_KEY = 'adtech_team_review_store';
 const TEAM_REVIEW_CODE_VAULT_KEY = 'adtech_team_review_code_vault';
@@ -181,6 +184,39 @@ function isSuperAdminName(name = getCurrentUserName()) {
     return SUPER_ADMIN_NAMES.some(adminName => normalizeNameKey(adminName) === key);
 }
 
+function setSuperAdminVerified() {
+    localStorage.setItem(SUPER_ADMIN_VERIFIED_KEY, 'true');
+    localStorage.setItem(SUPER_ADMIN_VERIFIED_DATE_KEY, getTodaySessionStamp());
+}
+
+function clearSuperAdminVerified() {
+    localStorage.removeItem(SUPER_ADMIN_VERIFIED_KEY);
+    localStorage.removeItem(SUPER_ADMIN_VERIFIED_DATE_KEY);
+}
+
+function isSuperAdminVerified() {
+    return localStorage.getItem(SUPER_ADMIN_VERIFIED_KEY) === 'true' && localStorage.getItem(SUPER_ADMIN_VERIFIED_DATE_KEY) === getTodaySessionStamp();
+}
+
+function hasSuperAdminAccess(name = getCurrentUserName()) {
+    return isSuperAdminName(name) && isSuperAdminVerified();
+}
+
+async function verifySuperAdminLogin(name) {
+    if (!isSuperAdminName(name)) {
+        clearSuperAdminVerified();
+        return true;
+    }
+
+    const pass = await showApplePrompt('Private Profile', 'Enter Faiz passcode to continue:', true, async (val) => val === SUPER_ADMIN_LOGIN_PASSCODE);
+    if (!pass) {
+        clearSuperAdminVerified();
+        return false;
+    }
+    setSuperAdminVerified();
+    return true;
+}
+
 function isAdminTeamMember(member) {
     const name = String(member?.name || '').trim();
     if (isSuperAdminName(name)) return true;
@@ -204,7 +240,7 @@ function isAdminTeamMember(member) {
 function hasAssignedAdminAccess(name = getCurrentUserName()) {
     const key = normalizeNameKey(name);
     if (!key) return false;
-    if (isSuperAdminName(name)) return true;
+    if (isSuperAdminName(name)) return hasSuperAdminAccess(name);
 
     const localAdmins = getAdminOverrideNames().map(n => normalizeNameKey(n));
     if (localAdmins.includes(key)) return true;
@@ -219,9 +255,14 @@ function hasAdminAccess() {
 function syncAdminSessionFromProfile() {
     const userName = getCurrentUserName();
     const currentToken = localStorage.getItem('adtech_lead_pin');
-    const profileHasAccess = hasAssignedAdminAccess(userName);
     const profileTokens = ['profile-admin', 'profile-superadmin'];
 
+    if (isSuperAdminName(userName) && !hasSuperAdminAccess(userName)) {
+        if (profileTokens.includes(currentToken)) localStorage.removeItem('adtech_lead_pin');
+        return;
+    }
+
+    const profileHasAccess = hasAssignedAdminAccess(userName);
     if (profileHasAccess) {
         localStorage.setItem('adtech_lead_pin', isSuperAdminName(userName) ? 'profile-superadmin' : 'profile-admin');
     } else if (profileTokens.includes(currentToken)) {
@@ -880,6 +921,11 @@ function goToStep(step) {
  * Memastikan data di-render semula setiap kali tab ditukar.
  */
 function showPage(id) {
+    if (id === 'team-review' && !hasSuperAdminAccess()) {
+        showAppleAlert('Private Area', 'Team Review is superadmin only.');
+        id = 'dashboard';
+    }
+
     document.body.classList.remove('no-scroll');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -992,6 +1038,15 @@ function toggleTheme(event) {
     });
 }
 
+function syncTeamReviewPrivacyUI() {
+    const teamReviewNav = document.getElementById('btn-team-review');
+    const canViewTeamReview = hasSuperAdminAccess();
+    if (teamReviewNav) teamReviewNav.style.display = canViewTeamReview ? 'flex' : 'none';
+
+    const page = document.getElementById('team-review');
+    if (page?.classList.contains('active') && !canViewTeamReview) showPage('dashboard');
+}
+
 /**
  * Mengemaskini UI berdasarkan status Admin.
  * 🌟 AUTO-TRIGGER KANBAN: Memaksa paparan Kanban jika Admin login.
@@ -1057,6 +1112,7 @@ function checkAdminUI() {
 
         isSuperAdmin = false;
     }
+    syncTeamReviewPrivacyUI();
     renderSettingsMemberControls();
     renderSettingsAdminControls();
     if (typeof updateLiveClock === 'function') updateLiveClock();
@@ -1141,6 +1197,7 @@ function signOutApp() {
         localStorage.removeItem('adtech_lead_pin');
         localStorage.removeItem('adtech_region');
         localStorage.removeItem('adtech_login_date');
+        clearSuperAdminVerified();
         window.location.reload(true);
     }, 600);
 }
@@ -1205,6 +1262,9 @@ async function startApp() {
             if (!userName) return showAppleAlert("Missing Info", "Please tell us who you are to continue.");
         }
 
+        const superAdminVerified = await verifySuperAdminLogin(userName);
+        if (!superAdminVerified) return showAppleAlert('Access Cancelled', 'Faiz profile requires passcode verification.');
+
         userRegion = finalRegion; localStorage.setItem('adtech_user_name', userName); localStorage.setItem('adtech_region', finalRegion); localStorage.setItem('adtech_login_date', new Date().toDateString());
         if (typeof scheduleDailySignOut === 'function') scheduleDailySignOut();
         setGreetingAndDate(userName);
@@ -1244,6 +1304,18 @@ async function startApp() {
 function checkSavedName() {
     const savedName = localStorage.getItem('adtech_user_name'); const savedReg = localStorage.getItem('adtech_region');
     if(savedName && savedReg) {
+        if (isSuperAdminName(savedName) && !hasSuperAdminAccess(savedName)) {
+            localStorage.removeItem('adtech_user_name');
+            localStorage.removeItem('adtech_lead_pin');
+            localStorage.removeItem('adtech_region');
+            localStorage.removeItem('adtech_login_date');
+            clearSuperAdminVerified();
+            showPage('dashboard');
+            document.getElementById('introPage').style.display = 'flex';
+            document.body.classList.add('no-scroll');
+            setTimeout(() => showAppleAlert('Verification Required', 'Please sign in again as Faiz.'), 400);
+            return;
+        }
         userRegion = savedReg; setGreetingAndDate(savedName);
 
         if(typeof checkLeaveAccess === 'function') checkLeaveAccess(savedName);
@@ -2628,6 +2700,13 @@ async function hashReviewCode(rawCode) {
 }
 
 async function fetchTeamReviewData() {
+    if (!hasSuperAdminAccess()) {
+        globalReviewCycles = [];
+        globalReviewAssignments = [];
+        globalReviewResponses = [];
+        return;
+    }
+
     const local = getLocalTeamReviewStore();
     let cycles = local.cycles;
     let assignments = local.assignments;
@@ -2842,8 +2921,13 @@ function setDefaultTeamReviewFields() {
 function renderTeamReviewPage() {
     const page = document.getElementById('team-review');
     if (!page) return;
+    if (!hasSuperAdminAccess()) {
+        activeReviewAssignment = null;
+        activeReviewDraft = null;
+        return;
+    }
 
-    const adminAccess = hasAdminAccess();
+    const adminAccess = hasSuperAdminAccess();
     const shell = page.querySelector('.team-review-shell');
     if (shell) shell.classList.toggle('reviewer-only', !adminAccess);
     page.querySelectorAll('.settings-admin-only').forEach(el => {
@@ -2916,7 +3000,7 @@ function renderReviewPairDraftList() {
 }
 
 function addReviewPairDraft() {
-    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
     const reviewer = document.getElementById('reviewReviewerSelect')?.value || '';
     const reviewee = document.getElementById('reviewRevieweeSelect')?.value || '';
     if (!reviewer || !reviewee) return showAppleAlert('Missing Pair', 'Please select both reviewer and reviewee.');
@@ -2941,7 +3025,7 @@ function removeReviewPairDraft(index) {
 
 async function createTeamReviewCycle(event) {
     if (event) event.preventDefault();
-    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
 
     const titleInput = document.getElementById('reviewCycleTitle');
     const deadlineInput = document.getElementById('reviewCycleDeadline');
@@ -3071,7 +3155,7 @@ function renderTeamReviewCycleList() {
 }
 
 async function deleteTeamReviewCycle(cycleId) {
-    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
     const cycle = getReviewCycle(cycleId);
     if (!cycle) return;
     const confirmed = await showAppleConfirm('Delete Review Round?', `Delete "${cycle.title}"? This removes its assignments and responses from this workspace.`, { confirmText: 'Delete Round', cancelText: 'Cancel', tone: 'danger', icon: 'trash-2' });
@@ -3112,7 +3196,7 @@ async function deleteTeamReviewCycle(cycleId) {
 }
 
 async function resetReviewCode(assignmentId) {
-    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
     const assignment = globalReviewAssignments.find(row => row.id === assignmentId);
     if (!assignment) return;
 
@@ -3143,6 +3227,7 @@ async function resetReviewCode(assignmentId) {
 }
 
 function copyReviewInvite(assignmentId) {
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
     const assignment = globalReviewAssignments.find(row => row.id === assignmentId);
     const cycle = assignment ? getReviewCycle(assignment.cycle_id) : null;
     if (!assignment) return;
@@ -3439,7 +3524,7 @@ You are a people operations and creative team performance analyst. Analyze these
 }
 
 function exportTeamReviewPack() {
-    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
     if (!(globalReviewAssignments || []).length) return showAppleAlert('Export Failed', 'No team review data available yet.');
 
     const date = new Date().toISOString().split('T')[0];
