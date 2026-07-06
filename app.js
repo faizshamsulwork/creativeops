@@ -2648,6 +2648,47 @@ function normalizeReviewResponse(row = {}) {
     };
 }
 
+function nullIfBlank(value) {
+    return value === '' || value === undefined ? null : value;
+}
+
+function cleanTeamReviewCycleForSupabase(row = {}) {
+    const clean = normalizeReviewCycle(row);
+    return {
+        ...clean,
+        deadline: nullIfBlank(clean.deadline),
+        created_at: nullIfBlank(clean.created_at),
+        updated_at: nullIfBlank(clean.updated_at)
+    };
+}
+
+function cleanTeamReviewAssignmentForSupabase(row = {}) {
+    const clean = normalizeReviewAssignment(row);
+    return {
+        ...clean,
+        submitted_at: nullIfBlank(clean.submitted_at),
+        created_at: nullIfBlank(clean.created_at)
+    };
+}
+
+function cleanTeamReviewResponseForSupabase(row = {}) {
+    const clean = normalizeReviewResponse(row);
+    return {
+        ...clean,
+        submitted_at: nullIfBlank(clean.submitted_at)
+    };
+}
+
+function cleanTeamReviewRowsForSupabase(table, rows = []) {
+    const cleaners = {
+        team_review_cycles: cleanTeamReviewCycleForSupabase,
+        team_review_assignments: cleanTeamReviewAssignmentForSupabase,
+        team_review_responses: cleanTeamReviewResponseForSupabase
+    };
+    const cleaner = cleaners[table] || (row => row);
+    return rows.map(cleaner);
+}
+
 function parseReviewJson(value) {
     if (!value) return {};
     if (typeof value === 'object') return value;
@@ -2851,7 +2892,8 @@ function persistReviewDataLocally({ cycles = [], assignments = [], responses = [
 
 
 async function upsertTeamReviewRowsViaRest(table, rows = []) {
-    if (!rows.length) return true;
+    const cleanRows = cleanTeamReviewRowsForSupabase(table, rows);
+    if (!cleanRows.length) return true;
     const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=id`, {
         method: 'POST',
         headers: {
@@ -2860,7 +2902,7 @@ async function upsertTeamReviewRowsViaRest(table, rows = []) {
             'Content-Type': 'application/json',
             Prefer: 'resolution=merge-duplicates,return=minimal'
         },
-        body: JSON.stringify(rows)
+        body: JSON.stringify(cleanRows)
     });
 
     if (!response.ok) {
@@ -2871,24 +2913,26 @@ async function upsertTeamReviewRowsViaRest(table, rows = []) {
 }
 
 async function persistTeamReviewCycle(cycle, assignments) {
+    const dbCycle = cleanTeamReviewCycleForSupabase(cycle);
+    const dbAssignments = assignments.map(cleanTeamReviewAssignmentForSupabase);
     let savedToSupabase = false;
     let lastError = null;
     try {
         const { error: cycleError } = await supabaseClient
             .from('team_review_cycles')
-            .upsert([cycle], { onConflict: 'id' });
+            .upsert([dbCycle], { onConflict: 'id' });
         if (cycleError) throw cycleError;
 
         const { error: assignmentError } = await supabaseClient
             .from('team_review_assignments')
-            .upsert(assignments, { onConflict: 'id' });
+            .upsert(dbAssignments, { onConflict: 'id' });
         if (assignmentError) throw assignmentError;
         savedToSupabase = true;
     } catch(e) {
         lastError = e;
         try {
-            await upsertTeamReviewRowsViaRest('team_review_cycles', [cycle]);
-            await upsertTeamReviewRowsViaRest('team_review_assignments', assignments);
+            await upsertTeamReviewRowsViaRest('team_review_cycles', [dbCycle]);
+            await upsertTeamReviewRowsViaRest('team_review_assignments', dbAssignments);
             savedToSupabase = true;
             lastError = null;
         } catch(restError) {
@@ -2903,13 +2947,14 @@ async function persistTeamReviewCycle(cycle, assignments) {
 async function persistTeamReviewSubmission(assignment, response) {
     const submittedAt = response.submitted_at || new Date().toISOString();
     const updatedAssignment = { ...assignment, status: 'submitted', submitted_at: submittedAt };
+    const dbResponse = cleanTeamReviewResponseForSupabase({ ...response, submitted_at: submittedAt });
     let savedToSupabase = false;
     let lastError = null;
 
     try {
         const { error: responseError } = await supabaseClient
             .from('team_review_responses')
-            .upsert([{ ...response, submitted_at: submittedAt }], { onConflict: 'id' });
+            .upsert([dbResponse], { onConflict: 'id' });
         if (responseError) throw responseError;
 
         const { error: assignmentError } = await supabaseClient
@@ -2932,9 +2977,9 @@ async function persistTeamReviewSubmission(assignment, response) {
 
 async function syncLocalTeamReviewStoreToSupabase(localStore = getLocalTeamReviewStore()) {
     if (!hasSuperAdminAccess()) return false;
-    const cycles = (localStore.cycles || []).map(normalizeReviewCycle).filter(row => row.id);
-    const assignments = (localStore.assignments || []).map(normalizeReviewAssignment).filter(row => row.id);
-    const responses = (localStore.responses || []).map(normalizeReviewResponse).filter(row => row.id);
+    const cycles = (localStore.cycles || []).map(cleanTeamReviewCycleForSupabase).filter(row => row.id);
+    const assignments = (localStore.assignments || []).map(cleanTeamReviewAssignmentForSupabase).filter(row => row.id);
+    const responses = (localStore.responses || []).map(cleanTeamReviewResponseForSupabase).filter(row => row.id);
     if (!cycles.length && !assignments.length && !responses.length) return true;
 
     try {
