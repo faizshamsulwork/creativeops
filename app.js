@@ -921,11 +921,6 @@ function goToStep(step) {
  * Memastikan data di-render semula setiap kali tab ditukar.
  */
 function showPage(id) {
-    if (id === 'team-review' && !hasSuperAdminAccess()) {
-        showAppleAlert('Private Area', 'Team Review is superadmin only.');
-        id = 'dashboard';
-    }
-
     document.body.classList.remove('no-scroll');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1040,11 +1035,10 @@ function toggleTheme(event) {
 
 function syncTeamReviewPrivacyUI() {
     const teamReviewNav = document.getElementById('btn-team-review');
-    const canViewTeamReview = hasSuperAdminAccess();
-    if (teamReviewNav) teamReviewNav.style.display = canViewTeamReview ? 'flex' : 'none';
+    if (teamReviewNav) teamReviewNav.style.display = 'flex';
 
     const page = document.getElementById('team-review');
-    if (page?.classList.contains('active') && !canViewTeamReview) showPage('dashboard');
+    if (page?.classList.contains('active') && typeof renderTeamReviewPage === 'function') renderTeamReviewPage();
 }
 
 /**
@@ -2699,15 +2693,17 @@ async function hashReviewCode(rawCode) {
     return `fallback-${Math.abs(hash)}-${normalized.length}`;
 }
 
-async function fetchTeamReviewData() {
-    if (!hasSuperAdminAccess()) {
+async function fetchTeamReviewData(options = {}) {
+    const reviewerAccess = Boolean(options.reviewerAccess);
+    const adminAccess = hasSuperAdminAccess();
+    if (!adminAccess && !reviewerAccess) {
         globalReviewCycles = [];
         globalReviewAssignments = [];
         globalReviewResponses = [];
         return;
     }
 
-    const local = getLocalTeamReviewStore();
+    const local = adminAccess ? getLocalTeamReviewStore() : { cycles: [], assignments: [], responses: [] };
     let cycles = local.cycles;
     let assignments = local.assignments;
     let responses = local.responses;
@@ -2734,20 +2730,46 @@ async function fetchTeamReviewData() {
         if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review assignments fallback:', e.message);
     }
 
-    try {
-        const { data, error } = await supabaseClient
-            .from('team_review_responses')
-            .select('*')
-            .order('submitted_at', { ascending: false });
-        if (error) throw error;
-        responses = mergeRowsById((data || []).map(normalizeReviewResponse), local.responses);
-    } catch(e) {
-        if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review responses fallback:', e.message);
+    if (adminAccess) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('team_review_responses')
+                .select('*')
+                .order('submitted_at', { ascending: false });
+            if (error) throw error;
+            responses = mergeRowsById((data || []).map(normalizeReviewResponse), local.responses);
+        } catch(e) {
+            if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review responses fallback:', e.message);
+        }
     }
 
     globalReviewCycles = cycles.map(normalizeReviewCycle);
     globalReviewAssignments = assignments.map(normalizeReviewAssignment);
     globalReviewResponses = responses.map(normalizeReviewResponse);
+}
+
+async function fetchTeamReviewResponseForAssignment(assignmentId) {
+    if (!assignmentId) return null;
+    const existing = getReviewResponseForAssignment(assignmentId);
+    if (existing) return existing;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('team_review_responses')
+            .select('*')
+            .eq('assignment_id', assignmentId)
+            .order('submitted_at', { ascending: false })
+            .limit(1);
+        if (error) throw error;
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) return null;
+        const response = normalizeReviewResponse(row);
+        globalReviewResponses = mergeRowsById([response], globalReviewResponses || []);
+        return response;
+    } catch(e) {
+        if (!/does not exist|schema|relation|table|no rows/i.test(e.message || '')) console.log('Team review response lookup fallback:', e.message);
+        return null;
+    }
 }
 
 function persistReviewDataLocally({ cycles = [], assignments = [], responses = [] }) {
@@ -2921,11 +2943,6 @@ function setDefaultTeamReviewFields() {
 function renderTeamReviewPage() {
     const page = document.getElementById('team-review');
     if (!page) return;
-    if (!hasSuperAdminAccess()) {
-        activeReviewAssignment = null;
-        activeReviewDraft = null;
-        return;
-    }
 
     const adminAccess = hasSuperAdminAccess();
     const shell = page.querySelector('.team-review-shell');
@@ -2934,6 +2951,12 @@ function renderTeamReviewPage() {
         if (el.id === 'teamReviewAdminPanel') el.style.display = adminAccess ? 'block' : 'none';
         else el.style.display = adminAccess ? 'inline-flex' : 'none';
     });
+
+    if (!adminAccess) {
+        renderActiveReviewForm();
+        refreshIcons();
+        return;
+    }
 
     setDefaultTeamReviewFields();
     renderTeamReviewSelectors();
@@ -3256,13 +3279,13 @@ async function unlockTeamReviewCode() {
     }
 
     try {
-        await fetchTeamReviewData();
+        await fetchTeamReviewData({ reviewerAccess: true });
         const hash = await hashReviewCode(code);
         const assignment = (globalReviewAssignments || []).find(row => row.review_code_hash === hash);
         if (!assignment) return showAppleAlert('Invalid Review Pass', 'This pass was not found. Please check with the admin.');
 
         activeReviewAssignment = assignment;
-        const response = getReviewResponseForAssignment(assignment.id);
+        const response = await fetchTeamReviewResponseForAssignment(assignment.id);
         activeReviewDraft = response ? {
             ratings: { ...response.ratings },
             comments: { ...response.comments },
