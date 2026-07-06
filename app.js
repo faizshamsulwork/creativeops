@@ -272,6 +272,12 @@ function saveCreativeOverrideName(name) {
     }
 }
 
+function removeCreativeOverrideName(name) {
+    const key = normalizeNameKey(name);
+    const names = getCreativeOverrideNames().filter(n => normalizeNameKey(n) !== key);
+    localStorage.setItem('adtech_creative_members_override', JSON.stringify(names));
+}
+
 function isCreativeTeamMember(member) {
     const name = String(member?.name || '').trim();
     const lowerName = name.toLowerCase();
@@ -294,8 +300,61 @@ function isCreativeTeamMember(member) {
         roleText.includes('pic');
 }
 
+function isActiveTeamMember(member) {
+    if (!member) return false;
+
+    const activeValue = member.is_active;
+    if (activeValue === false) return false;
+    if (['false', '0', 'no'].includes(String(activeValue || '').toLowerCase())) return false;
+
+    const statusText = [member.status, member.member_status, member.employment_status]
+        .map(value => String(value || '').toLowerCase())
+        .join(' ');
+    if (/inactive|removed|deleted|archived|resigned|left|offboard/.test(statusText)) return false;
+
+    return !(member.removed_at || member.deleted_at || member.archived_at);
+}
+
+function getActiveTeamMembers() {
+    return (globalTeamMembers || []).filter(isActiveTeamMember);
+}
+
+function getCountrySortIndex(region) {
+    const key = String(region || '').trim().toLowerCase();
+    const index = WORKSPACE_COUNTRIES.findIndex(country => country.name.toLowerCase() === key || country.code.toLowerCase() === key);
+    return index >= 0 ? index : WORKSPACE_COUNTRIES.length;
+}
+
+function sortTeamMembersByCountryThenName(a, b) {
+    const countryDiff = getCountrySortIndex(a.region) - getCountrySortIndex(b.region);
+    if (countryDiff !== 0) return countryDiff;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+}
+
+function groupTeamMembersByCountry(team) {
+    const groups = new Map();
+    [...(team || [])].sort(sortTeamMembersByCountryThenName).forEach(member => {
+        const country = getCountryConfig(member.region || 'Global');
+        const key = country.name;
+        if (!groups.has(key)) groups.set(key, { country, members: [] });
+        groups.get(key).members.push(member);
+    });
+    return [...groups.values()].sort((a, b) => getCountrySortIndex(a.country.name) - getCountrySortIndex(b.country.name));
+}
+
+function renderTeamMemberOptionGroups(team, currentSelection = '') {
+    return groupTeamMembersByCountry(team).map(group => {
+        const options = group.members.map(member => {
+            const name = escapeHtml(member.name);
+            const selected = member.name === currentSelection ? 'selected' : '';
+            return `<option value="${name}" ${selected}>${name}</option>`;
+        }).join('');
+        return `<optgroup label="${group.country.flag} ${escapeHtml(group.country.name)}">${options}</optgroup>`;
+    }).join('');
+}
+
 function hydrateTeamCollections(teamData) {
-    globalTeamMembers = Array.isArray(teamData) ? teamData : [];
+    globalTeamMembers = (Array.isArray(teamData) ? teamData : []).filter(isActiveTeamMember);
 
     allStaffMY = globalTeamMembers.filter(t => String(t.region).toLowerCase() === 'malaysia').map(t => t.name);
     allStaffID = globalTeamMembers.filter(t => String(t.region).toLowerCase() === 'indonesia').map(t => t.name);
@@ -427,23 +486,92 @@ function warmPlaybookGenerator() {
 }
 
 let notifTimeout;
+let appleConfirmResolver = null;
+
 function showNotification(title, subtitle, callback) {
-    playSuccessSound(); const overlay = document.getElementById('successOverlay');
-    document.getElementById('successMainText').innerText = title; document.getElementById('successSubText').innerText = subtitle || '';
-    document.getElementById('successSubText').style.display = subtitle ? 'block' : 'none'; overlay.classList.add('show');
+    playSuccessSound();
+    const overlay = document.getElementById('successOverlay');
+    const main = document.getElementById('successMainText');
+    const sub = document.getElementById('successSubText');
+    if (!overlay || !main || !sub) return;
+
+    main.innerText = title;
+    sub.innerText = subtitle || '';
+    sub.style.display = subtitle ? 'block' : 'none';
+    overlay.classList.add('show');
     clearTimeout(notifTimeout);
-    notifTimeout = setTimeout(() => { overlay.classList.remove('show'); if (callback) setTimeout(callback, 400); }, 1800);
+    notifTimeout = setTimeout(() => {
+        overlay.classList.remove('show');
+        if (callback) setTimeout(callback, 260);
+    }, 2200);
 }
 
-function showAppleAlert(title, msg) {
+function configureAppleDialog({ title, msg, icon = 'sparkles', tone = 'default', confirmText = 'OK', cancelText = '', singleAction = true }) {
+    const overlay = document.getElementById('appleAlert');
+    const iconWrap = document.getElementById('alertIcon');
+    const okBtn = document.getElementById('alertOkBtn');
+    const cancelBtn = document.getElementById('alertCancelBtn');
+    const actions = overlay?.querySelector('.apple-alert-actions');
+    if (!overlay || !okBtn || !cancelBtn || !actions) return null;
+
     document.getElementById('alertTitle').innerText = title;
     document.getElementById('alertMsg').innerText = msg;
-    document.getElementById('appleAlert').classList.add('show');
+    iconWrap.className = `apple-alert-icon ${tone === 'danger' ? 'danger' : tone === 'success' ? 'success' : ''}`.trim();
+    iconWrap.innerHTML = `<i data-lucide="${icon}"></i>`;
+    okBtn.innerText = confirmText;
+    okBtn.className = `apple-alert-btn primary ${tone === 'danger' ? 'danger' : ''}`.trim();
+    cancelBtn.innerText = cancelText || 'Cancel';
+    cancelBtn.style.display = singleAction ? 'none' : 'inline-flex';
+    actions.classList.toggle('single', singleAction);
+    overlay.dataset.mode = singleAction ? 'alert' : 'confirm';
+    document.body.classList.add('no-scroll');
+    overlay.classList.add('show');
+    refreshIcons();
+    return overlay;
+}
+
+function showAppleAlert(title, msg, options = {}) {
+    appleConfirmResolver = null;
+    configureAppleDialog({
+        title,
+        msg,
+        icon: options.icon || 'sparkles',
+        tone: options.tone || 'default',
+        confirmText: options.confirmText || 'OK',
+        singleAction: true
+    });
+}
+
+function showAppleConfirm(title, msg, options = {}) {
+    return new Promise(resolve => {
+        appleConfirmResolver = resolve;
+        configureAppleDialog({
+            title,
+            msg,
+            icon: options.icon || 'alert-triangle',
+            tone: options.tone || 'danger',
+            confirmText: options.confirmText || 'Confirm',
+            cancelText: options.cancelText || 'Cancel',
+            singleAction: false
+        });
+    });
+}
+
+function resolveAppleConfirm(value) {
+    const resolver = appleConfirmResolver;
+    appleConfirmResolver = null;
+    closeAppleAlert();
+    if (resolver) resolver(Boolean(value));
 }
 
 function closeAppleAlert() {
-    document.getElementById('appleAlert').classList.remove('show');
+    const overlay = document.getElementById('appleAlert');
+    if (!overlay) return;
+    const resolver = appleConfirmResolver;
+    appleConfirmResolver = null;
+    overlay.classList.remove('show');
     document.body.classList.remove('no-scroll');
+    if (resolver) resolver(false);
 }
 
 // Fungsi untuk paparkan panduan Creative Brief
@@ -481,6 +609,7 @@ function showApplePrompt(title, desc, isPassword = false, validateFn = null) {
         input.placeholder = isPassword ? 'PIN / Passcode' : 'Type number here...';
 
         input.value = ''; btnConfirm.innerHTML = 'OK'; btnConfirm.disabled = false; input.disabled = false;
+        document.body.classList.add('no-scroll');
         overlay.classList.add('show'); setTimeout(() => input.focus(), 100); let isProcessing = false;
 
         const cleanUp = () => { overlay.classList.remove('show'); btnConfirm.removeEventListener('click', onConfirm); btnCancel.removeEventListener('click', onCancel); input.removeEventListener('keypress', onEnter); document.body.classList.remove('no-scroll'); };
@@ -928,6 +1057,7 @@ function checkAdminUI() {
 
         isSuperAdmin = false;
     }
+    renderSettingsMemberControls();
     renderSettingsAdminControls();
     if (typeof updateLiveClock === 'function') updateLiveClock();
     if (typeof refreshIcons === 'function') refreshIcons();
@@ -1415,9 +1545,12 @@ function renderDashboard() {
     renderAdminHealthDashboard(data);
 
     const today = new Date(); today.setHours(0,0,0,0); const nextWeek = new Date(today); nextWeek.setDate(today.getDate() + 7);
-    const urgentJobs = activeData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); return dDate >= today && dDate <= nextWeek; }).sort((a,b) => new Date(a.deadline) - new Date(b.deadline));
+    const overdueJobs = activeData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); dDate.setHours(0,0,0,0); return dDate < today; }).sort((a,b) => new Date(a.deadline) - new Date(b.deadline));
+    const urgentJobs = activeData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); dDate.setHours(0,0,0,0); return dDate >= today && dDate <= nextWeek; }).sort((a,b) => new Date(a.deadline) - new Date(b.deadline));
 
-    document.getElementById('total-val').innerText = data.length; document.getElementById('pending-val').innerText = pendingData.length; document.getElementById('active-val').innerText = activeData.length;
+    const overdueVal = document.getElementById('overdue-val') || document.getElementById('total-val');
+    if (overdueVal) overdueVal.innerText = overdueJobs.length;
+    document.getElementById('pending-val').innerText = pendingData.length; document.getElementById('active-val').innerText = activeData.length;
     const dueSoonVal = document.getElementById('due-soon-val');
     if (dueSoonVal) dueSoonVal.innerText = urgentJobs.length;
 
@@ -1966,6 +2099,7 @@ function escapeHtml(value) {
 function renderSettingsPage() {
     populateWorkspaceCountrySelects();
     checkAdminUI();
+    renderSettingsMemberControls();
     renderSettingsAdminControls();
     renderSettingsCountryList();
     renderSettingsTeamList();
@@ -1975,7 +2109,7 @@ function renderSettingsTeamList() {
     const wrap = document.getElementById('settingsTeamList');
     if (!wrap) return;
 
-    const team = [...(globalTeamMembers || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    const team = getActiveTeamMembers().sort(sortTeamMembersByCountryThenName);
     if (!team.length) {
         wrap.innerHTML = '<div class="empty-state" style="padding:24px;"><i data-lucide="users"></i><p>No team members loaded yet.</p></div>';
         refreshIcons();
@@ -1989,21 +2123,33 @@ function renderSettingsTeamList() {
         overseas: team.filter(t => !['malaysia', 'indonesia'].includes(String(t.region || '').toLowerCase())).length
     };
 
-    const rows = team.map(member => {
-        const isCreative = isCreativeTeamMember(member);
-        const isAdmin = isAdminTeamMember(member);
-        const region = member.region || 'Global';
+    const rosterGroups = groupTeamMembersByCountry(team).map(group => {
+        const rows = group.members.map(member => {
+            const isCreative = isCreativeTeamMember(member);
+            const isAdmin = isAdminTeamMember(member);
+            const region = member.region || group.country.name || 'Global';
+            return `
+                <div class="settings-team-row">
+                    <div>
+                        <strong title="${escapeHtml(member.name)}">${escapeHtml(member.name)}</strong>
+                        <span>${getFlag(region)} ${escapeHtml(region)}</span>
+                    </div>
+                    <div class="settings-team-badges">
+                        ${isAdmin ? `<small class="admin">${isSuperAdminName(member.name) ? 'Superadmin' : 'Admin'}</small>` : ''}
+                        <small class="${isCreative ? 'creative' : ''}">${isCreative ? 'Creative PIC' : 'Requester'}</small>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
         return `
-            <div class="settings-team-row">
-                <div>
-                    <strong>${escapeHtml(member.name)}</strong>
-                    <span>${getFlag(region)} ${escapeHtml(region)}</span>
+            <section class="settings-roster-country">
+                <div class="settings-roster-country-head">
+                    <span>${group.country.flag} ${escapeHtml(group.country.name)}</span>
+                    <small>${group.members.length}</small>
                 </div>
-                <div class="settings-team-badges">
-                    ${isAdmin ? `<small class="admin">${isSuperAdminName(member.name) ? 'Superadmin' : 'Admin'}</small>` : ''}
-                    <small class="${isCreative ? 'creative' : ''}">${isCreative ? 'Creative PIC' : 'Requester'}</small>
-                </div>
-            </div>
+                <div class="settings-team-rows">${rows}</div>
+            </section>
         `;
     }).join('');
 
@@ -2014,8 +2160,35 @@ function renderSettingsTeamList() {
             <div><span>Admin</span><strong>${counts.admin}</strong></div>
             <div><span>Overseas</span><strong>${counts.overseas}</strong></div>
         </div>
-        <div class="settings-team-rows">${rows}</div>
+        <div class="settings-roster-groups">${rosterGroups}</div>
     `;
+    refreshIcons();
+}
+
+function renderSettingsMemberControls() {
+    const select = document.getElementById('settingsRemoveMember');
+    const btn = document.getElementById('btnRemoveTeamMember');
+    const note = document.getElementById('settingsRemoveHelp');
+    if (!select && !btn && !note) return;
+
+    const canManage = hasAdminAccess();
+    const team = getActiveTeamMembers()
+        .filter(member => !isSuperAdminName(member.name))
+        .sort(sortTeamMembersByCountryThenName);
+    const currentSelection = select ? select.value : '';
+
+    if (select) {
+        select.innerHTML = '<option value="">Select member...</option>' + renderTeamMemberOptionGroups(team, currentSelection);
+        select.disabled = !canManage || !team.length;
+    }
+
+    if (btn) btn.disabled = !canManage || !team.length;
+    if (note) {
+        note.innerHTML = canManage
+            ? '<i data-lucide="user-minus"></i><span>Keeps task history.</span>'
+            : '<i data-lucide="lock"></i><span>Admin only.</span>';
+    }
+
     refreshIcons();
 }
 
@@ -2039,17 +2212,12 @@ function renderSettingsAdminControls() {
     const note = document.getElementById('settingsAdminHelp');
     if (!select && !list) return;
 
-    const team = [...(globalTeamMembers || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    const team = getActiveTeamMembers().sort(sortTeamMembersByCountryThenName);
     const currentSelection = select ? select.value : '';
     const canManageAdmins = isSuperAdminName();
 
     if (select) {
-        select.innerHTML = '<option value="">Select team member...</option>' + team.map(member => {
-            const name = escapeHtml(member.name);
-            const region = escapeHtml(member.region || 'Global');
-            const selected = member.name === currentSelection ? 'selected' : '';
-            return `<option value="${name}" ${selected}>${name} · ${region}</option>`;
-        }).join('');
+        select.innerHTML = '<option value="">Select member...</option>' + renderTeamMemberOptionGroups(team, currentSelection);
         select.disabled = !canManageAdmins;
     }
 
@@ -2057,8 +2225,8 @@ function renderSettingsAdminControls() {
     if (revokeBtn) revokeBtn.disabled = !canManageAdmins;
     if (note) {
         note.innerHTML = canManageAdmins
-            ? '<i data-lucide="shield-check"></i><span>Only superadmin can grant or revoke admin access.</span>'
-            : '<i data-lucide="lock"></i><span>Only Faiz Shamsul can manage admin access.</span>';
+            ? '<i data-lucide="shield-check"></i><span>Superadmin only.</span>'
+            : '<i data-lucide="lock"></i><span>Superadmin only.</span>';
     }
 
     if (list) {
@@ -2079,7 +2247,7 @@ function renderSettingsAdminControls() {
 
 async function setMemberAdminAccess(shouldBeAdmin) {
     if (!isSuperAdminName()) {
-        return showAppleAlert('Superadmin Only', 'Only Faiz Shamsul can grant or revoke admin access.');
+        return showAppleAlert('Superadmin Only', 'Faiz only.');
     }
 
     const select = document.getElementById('settingsAdminMember');
@@ -2161,7 +2329,9 @@ async function addTeamMember(event) {
             department: role === 'Creative' ? 'Creative' : 'Requester',
             is_creative: role === 'Creative',
             is_admin: false,
-            access_role: 'member'
+            access_role: 'member',
+            is_active: true,
+            status: 'active'
         };
         const minimalPayload = { name, region };
         let memberAlreadyExists = false;
@@ -2199,7 +2369,7 @@ async function addTeamMember(event) {
 
         let { error } = await saveTeamMemberPayload(richPayload);
 
-        if (error && /column|schema|cache|is_creative|department|role|team|is_admin|access_role/i.test(error.message || '')) {
+        if (error && /column|schema|cache|is_creative|department|role|team|is_admin|access_role|is_active|status/i.test(error.message || '')) {
             const retry = await saveTeamMemberPayload(minimalPayload);
             error = retry.error;
         }
@@ -2214,6 +2384,94 @@ async function addTeamMember(event) {
         showNotification(memberAlreadyExists ? 'Member Updated' : 'Member Added', `${name} is now in the workspace`);
     } catch(e) {
         showAppleAlert('Add Member Failed', e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+async function removeTeamMember(event) {
+    if (event) event.preventDefault();
+    if (!hasAdminAccess()) {
+        return showAppleAlert('Admin Only', 'Please unlock Admin Access before removing members.');
+    }
+
+    const select = document.getElementById('settingsRemoveMember');
+    const btn = document.getElementById('btnRemoveTeamMember');
+    const name = select ? select.value : '';
+    if (!name) return showAppleAlert('Missing Member', 'Please select a team member to remove.');
+    if (isSuperAdminName(name)) return showAppleAlert('Protected Member', 'Superadmin cannot be removed from the team roster.');
+    if (normalizeNameKey(name) === normalizeNameKey(getCurrentUserName())) {
+        return showAppleAlert('Current User', 'You cannot remove your own active profile while you are signed in.');
+    }
+
+    const member = getActiveTeamMembers().find(row => normalizeNameKey(row.name) === normalizeNameKey(name));
+    const activeTaskCount = (globalData || []).filter(task => {
+        const status = String(task.status || '').toLowerCase();
+        const workStatus = String(task.work_status || '').toLowerCase();
+        if (status === 'deleted' || workStatus === 'done') return false;
+        return getAssignedPICNames(task.assignee).some(pic => normalizeNameKey(pic) === normalizeNameKey(name));
+    }).length;
+
+    const taskWarning = activeTaskCount ? `\n\n${activeTaskCount} active task${activeTaskCount === 1 ? '' : 's'} will keep this assignee for history.` : '';
+    const confirmed = await showAppleConfirm('Remove Member?', `${name} will be removed from active dropdowns.${taskWarning}`, { confirmText: 'Remove', cancelText: 'Keep', tone: 'danger', icon: 'user-minus' });
+    if (!confirmed) return;
+
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Removing...';
+        refreshIcons();
+    }
+
+    try {
+        let savedToSupabase = false;
+        let lastError = null;
+        const removedAt = new Date().toISOString();
+        const actor = getCurrentActor();
+        const deactivatePayloads = [
+            { is_active: false, status: 'inactive', removed_at: removedAt, removed_by: actor },
+            { is_active: false, status: 'inactive' },
+            { is_active: false },
+            { status: 'inactive' }
+        ];
+
+        for (const payload of deactivatePayloads) {
+            const { error } = await supabaseClient
+                .from('team_members')
+                .update(payload)
+                .eq('name', name);
+            if (!error) {
+                savedToSupabase = true;
+                break;
+            }
+            lastError = error;
+            if (!/column|schema|cache|is_active|status|removed_at|removed_by/i.test(error.message || '')) break;
+        }
+
+        if (!savedToSupabase) {
+            const { error: deleteError } = await supabaseClient
+                .from('team_members')
+                .delete()
+                .eq('name', name);
+            if (deleteError) throw new Error(deleteError.message || lastError?.message || 'Unable to remove member.');
+            savedToSupabase = true;
+        }
+
+        removeAdminOverrideName(name);
+        removeCreativeOverrideName(name);
+        globalTeamMembers = getActiveTeamMembers().filter(row => normalizeNameKey(row.name) !== normalizeNameKey(name));
+        hydrateTeamCollections(globalTeamMembers);
+        if (select) select.value = '';
+
+        await fetchSupabaseData(true, true);
+        renderSettingsPage();
+        showNotification('Member Removed', `${member?.name || name} has been removed from the active roster`);
+    } catch(e) {
+        showAppleAlert('Remove Member Failed', e.message);
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -2816,7 +3074,7 @@ async function deleteTeamReviewCycle(cycleId) {
     if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
     const cycle = getReviewCycle(cycleId);
     if (!cycle) return;
-    const confirmed = window.confirm(`Delete review round "${cycle.title}"? This removes its assignments and responses from this workspace.`);
+    const confirmed = await showAppleConfirm('Delete Review Round?', `Delete "${cycle.title}"? This removes its assignments and responses from this workspace.`, { confirmText: 'Delete Round', cancelText: 'Cancel', tone: 'danger', icon: 'trash-2' });
     if (!confirmed) return;
 
     const assignmentsToRemove = new Set(getReviewCycleAssignments(cycleId).map(assignment => assignment.id));
@@ -3464,13 +3722,21 @@ function renderRequestTypePill(item, compact = false) {
 
 function renderJobTypeDetail(item) {
     const meta = getRequestTypeMeta(item);
-    const rawType = item.job_type || meta.label;
+    const rawType = String(item.job_type || meta.label).trim();
+    const isCompoundAdhoc = meta.key === 'adhoc' && rawType && rawType !== meta.label;
+    const typeParts = isCompoundAdhoc
+        ? rawType.split(',').map(part => part.trim()).filter(Boolean)
+        : [];
+    const typeDetail = typeParts.length
+        ? `<div class="job-type-detail-chips">${typeParts.map(part => `<span>${escapeHtml(part)}</span>`).join('')}</div>`
+        : `<small>${escapeHtml(rawType && rawType !== meta.label ? rawType : meta.label)}</small>`;
+
     return `
         <div class="job-type-detail-card type-${meta.key}">
             <div class="job-type-detail-icon"><i data-lucide="${meta.icon}"></i></div>
-            <div>
-                <strong>${escapeHtml(rawType)}</strong>
-                <small>${escapeHtml(meta.label)}</small>
+            <div class="job-type-detail-main">
+                <strong>${escapeHtml(meta.label)}</strong>
+                ${typeDetail}
             </div>
         </div>
     `;
@@ -4069,7 +4335,7 @@ function openDetailModal(jobID, isUpdate = false) {
             <div class="job-details">
                 <div class="detail-item"><span>Region</span><strong>${getFlag(item.region)} ${item.region || 'Malaysia'}</strong></div>
                 <div class="detail-item"><span>Requester</span><strong>${actualRequester}</strong></div>
-                <div class="detail-item"><span>Job Type</span>${renderJobTypeDetail(item)}</div>
+                <div class="detail-item detail-item-job-type"><span>Job Type</span>${renderJobTypeDetail(item)}</div>
                 <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${formatDate(item.deadline)}</strong></div>
                 <div class="detail-item pic-detail"><span>Creative PIC</span>${canEditPIC ? renderPicEditor(item.job_id, actualAssignee) : `<strong>${actualAssignee}</strong>`}</div>
                 <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option><option value="Partial Ready" ${ws === 'Partial Ready' ? 'selected' : ''}>Partial Ready</option><option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option><option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option><option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option><option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>
@@ -4122,7 +4388,7 @@ function openDetailModal(jobID, isUpdate = false) {
 
     } catch (err) {
         console.error("Ralat masa buka Modal:", err);
-        alert("Ada ralat teknikal: " + err.message);
+        showAppleAlert("Technical Error", "Ada ralat teknikal: " + err.message, { tone: "danger", icon: "alert-triangle" });
     }
 }
 // ========================================================
@@ -5398,7 +5664,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     } catch (err) {
         console.error("Initialization Error:", err);
-        alert("Sistem mengalami ralat: " + err.message);
+        showAppleAlert("System Error", "Sistem mengalami ralat: " + err.message, { tone: "danger", icon: "alert-triangle" });
     } finally {
         setTimeout(() => {
             const overlay = document.getElementById('soft-refresh-overlay');
@@ -5434,7 +5700,7 @@ function verifyAssetPasscode() {
         closeAssetGate(); // Tutup popup
         window.open(dropboxLink, '_blank'); // Buka Dropbox kat tab baru
     } else {
-        alert('Passcode salah. Akses ditolak.');
+        showAppleAlert('Access Denied', 'Passcode salah. Akses ditolak.', { tone: 'danger', icon: 'lock' });
         document.getElementById('assetPasscodeInput').value = ''; // Kosongkan balik box
         document.getElementById('assetPasscodeInput').focus();
     }
