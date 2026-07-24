@@ -203,6 +203,8 @@
                 <div class="nav-item btn-new-request" id="btn-request" onclick="showPage('request')"><i data-lucide="plus"></i> <span>New Request</span></div>
                 <div class="nav-item btn-creative-leave" id="btn-leave" onclick="showPage('leave')"><i data-lucide="user-minus"></i> <span>Creative Team Leave</span></div>
                 <div class="nav-item" id="btn-team-review" onclick="showPage('team-review')"><i data-lucide="clipboard-check"></i> <span>Team Review</span></div>
+                <div class="nav-item" id="btn-rate-card" onclick="showPage('rate-card')"><i data-lucide="badge-dollar-sign"></i> <span>Rate Card</span></div>
+                <div class="nav-item" id="btn-quote-builder" onclick="showPage('quote-builder')"><i data-lucide="file-spreadsheet"></i> <span>Quote Builder</span></div>
                 <div class="nav-item" id="btn-settings" onclick="showPage('settings')"><i data-lucide="settings"></i> <span>Settings</span></div>
             </div>
             <div class="bottom-actions">
@@ -470,134 +472,49 @@
                 </div>
             </div>
 
-            <div id="settings" class="page">
-                <div class="settings-hero">
+            <div id="rate-card" class="page">
+                <div class="rate-card-hero">
                     <div>
-                        <h1>Settings</h1>
-                        <p>Workspace access and team controls.</p>
+                        <span>INTERNAL PRICING</span>
+                        <h1>Creative & Production Rate Card</h1>
+                        <p>Find the right service and recommended starting rate.</p>
                     </div>
-                    <span id="settingsAdminState" class="settings-state-pill">View Mode</span>
+                    <div class="rate-card-hero-actions">
+                        <button type="button" class="rate-pricing-note-btn" onclick="openRateCardPricingNotes(this, event)"><span>Pricing Notes</span><i data-lucide="info"></i></button>
+                        <span class="rate-card-internal-badge"><i data-lucide="lock-keyhole"></i> Internal Use Only</span>
+                    </div>
                 </div>
 
-                <div class="settings-grid">
-                    <div class="settings-panel">
-                        <div class="settings-panel-head">
-                            <div>
-                                <span>People</span>
-                                <h3>Members</h3>
-                            </div>
-                            <i data-lucide="user-plus"></i>
-                        </div>
-                        <form class="settings-form" onsubmit="addTeamMember(event)">
-                            <div class="input-group">
-                                <label>Name</label>
-                                <input type="text" id="settingsMemberName" placeholder="e.g. New Creative Name">
-                            </div>
-                            <div class="settings-form-row">
-                                <div class="input-group">
-                                    <label>Region</label>
-                                    <select id="settingsMemberRegion">
-                                        <option value="Malaysia">Malaysia</option>
-                                        <option value="Indonesia">Indonesia</option>
-                                        <option value="Singapore">Singapore</option>
-                                        <option value="Hong Kong">Hong Kong</option>
-                                        <option value="China">China</option>
-                                        <option value="Vietnam">Vietnam</option>
-                                        <option value="Japan">Japan</option>
-                                        <option value="Thailand">Thailand</option>
-                                        <option value="Philippines">Philippines</option>
-                                        <option value="Taiwan">Taiwan</option>
-                                        <option value="South Korea">South Korea</option>
-                                        <option value="Australia">Australia</option>
-                                        <option value="New Zealand">New Zealand</option>
-                                    </select>
-                                </div>
-                                <div class="input-group">
-                                    <label>Role</label>
-                                    <select id="settingsMemberRole">
-                                        <option value="Creative">Creative PIC</option>
-                                        <option value="Requester">Requester Only</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <button type="submit" id="btnAddTeamMember" class="settings-primary-btn"><i data-lucide="plus"></i> Add</button>
-                        </form>
-                        <div class="settings-member-divider"></div>
-                        <form class="settings-form" onsubmit="removeTeamMember(event)">
-                            <div class="input-group">
-                                <label>Remove Member</label>
-                                <select id="settingsRemoveMember"></select>
-                            </div>
-                            <button type="submit" id="btnRemoveTeamMember" class="settings-danger-btn"><i data-lucide="user-minus"></i> Remove</button>
-                            <div id="settingsRemoveHelp" class="settings-note compact"></div>
-                        </form>
-                    </div>
+                <div class="rate-card-search rate-card-search-primary">
+                    <i data-lucide="search"></i>
+                    <input type="search" id="rateCardSearch" placeholder="Search for a service or describe what the client needs" oninput="handleRateCardSearch(this.value)">
+                    <kbd>⌘ K</kbd>
+                </div>
 
-                    <div class="settings-panel">
-                        <div class="settings-panel-head">
-                            <div>
-                                <span>Access</span>
-                                <h3>Admins</h3>
-                            </div>
-                            <i data-lucide="shield"></i>
-                        </div>
-                        <div class="settings-form">
-                            <div class="input-group">
-                                <label>Member</label>
-                                <select id="settingsAdminMember"></select>
-                            </div>
-                            <div class="settings-actions settings-actions-inline">
-                                <button type="button" id="btnGrantAdmin" onclick="setMemberAdminAccess(true)" class="settings-action-btn"><i data-lucide="user-check"></i><span>Grant</span></button>
-                                <button type="button" id="btnRevokeAdmin" onclick="setMemberAdminAccess(false)" class="settings-action-btn"><i data-lucide="user-x"></i><span>Remove</span></button>
-                            </div>
-                            <div id="settingsAdminHelp" class="settings-note"></div>
-                            <div id="settingsAdminList" class="settings-admin-list"></div>
-                        </div>
-                    </div>
+                <div class="rate-quick-actions" aria-label="Rate card quick actions">
+                    <button type="button" onclick="openRateCardModal('choose')"><i data-lucide="route"></i><span>Help Me Choose</span></button>
+                    <button type="button" onclick="openRateCardModal('discounts')"><i data-lucide="layers-3"></i><span>Volume Discounts</span></button>
+                    <button type="button" onclick="openRateCardModal('terms')"><i data-lucide="file-check-2"></i><span>Commercial Terms</span></button>
+                </div>
 
-                    <div class="settings-panel">
-                        <div class="settings-panel-head">
-                            <div>
-                                <span>Coverage</span>
-                                <h3>Countries</h3>
-                            </div>
-                            <i data-lucide="globe-2"></i>
-                        </div>
-                        <div id="settingsCountryList" class="settings-country-list"></div>
-                    </div>
+                <section id="rateCardRecentlyViewed"></section>
+                <section id="rateCardPopular"></section>
+                <section id="rateCardCategoryGrid"></section>
+                <section id="rateCardResults"></section>
+                <div id="rateCardFooterNote" class="rate-card-footer-note"></div>
+                <div id="rateCardLiveRegion" class="rate-live-region" aria-live="polite" aria-atomic="true"></div>
 
-                    <div class="settings-panel">
-                        <div class="settings-panel-head">
-                            <div>
-                                <span>Workspace</span>
-                                <h3>Tools</h3>
-                            </div>
-                            <i data-lucide="sliders-horizontal"></i>
-                        </div>
-                        <div class="settings-actions">
-                            <button type="button" onclick="fetchSupabaseData(true)" class="settings-action-btn"><i data-lucide="refresh-cw"></i><span>Refresh</span></button>
-                            <button type="button" onclick="exportReportPack()" class="settings-action-btn settings-admin-only"><i data-lucide="file-down"></i><span>Export</span></button>
-                            <button type="button" onclick="openArchiveModal()" class="settings-action-btn settings-admin-only"><i data-lucide="archive"></i><span>Archive</span></button>
-                            <button type="button" onclick="toggleTheme(event)" class="settings-action-btn"><i data-lucide="sun"></i><span>Theme</span></button>
-                        </div>
-                        <div class="settings-note">
-                            <i data-lucide="shield-check"></i>
-                            <span>Daily auto sign-out active.</span>
-                        </div>
-                    </div>
+                <div id="rateCardPopover" class="rate-card-popover" role="dialog" aria-modal="false" aria-hidden="true"></div>
+                <div id="rateCardPanelOverlay" class="rate-panel-overlay" aria-hidden="true"></div>
+            </div>
 
-                    <div class="settings-panel settings-wide">
-                        <div class="settings-panel-head">
-                            <div>
-                                <span>Roster</span>
-                                <h3>Roster</h3>
-                            </div>
-                            <i data-lucide="users"></i>
-                        </div>
-                        <div id="settingsTeamList" class="settings-team-list">
-                            <div class="skeleton-table-row"></div>
-                        </div>
-                    </div>
+            <div id="quote-builder" class="page">
+                <div id="quoteBuilderRoot"></div>
+            </div>
+
+            <div id="settings" class="page">
+                <div id="settingsShell" class="settings-shell">
+                    <div class="skeleton-card" style="height: 260px;"></div>
                 </div>
             </div>
 
@@ -1018,6 +935,8 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
     </div>
 </div>
 
+<script src="rate-card-data.js"></script>
 <script src="app.js"></script>
+<script src="quote-builder.js"></script>
 </body>
 </html>

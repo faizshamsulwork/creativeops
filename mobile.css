@@ -125,6 +125,16 @@ input, select, textarea { font-size: 16px !important; }
     left: 0 !important;
     width: 100% !important;
     z-index: 9998 !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+}
+.nav-group::-webkit-scrollbar {
+    display: none !important;
+}
+.nav-item {
+    min-width: 68px !important;
 }
 
 /* C. BUTANG [+] LUTSINAR & DIPAKU */
@@ -135,10 +145,543 @@ input, select, textarea { font-size: 16px !important; }
     z-index: 9999 !important;
     opacity: 0.4 !important; 
     transition: all 0.3s ease !important;
+    min-width: 60px !important;
 }
 
 .nav-item.btn-new-request:active,
 .nav-item.btn-new-request.active {
     opacity: 1 !important; 
     transform: scale(0.95) !important; 
+}
+
+/* D. RATE CARD MOBILE LAYOUT */
+.rate-card-hero {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+    margin-bottom: 14px !important;
+}
+.rate-card-hero p {
+    font-size: 0.86rem !important;
+}
+.rate-card-internal-badge {
+    min-height: 34px !important;
+}
+.rate-card-hero-actions {
+    width: 100% !important;
+    justify-content: space-between !important;
+}
+.rate-card-search-primary input {
+    min-height: 52px !important;
+    padding-right: 50px !important;
+}
+.rate-card-search-primary kbd {
+    display: none !important;
+}
+.rate-quick-actions {
+    margin-bottom: 20px !important;
+    padding-bottom: 4px !important;
+}
+.rate-quick-actions button {
+    min-height: 40px !important;
+}
+.rate-popular-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+.rate-service-card {
+    min-height: 138px !important;
+    padding: 14px !important;
+}
+.rate-category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+}
+.rate-category-tile {
+    min-height: 112px !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+}
+.rate-category-icon {
+    grid-row: auto !important;
+}
+.rate-category-tile > span:nth-child(2) {
+    grid-column: 1 / -1 !important;
+}
+.rate-category-tile em {
+    grid-column: 1 !important;
+}
+.rate-category-tile > i {
+    grid-column: 2 !important;
+    grid-row: 3 !important;
+}
+.rate-info-panel,
+.rate-guide-panel,
+.rate-category-section,
+.rate-terms-panel,
+.rate-results-panel {
+    padding: 14px !important;
+    border-radius: 12px !important;
+}
+.rate-results-head {
+    flex-direction: column !important;
+}
+.rate-results-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+}
+.rate-results-actions label,
+.rate-results-actions select {
+    flex: 1 !important;
+    min-width: 0 !important;
+}
+.rate-table-wrap {
+    display: none !important;
+}
+.rate-mobile-list {
+    display: grid !important;
+    gap: 10px !important;
+}
+.rate-category-head {
+    align-items: flex-start !important;
+}
+.rate-category-head h2,
+.rate-panel-head h2 {
+    font-size: 1rem !important;
+}
+.rate-panel-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+}
+.rate-panel-sheet {
+    width: 100% !important;
+    max-height: 88vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    padding: 22px 16px calc(22px + env(safe-area-inset-bottom)) !important;
+}
+.rate-choose-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+    min-height: 0 !important;
+}
+.rate-guide-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+}
+.rate-guide-tabs {
+    margin-inline: -2px !important;
+}
+.rate-choose-options {
+    display: grid !important;
+    overflow-y: auto !important;
+    max-height: 34vh !important;
+    gap: 8px !important;
+    padding-bottom: 2px !important;
+}
+.rate-choose-options button {
+    width: 100% !important;
+    min-height: 54px !important;
+}
+.rate-choose-result {
+    max-height: none !important;
+}
+.rate-guide-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+.rate-panel-term-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+.rate-compact-table th,
+.rate-compact-table td {
+    display: block !important;
+    width: 100% !important;
+    padding: 10px 12px !important;
+}
+.rate-compact-table td {
+    padding-top: 0 !important;
+}
+.rate-card-popover.mobile {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    top: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    border-radius: 18px !important;
+    transform: translateY(16px) scale(1) !important;
+}
+.rate-card-popover.mobile.show {
+    transform: translateY(0) scale(1) !important;
+}
+
+@media (min-width: 721px) and (max-width: 992px) {
+    .rate-popular-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+    .rate-category-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+    .rate-category-tile {
+        min-height: 96px !important;
+    }
+}
+
+/* E. QUOTE BUILDER MOBILE LAYOUT */
+.rate-service-card-quote .rate-quote-btn,
+.rate-popover-add-wrap .rate-quote-btn {
+    min-height: 38px !important;
+}
+
+.rate-service-card-quote {
+    display: none !important;
+}
+
+.rate-table-actions {
+    gap: 6px !important;
+}
+
+.quote-hero {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+}
+
+.quote-hero h1 {
+    font-size: 1.55rem !important;
+}
+
+.quote-hero-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+}
+
+.quote-note-btn,
+.quote-secondary-btn,
+.quote-primary-btn {
+    flex: 1 1 auto !important;
+}
+
+.quote-note-btn span {
+    display: none !important;
+}
+
+.quote-status-strip {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    padding: 12px !important;
+}
+
+.quote-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-summary {
+    position: static !important;
+    order: -1 !important;
+}
+
+.quote-summary-card > strong {
+    font-size: 1.7rem !important;
+}
+
+.quote-info-grid,
+.quote-draft-grid,
+.quote-draft-list,
+.quote-suggestion-grid,
+.quote-check-grid,
+.quote-dialog-grid,
+.quote-output-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-line-primary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+}
+
+.quote-line-service {
+    grid-column: 1 / -1 !important;
+}
+
+.quote-line-total {
+    justify-content: stretch !important;
+    text-align: left !important;
+}
+
+.quote-line-actions {
+    justify-content: stretch !important;
+}
+
+.quote-line-actions button {
+    flex: 1 !important;
+}
+
+.quote-line-expanded {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-third-item {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.quote-third-item label:first-child,
+.quote-third-total,
+.quote-third-item > button {
+    grid-column: 1 / -1 !important;
+}
+
+.quote-third-item > button {
+    width: 100% !important;
+}
+
+.quote-discount-control > div {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-output-settings,
+.quote-terms-list {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-output-settings label,
+.quote-terms-list label {
+    justify-content: flex-start !important;
+    border-radius: 12px !important;
+    min-height: 40px !important;
+}
+
+.quote-dialog-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+}
+
+.quote-dialog-sheet {
+    width: 100% !important;
+    max-height: 88vh !important;
+    border-radius: 24px 24px 0 0 !important;
+}
+
+.quote-mini-dialog {
+    padding: 22px 16px calc(22px + env(safe-area-inset-bottom)) !important;
+}
+
+.quote-dialog-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-rec-list {
+    max-height: 48vh !important;
+}
+
+.quote-indicator {
+    left: 14px !important;
+    right: 14px !important;
+    bottom: calc(74px + env(safe-area-inset-bottom)) !important;
+    justify-content: center !important;
+}
+
+.quote-toast {
+    left: 14px !important;
+    right: 14px !important;
+    bottom: calc(124px + env(safe-area-inset-bottom)) !important;
+    max-width: none !important;
+    text-align: center !important;
+}
+
+/* F. SIMPLIFIED QUOTE BUILDER FLOW */
+.quote-page {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom)) !important;
+}
+
+.quote-title-row {
+    width: 100% !important;
+    justify-content: space-between !important;
+}
+
+.quote-step-nav {
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.quote-step-nav button {
+    flex: 1 !important;
+    min-width: 0 !important;
+}
+
+.quote-more-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-search-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-search-actions button {
+    justify-content: center !important;
+}
+
+.quote-search-result {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+}
+
+.quote-search-result b {
+    grid-column: 1 !important;
+}
+
+.quote-search-result button {
+    grid-row: 1 / 3 !important;
+    grid-column: 2 !important;
+}
+
+.quote-line-primary.simple {
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: stretch !important;
+}
+
+.quote-qty-control {
+    max-width: 180px !important;
+}
+
+.quote-unit-rate,
+.quote-line-total {
+    min-height: 38px !important;
+}
+
+.quote-line-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.quote-line-expanded.simplified,
+.quote-third-item.simple,
+.quote-internal-costing,
+.quote-commercial-grid,
+.quote-suggestion-grid.simple {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-third-item.simple > button {
+    width: 100% !important;
+}
+
+.quote-internal-costing {
+    grid-column: auto !important;
+}
+
+.quote-warning-list.compact,
+.quote-check-grid.compact {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-review-head {
+    min-height: 54px !important;
+    padding: 0 14px !important;
+}
+
+.quote-review-body {
+    padding: 12px 14px 14px !important;
+}
+
+.quote-final-total {
+    align-items: stretch !important;
+    flex-direction: column !important;
+}
+
+.quote-final-actions,
+.quote-copy-actions,
+.quote-copy-more {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.quote-preview-head {
+    flex-direction: column !important;
+}
+
+.quote-preview-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 4px !important;
+}
+
+.quote-preview-row.heading {
+    display: none !important;
+}
+
+.quote-preview-row > span:nth-child(2)::before {
+    content: "Qty ";
+    color: var(--text-muted);
+    font-weight: 900;
+}
+
+.quote-preview-row > span:nth-child(3)::before {
+    content: "Rate ";
+    color: var(--text-muted);
+    font-weight: 900;
+}
+
+.quote-preview-row b::before {
+    content: "Total ";
+    color: var(--text-muted);
+    font-weight: 900;
+}
+
+.quote-summary.simplified {
+    display: none !important;
+}
+
+.quote-mobile-total-bar {
+    position: fixed !important;
+    left: 14px !important;
+    right: 14px !important;
+    bottom: calc(74px + env(safe-area-inset-bottom)) !important;
+    z-index: 7350 !important;
+    min-height: 54px !important;
+    border: 1px solid rgba(56, 189, 248, 0.24) !important;
+    border-radius: 18px !important;
+    background: rgba(15, 23, 42, 0.92) !important;
+    color: #f8fafc !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    padding: 8px 10px 8px 14px !important;
+    box-shadow: 0 22px 64px -34px rgba(0, 0, 0, 0.9) !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+}
+
+.quote-mobile-total-bar span {
+    font-size: 0.86rem !important;
+    font-weight: 900 !important;
+}
+
+.quote-mobile-total-bar button {
+    min-height: 38px !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: linear-gradient(135deg, #38bdf8, #6366f1) !important;
+    color: white !important;
+    padding: 0 14px !important;
+    font-size: 0.78rem !important;
+    font-weight: 900 !important;
+}
+
+.quote-indicator.show {
+    bottom: calc(132px + env(safe-area-inset-bottom)) !important;
+}
+
+@media (max-width: 360px) {
+    .quote-hero-actions {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) auto !important;
+    }
+
+    .quote-badge.subtle {
+        grid-column: 1 / -1 !important;
+        justify-content: center !important;
+    }
+
+    .quote-mobile-total-bar {
+        left: 10px !important;
+        right: 10px !important;
+    }
 }

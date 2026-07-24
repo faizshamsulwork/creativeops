@@ -936,6 +936,8 @@ function showPage(id) {
     else if(id === 'done') navItem = document.getElementById('btn-done');
     else if(id === 'leave') navItem = document.getElementById('btn-leave');
     else if(id === 'team-review') navItem = document.getElementById('btn-team-review');
+    else if(id === 'rate-card') navItem = document.getElementById('btn-rate-card');
+    else if(id === 'quote-builder') navItem = document.getElementById('btn-quote-builder');
     else if(id === 'settings') navItem = document.getElementById('btn-settings');
 
     if(navItem) navItem.classList.add('active');
@@ -948,6 +950,8 @@ function showPage(id) {
     // Render semula data mengikut tab yang aktif
     if (id === 'settings') renderSettingsPage();
     if (id === 'team-review') renderTeamReviewPage();
+    if (id === 'rate-card') renderRateCardPage();
+    if (id === 'quote-builder' && typeof renderQuoteBuilderPage === 'function') renderQuoteBuilderPage();
 
     if(globalData && globalData.length > 0) {
         if(id === 'dashboard') renderDashboard();
@@ -2162,72 +2166,1658 @@ function escapeHtml(value) {
     }[char]));
 }
 
+function escapeJsString(value) {
+    return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+let activeRateCardSearch = '';
+let activeRateCardCategoryId = '';
+let activeRateCardSort = 'recommended';
+let activeRateCardModal = '';
+let activeRateCardGuideId = '';
+let activeRateCardGuideGroup = 'most-common';
+let activeRateCardGuideSearch = '';
+let activeRateCardPopoverKey = '';
+let rateCardUrlHydrated = false;
+let lastRateCardFocus = null;
+let rateCardPopoverCloseTimer = null;
+let pendingRateCardNavigation = null;
+let rateCardHighlightTimer = null;
+const RATE_CARD_RECENT_KEY = 'adtech_rate_card_recent';
+
+function getRateCardCategories() {
+    return Array.isArray(window.RATE_CARD_CATEGORIES) ? window.RATE_CARD_CATEGORIES : [];
+}
+
+function getRateCardItems() {
+    return getRateCardCategories().flatMap(category => (category.items || []).map(item => ({ ...item, categoryTitle: category.title, categoryId: category.id })));
+}
+
+function formatRateCardCurrency(value) {
+    const amount = Number(value || 0);
+    const hasDecimal = !Number.isInteger(amount);
+    return `From ${new Intl.NumberFormat('en-MY', {
+        style: 'currency',
+        currency: 'MYR',
+        minimumFractionDigits: hasDecimal ? 2 : 0,
+        maximumFractionDigits: hasDecimal ? 2 : 0
+    }).format(amount).replace('MYR', 'RM')}`;
+}
+
+function getRateCardCategoryIcon(category) {
+    const icons = window.RATE_CARD_CATEGORY_ICONS || {};
+    return icons[category.filter] || icons[category.title] || 'badge-dollar-sign';
+}
+
+function getRateCardCategory(categoryId) {
+    return getRateCardCategories().find(category => category.id === categoryId) || null;
+}
+
+function getRateCardCategoryMinPrice(category) {
+    const prices = (category?.items || []).map(item => Number(item.priceFrom)).filter(price => price > 0);
+    return prices.length ? Math.min(...prices) : 0;
+}
+
+function renderRateCardPage() {
+    hydrateRateCardFromUrl();
+    renderRateCardRecentlyViewed();
+    renderRateCardPopularServices();
+    renderRateCardCategoryGrid();
+    renderRateCardResults();
+    renderRateCardFooterNote();
+    refreshIcons();
+}
+
+function handleRateCardSearch(value) {
+    activeRateCardSearch = value || '';
+    if (activeRateCardSearch.trim()) activeRateCardCategoryId = '';
+    activeRateCardSort = 'recommended';
+    updateRateCardUrl();
+    renderRateCardPage();
+}
+
+function hydrateRateCardFromUrl() {
+    if (rateCardUrlHydrated) return;
+    rateCardUrlHydrated = true;
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const category = params.get('category') || '';
+        const query = params.get('q') || '';
+        if (getRateCardCategory(category)) activeRateCardCategoryId = category;
+        if (query) {
+            activeRateCardSearch = query;
+            activeRateCardCategoryId = '';
+            const input = document.getElementById('rateCardSearch');
+            if (input) input.value = query;
+        }
+    } catch(e) {}
+}
+
+function updateRateCardUrl() {
+    if (!window.history?.replaceState) return;
+    try {
+        const url = new URL(window.location.href);
+        if (activeRateCardCategoryId) url.searchParams.set('category', activeRateCardCategoryId);
+        else url.searchParams.delete('category');
+        if (activeRateCardSearch.trim()) url.searchParams.set('q', activeRateCardSearch.trim());
+        else url.searchParams.delete('q');
+        window.history.replaceState({}, '', url);
+    } catch(e) {}
+}
+
+function focusRateCardSearch(event) {
+    if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
+        const page = document.getElementById('rate-card');
+        if (!page?.classList.contains('active')) return;
+        event.preventDefault();
+        document.getElementById('rateCardSearch')?.focus();
+    }
+}
+
+function selectRateCardCategory(categoryId) {
+    if (!getRateCardCategory(categoryId)) return;
+    activeRateCardCategoryId = categoryId;
+    activeRateCardSearch = '';
+    activeRateCardSort = 'recommended';
+    if (categoryId === 'ai-videos') resetRateCardAiGroups();
+    const input = document.getElementById('rateCardSearch');
+    if (input) input.value = '';
+    closeRateCardPopover();
+    updateRateCardUrl();
+    renderRateCardPage();
+    document.getElementById('rateCardResults')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearRateCardIntent() {
+    activeRateCardSearch = '';
+    activeRateCardCategoryId = '';
+    activeRateCardSort = 'recommended';
+    const input = document.getElementById('rateCardSearch');
+    if (input) input.value = '';
+    closeRateCardPopover();
+    updateRateCardUrl();
+    renderRateCardPage();
+}
+
+function setRateCardSort(value) {
+    activeRateCardSort = value || 'recommended';
+    renderRateCardResults();
+    refreshIcons();
+}
+
+function getRateCardSearchText(item) {
+    const phrases = {
+        'video-editing': 'edit existing footage already have footage client supplies footage cut down subtitles captions recap motion graphics',
+        'video-production': 'shoot film filming come and shoot camera crew production testimonial interview live streaming voice over',
+        'ai-videos': 'ai video generate everything ai scenes ai assisted advanced property product cinematic hybrid shoot and add ai avatar presenter lip sync localisation mandarin animate render background replacement object removal',
+        'ai-images': 'ai image generated visual background replacement character product property visual enhancement extension',
+        'digital-social': 'instagram facebook linkedin carousel story social media post edm gdn marketplace resize adaptation',
+        'print-offline': 'poster flyer brochure billboard banner bunting standee packaging print offline',
+        branding: 'logo brand guide campaign key visual template icon illustration mascot',
+        presentations: 'pitch deck slides proposal report company profile chart pdf template',
+        'web-ui': 'landing page website ui app screen wireframe email template microsite',
+        photography: 'photo photography product headshot event property interior retouching',
+        copywriting: 'copy caption script translation proofreading localisation transcreation mandarin english bahasa blog article seo sem gdn google ads search ad display ad keyword headline metadata'
+    };
+    return [
+        item.service,
+        item.category,
+        item.categoryTitle,
+        item.description,
+        item.example,
+        item.billingBasis,
+        item.scopeNote,
+        phrases[item.categoryId],
+        ...(item.tags || [])
+    ].join(' ').toLowerCase();
+}
+
+function getRateCardSearchResults() {
+    const query = activeRateCardSearch.trim().toLowerCase();
+    if (!query) return [];
+    return sortRateCardItems(getRateCardItems().filter(item => getRateCardSearchText(item).includes(query)));
+}
+
+function sortRateCardItems(items = []) {
+    const withIndex = items.map((item, index) => ({ item, index }));
+    if (activeRateCardSort === 'price-low') withIndex.sort((a, b) => Number(a.item.priceFrom) - Number(b.item.priceFrom) || a.index - b.index);
+    else if (activeRateCardSort === 'price-high') withIndex.sort((a, b) => Number(b.item.priceFrom) - Number(a.item.priceFrom) || a.index - b.index);
+    else if (activeRateCardSort === 'name') withIndex.sort((a, b) => a.item.service.localeCompare(b.item.service));
+    return withIndex.map(row => row.item);
+}
+
+function getRateCardPopularItems() {
+    const ids = Array.isArray(window.RATE_CARD_POPULAR_SERVICE_IDS) ? window.RATE_CARD_POPULAR_SERVICE_IDS : [];
+    return ids.map(findRateCardItem).filter(Boolean).slice(0, 6);
+}
+
+function getRateQuoteQuantity(serviceId) {
+    return typeof getQuoteServiceQuantity === 'function' ? getQuoteServiceQuantity(serviceId) : 0;
+}
+
+function renderRateCardQuoteButton(serviceId, options = {}) {
+    const quantity = getRateQuoteQuantity(serviceId);
+    const label = quantity ? `Added ${quantity}` : (options.label || 'Add');
+    const title = quantity ? 'Manage this service in Quote Builder' : 'Add this service to Quote Builder';
+    const icon = quantity ? 'check' : 'plus';
+    return `
+        <button type="button" class="rate-quote-btn ${quantity ? 'added' : ''} ${options.compact ? 'compact' : ''}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" onclick="handleRateCardQuoteAction('${serviceId}', event)">
+            <i data-lucide="${icon}"></i>
+            <span>${escapeHtml(label)}</span>
+        </button>
+    `;
+}
+
+function handleRateCardQuoteAction(serviceId, event) {
+    if (event) event.stopPropagation();
+    if (getRateQuoteQuantity(serviceId) && typeof openQuoteServiceMenu === 'function') {
+        openQuoteServiceMenu(serviceId);
+        return;
+    }
+    if (typeof addServiceToQuote === 'function') addServiceToQuote(serviceId);
+}
+
+function renderRateCardRecentlyViewed() {
+    const wrap = document.getElementById('rateCardRecentlyViewed');
+    if (!wrap) return;
+    const items = getRateCardRecentItems();
+    if (!items.length) {
+        wrap.innerHTML = '';
+        return;
+    }
+
+    wrap.innerHTML = `
+        <div class="rate-recent-strip">
+            <span>Recently Viewed</span>
+            <div>
+                ${items.map(item => `<button type="button" onclick="openRateCardInfo('${item.id}', this, event)">${escapeHtml(item.service)}</button>`).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderRateCardPopularServices() {
+    const wrap = document.getElementById('rateCardPopular');
+    if (!wrap) return;
+    wrap.innerHTML = `
+        <div class="rate-section-head">
+            <div>
+                <h2>Popular Services</h2>
+                <p>Frequently requested services and starting rates.</p>
+            </div>
+        </div>
+        <div class="rate-popular-grid">
+            ${getRateCardPopularItems().map(item => renderRateCardServiceCard(item, { popular: true })).join('')}
+        </div>
+    `;
+}
+
+function renderRateCardCategoryGrid() {
+    const wrap = document.getElementById('rateCardCategoryGrid');
+    if (!wrap) return;
+    const categories = getRateCardCategories();
+    wrap.innerHTML = `
+        <div class="rate-section-head">
+            <div>
+                <h2>Browse by Category</h2>
+                <p>Select a category to reveal its service list.</p>
+            </div>
+        </div>
+        <div class="rate-category-grid">
+            ${categories.map(renderRateCardCategoryTile).join('')}
+        </div>
+    `;
+}
+
+function renderRateCardCategoryTile(category) {
+    const minPrice = getRateCardCategoryMinPrice(category);
+    const active = category.id === activeRateCardCategoryId;
+    return `
+        <button type="button" class="rate-category-tile ${active ? 'active' : ''}" onclick="selectRateCardCategory('${category.id}')" aria-pressed="${active}">
+            <span class="rate-category-icon"><i data-lucide="${getRateCardCategoryIcon(category)}"></i></span>
+            <span>
+                <strong>${escapeHtml(category.filter)}</strong>
+                <small>${category.items.length} services</small>
+            </span>
+            <em>${minPrice ? formatRateCardCurrency(minPrice) : 'View services'}</em>
+            <i data-lucide="chevron-right"></i>
+        </button>
+    `;
+}
+
+function renderRateCardResults() {
+    const wrap = document.getElementById('rateCardResults');
+    if (!wrap) return;
+
+    const query = activeRateCardSearch.trim();
+    if (!query && !activeRateCardCategoryId) {
+        wrap.innerHTML = '';
+        return;
+    }
+
+    if (query) {
+        const results = getRateCardSearchResults();
+        if (!results.length) {
+            wrap.innerHTML = `
+                <div class="rate-empty-state">
+                    <i data-lucide="search-x"></i>
+                    <h3>No matching services found.</h3>
+                    <p>Try another service name, category or production type.</p>
+                    <button type="button" onclick="clearRateCardIntent()">Clear Search</button>
+                </div>
+            `;
+            refreshIcons();
+            return;
+        }
+
+        wrap.innerHTML = `
+            <section class="rate-results-panel">
+                ${renderRateCardResultsHead('Search Results', `Matches for "${query}"`, results.length, 'Clear Search')}
+                ${renderRateCardServiceTable(results)}
+            </section>
+        `;
+        return;
+    }
+
+    const category = getRateCardCategory(activeRateCardCategoryId);
+    if (!category) {
+        wrap.innerHTML = '';
+        return;
+    }
+
+    const items = sortRateCardItems(category.items.map(item => ({ ...item, categoryTitle: category.title, categoryId: category.id })));
+    wrap.innerHTML = `
+        <section class="rate-results-panel">
+            ${renderRateCardResultsHead(category.title, category.description, items.length, 'All Categories')}
+            ${category.note ? `<div class="rate-category-note quiet"><i data-lucide="badge-alert"></i><span>${escapeHtml(category.note)}</span></div>` : ''}
+            ${category.id === 'ai-videos' ? renderRateCardAiGroups(items) : renderRateCardServiceTable(items)}
+        </section>
+    `;
+}
+
+function renderRateCardResultsHead(title, subtitle, count, clearLabel) {
+    return `
+        <div class="rate-results-head">
+            <div>
+                <h2 id="rateCardResultsHeading" tabindex="-1">${escapeHtml(title)}</h2>
+                <p>${escapeHtml(subtitle)}</p>
+            </div>
+            <div class="rate-results-actions">
+                <span>${count} result${count === 1 ? '' : 's'}</span>
+                <label>
+                    <span>Sort</span>
+                    <select onchange="setRateCardSort(this.value)" aria-label="Sort rate card results">
+                        <option value="recommended" ${activeRateCardSort === 'recommended' ? 'selected' : ''}>Recommended</option>
+                        <option value="price-low" ${activeRateCardSort === 'price-low' ? 'selected' : ''}>Price: Low to High</option>
+                        <option value="price-high" ${activeRateCardSort === 'price-high' ? 'selected' : ''}>Price: High to Low</option>
+                        <option value="name" ${activeRateCardSort === 'name' ? 'selected' : ''}>Service Name</option>
+                    </select>
+                </label>
+                <button type="button" onclick="clearRateCardIntent()">${escapeHtml(clearLabel)}</button>
+            </div>
+        </div>
+    `;
+}
+
+function renderRateCardServiceTable(items) {
+    return `
+        <div class="rate-table-wrap">
+            <table class="rate-card-table">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Starting Price</th>
+                        <th>Billing Basis</th>
+                        <th>Information</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items.map(renderRateCardTableRow).join('')}
+                </tbody>
+            </table>
+        </div>
+        <div class="rate-mobile-list">
+            ${items.map(renderRateCardMobileCard).join('')}
+        </div>
+    `;
+}
+
+let rateCardAiGroups = {};
+
+function resetRateCardAiGroups() {
+    rateCardAiGroups = { assisted: true, 'ai-only': false, hybrid: false, 'add-on': false };
+}
+
+function toggleRateCardAiGroup(groupId) {
+    if (!Object.keys(rateCardAiGroups).length) resetRateCardAiGroups();
+    rateCardAiGroups[groupId] = !rateCardAiGroups[groupId];
+    renderRateCardResults();
+    refreshIcons();
+}
+
+function renderRateCardAiGroups(items) {
+    if (!Object.keys(rateCardAiGroups).length) resetRateCardAiGroups();
+    const groups = [
+        { id: 'assisted', title: 'AI-Assisted Services', items: items.filter(item => (item.tags || []).includes('assisted')) },
+        { id: 'ai-only', title: 'Full AI-Generated Services', items: items.filter(item => (item.tags || []).includes('ai-only')) },
+        { id: 'hybrid', title: 'Hybrid Live-Action + AI', items: items.filter(item => (item.tags || []).includes('hybrid')) },
+        { id: 'add-on', title: 'AI Add-Ons', items: items.filter(item => (item.tags || []).includes('add-on')) }
+    ].filter(group => group.items.length);
+
+    return `<div class="rate-ai-groups">${groups.map(group => {
+        const open = rateCardAiGroups[group.id] !== false;
+        return `
+            <div class="rate-ai-group ${open ? 'open' : ''}">
+                <button type="button" onclick="toggleRateCardAiGroup('${group.id}')" aria-expanded="${open}">
+                    <span>${escapeHtml(group.title)}</span>
+                    <strong>${group.items.length}</strong>
+                    <i data-lucide="chevron-down"></i>
+                </button>
+                ${open ? renderRateCardServiceTable(sortRateCardItems(group.items)) : ''}
+            </div>
+        `;
+    }).join('')}</div>`;
+}
+
+function renderRateCardServiceCard(item, options = {}) {
+    return `
+        <article class="rate-service-card ${options.popular ? 'popular' : ''}">
+            <div class="rate-service-card-top">
+                <div>
+                    <span>${escapeHtml(item.category)}</span>
+                    ${options.popular ? '<em>Popular</em>' : ''}
+                </div>
+                <button type="button" class="rate-info-btn" data-rate-info-key="${escapeHtml(item.id)}" aria-label="View information for ${escapeHtml(item.service)}" aria-expanded="false" onmouseenter="openRateCardInfo('${item.id}', this, event)" onmouseleave="scheduleRateCardPopoverClose()" onclick="openRateCardInfo('${item.id}', this, event)" onfocus="openRateCardInfo('${item.id}', this, event)" onblur="scheduleRateCardPopoverClose()">
+                    <i data-lucide="info"></i>
+                </button>
+            </div>
+            <h3>${escapeHtml(item.service)}</h3>
+            <div class="rate-service-card-meta">
+                <strong>${formatRateCardCurrency(item.priceFrom)}</strong>
+                <span>${escapeHtml(item.billingBasis)}</span>
+            </div>
+            <div class="rate-service-card-quote">
+                ${renderRateCardQuoteButton(item.id, { label: 'Add to Quote' })}
+            </div>
+        </article>
+    `;
+}
+
+function handleRateCardCardKey(event, itemId) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    openRateCardInfo(itemId, event.currentTarget, event);
+}
+
+function renderRateCardTableRow(item) {
+    return `
+        <tr data-rate-service-id="${escapeHtml(item.id)}" tabindex="-1">
+            <td>
+                <div class="rate-service-cell">
+                    <strong>${escapeHtml(item.service)}</strong>
+                </div>
+            </td>
+            <td><strong class="rate-price">${formatRateCardCurrency(item.priceFrom)}</strong></td>
+            <td>${escapeHtml(item.billingBasis)}</td>
+            <td>
+                <div class="rate-table-actions">
+                    <button type="button" class="rate-info-btn" data-rate-info-key="${escapeHtml(item.id)}" aria-label="View information for ${escapeHtml(item.service)}" aria-expanded="false" onfocus="openRateCardInfo('${item.id}', this, event)" onblur="scheduleRateCardPopoverClose()" onmouseenter="openRateCardInfo('${item.id}', this, event)" onmouseleave="scheduleRateCardPopoverClose()" onclick="openRateCardInfo('${item.id}', this, event)">
+                        <i data-lucide="info"></i>
+                    </button>
+                    ${renderRateCardQuoteButton(item.id, { compact: true })}
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+function renderRateCardMobileCard(item) {
+    return `
+        <article class="rate-mobile-card" data-rate-service-id="${escapeHtml(item.id)}" tabindex="-1">
+            <div class="rate-mobile-top">
+                <span>${escapeHtml(item.category)}</span>
+                <button type="button" class="rate-info-btn" data-rate-info-key="${escapeHtml(item.id)}" aria-label="View information for ${escapeHtml(item.service)}" aria-expanded="false" onclick="openRateCardInfo('${item.id}', this, event)" onfocus="openRateCardInfo('${item.id}', this, event)">
+                    <i data-lucide="info"></i>
+                </button>
+            </div>
+            <h3>${escapeHtml(item.service)}</h3>
+            <div class="rate-mobile-meta">
+                <strong>${formatRateCardCurrency(item.priceFrom)}</strong>
+                <span>${escapeHtml(item.billingBasis)}</span>
+            </div>
+        </article>
+    `;
+}
+
+function renderRateCardFooterNote() {
+    const wrap = document.getElementById('rateCardFooterNote');
+    if (!wrap) return;
+    wrap.innerHTML = 'Starting rates are for quotation guidance only. Final pricing depends on scope, timeline, usage rights and third-party requirements.';
+}
+
+function findRateCardItem(itemId) {
+    return getRateCardItems().find(item => item.id === itemId) || null;
+}
+
+function getRateCardPopover() {
+    const popover = document.getElementById('rateCardPopover');
+    if (popover && popover.parentElement !== document.body) document.body.appendChild(popover);
+    return popover;
+}
+
+function openRateCardInfo(itemId, anchor, event) {
+    if (event) event.stopPropagation();
+    const item = findRateCardItem(itemId);
+    if (!item) return;
+    cancelRateCardPopoverClose();
+    rememberRateCardViewedItem(item.id);
+    activeRateCardPopoverKey = item.id;
+    showRateCardPopover(anchor, item.id, {
+        title: item.service,
+        eyebrow: item.category,
+        price: formatRateCardCurrency(item.priceFrom),
+        what: item.description,
+        example: item.example,
+        billing: item.billingBasis,
+        scopeNote: item.scopeNote,
+        category: item.categoryTitle || item.category,
+        serviceId: item.id
+    });
+    renderRateCardRecentlyViewed();
+}
+
+function openRateCardPricingNotes(anchor, event) {
+    if (event) event.stopPropagation();
+    cancelRateCardPopoverClose();
+    showRateCardPopover(anchor, 'pricing-notes', {
+        title: 'Pricing Notes',
+        eyebrow: 'Internal use only',
+        price: '',
+        what: 'All prices are starting rates and may change depending on scope, complexity, timeline, usage rights and third-party requirements.',
+        example: 'Use these rates as quotation guidance before confirming final scope.',
+        billing: 'Client-facing starting rates.',
+        scopeNote: ''
+    });
+}
+
+function getRateCardRecentItems() {
+    try {
+        const ids = JSON.parse(localStorage.getItem(RATE_CARD_RECENT_KEY) || '[]');
+        return ids.map(findRateCardItem).filter(Boolean).slice(0, 4);
+    } catch(e) {
+        return [];
+    }
+}
+
+function rememberRateCardViewedItem(itemId) {
+    try {
+        const ids = JSON.parse(localStorage.getItem(RATE_CARD_RECENT_KEY) || '[]').filter(Boolean);
+        const next = [itemId, ...ids.filter(id => id !== itemId)].slice(0, 4);
+        localStorage.setItem(RATE_CARD_RECENT_KEY, JSON.stringify(next));
+    } catch(e) {}
+}
+
+function showRateCardPopover(anchor, key, content) {
+    const popover = getRateCardPopover();
+    if (!popover) return;
+    const isMobile = window.innerWidth <= 720;
+    popover.classList.toggle('mobile', isMobile);
+    popover.innerHTML = `
+        ${isMobile ? '<button type="button" class="rate-popover-close" onclick="closeRateCardPopover()" aria-label="Close rate card information"><i data-lucide="x"></i></button>' : ''}
+        <span>${escapeHtml(content.eyebrow || 'Information')}</span>
+        <h3>${escapeHtml(content.title)}</h3>
+        ${content.price ? `<div class="rate-popover-price"><strong>${escapeHtml(content.price)}</strong><span>${escapeHtml(content.billing)}</span></div>` : ''}
+        <div class="rate-popover-section">
+            <strong>What this means</strong>
+            <p>${escapeHtml(content.what)}</p>
+        </div>
+        <div class="rate-popover-section">
+            <strong>Straightforward example</strong>
+            <p>${escapeHtml(content.example)}</p>
+        </div>
+        <div class="rate-popover-section">
+            <strong>Billing basis</strong>
+            <p>${escapeHtml(content.billing)}</p>
+        </div>
+        ${content.category ? `<div class="rate-popover-section"><strong>Recommended category</strong><p>${escapeHtml(content.category)}</p></div>` : ''}
+        ${content.scopeNote ? `<div class="rate-popover-section scope"><strong>Scope note</strong><p>${escapeHtml(content.scopeNote)}</p></div>` : ''}
+        ${content.serviceId ? `<div class="rate-popover-add-wrap">${renderRateCardQuoteButton(content.serviceId, { label: 'Add to Quote' })}</div>` : ''}
+    `;
+
+    popover.onmouseenter = cancelRateCardPopoverClose;
+    popover.onmouseleave = scheduleRateCardPopoverClose;
+
+    popover.setAttribute('aria-hidden', 'false');
+    popover.classList.add('show');
+
+    if (!isMobile && anchor) {
+        const rect = anchor.getBoundingClientRect();
+        const margin = 16;
+        const gap = 10;
+        const width = Math.min(360, window.innerWidth - (margin * 2));
+        popover.style.width = `${width}px`;
+        popover.style.left = '0px';
+        popover.style.top = '0px';
+        const popoverWidth = popover.offsetWidth || width;
+        const popoverHeight = popover.offsetHeight || 320;
+        let left = rect.right + gap;
+        if (left + popoverWidth > window.innerWidth - margin) left = rect.left - popoverWidth - gap;
+        if (left < margin) left = rect.left + (rect.width / 2) - (popoverWidth / 2);
+        left = Math.min(Math.max(margin, left), window.innerWidth - popoverWidth - margin);
+        let top = rect.top;
+        if (top + popoverHeight > window.innerHeight - margin) top = window.innerHeight - popoverHeight - margin;
+        top = Math.max(margin, top);
+        popover.style.left = `${left}px`;
+        popover.style.top = `${top}px`;
+    } else {
+        popover.style.width = '';
+        popover.style.left = '';
+        popover.style.top = '';
+    }
+
+    updateRateCardInfoButtonStates(key);
+    refreshIcons();
+}
+
+function cancelRateCardPopoverClose() {
+    if (rateCardPopoverCloseTimer) clearTimeout(rateCardPopoverCloseTimer);
+    rateCardPopoverCloseTimer = null;
+}
+
+function scheduleRateCardPopoverClose(delay = 150) {
+    if (window.innerWidth <= 720) return;
+    cancelRateCardPopoverClose();
+    rateCardPopoverCloseTimer = setTimeout(() => {
+        const popover = getRateCardPopover();
+        const activeElement = document.activeElement;
+        if (popover?.matches(':hover')) return;
+        if (activeElement?.closest?.('.rate-card-popover, .rate-info-btn, .rate-pricing-note-btn')) return;
+        closeRateCardPopover();
+    }, delay);
+}
+
+function updateRateCardInfoButtonStates(activeKey = '') {
+    document.querySelectorAll('.rate-info-btn').forEach(btn => {
+        btn.setAttribute('aria-expanded', btn.dataset.rateInfoKey === activeKey ? 'true' : 'false');
+    });
+}
+
+function closeRateCardPopover() {
+    const popover = getRateCardPopover();
+    if (!popover) return;
+    cancelRateCardPopoverClose();
+    activeRateCardPopoverKey = '';
+    popover.classList.remove('show', 'mobile');
+    popover.setAttribute('aria-hidden', 'true');
+    updateRateCardInfoButtonStates('');
+}
+
+function openRateCardModal(type) {
+    activeRateCardModal = type;
+    lastRateCardFocus = document.activeElement;
+    renderRateCardModal();
+}
+
+function closeRateCardModal() {
+    activeRateCardModal = '';
+    const overlay = document.getElementById('rateCardPanelOverlay');
+    if (overlay) {
+        overlay.classList.remove('show');
+        overlay.setAttribute('aria-hidden', 'true');
+        overlay.innerHTML = '';
+    }
+    if (pendingRateCardNavigation) {
+        requestAnimationFrame(() => requestAnimationFrame(applyPendingRateCardNavigation));
+        return;
+    }
+    if (lastRateCardFocus?.focus) lastRateCardFocus.focus();
+}
+
+function renderRateCardModal() {
+    const overlay = document.getElementById('rateCardPanelOverlay');
+    if (!overlay || !activeRateCardModal) return;
+    const wasOpen = overlay.classList.contains('show');
+    const content = activeRateCardModal === 'choose'
+        ? renderRateCardChoosePanel()
+        : activeRateCardModal === 'discounts'
+            ? renderRateCardDiscountPanel()
+            : renderRateCardTermsPanel();
+
+    overlay.innerHTML = `
+        <div class="rate-panel-sheet" role="dialog" aria-modal="true" aria-labelledby="ratePanelTitle" onclick="event.stopPropagation()" onkeydown="trapRateCardModalFocus(event)">
+            <button type="button" class="rate-panel-close" onclick="closeRateCardModal()" aria-label="Close panel"><i data-lucide="x"></i></button>
+            ${content}
+        </div>
+    `;
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden', 'false');
+    overlay.onclick = event => {
+        if (event.target === overlay) closeRateCardModal();
+    };
+    if (!wasOpen) setTimeout(() => overlay.querySelector('button, [tabindex], select')?.focus(), 0);
+    refreshIcons();
+}
+
+function renderRateCardChoosePanel() {
+    const rows = getFilteredRateCardGuideRows();
+    const groups = getRateCardScenarioGroups();
+    const selected = rows.find(row => row.id === activeRateCardGuideId) || null;
+    const allRows = getRateCardGuideRows();
+    const selectedFallback = selected || allRows.find(row => row.id === activeRateCardGuideId) || null;
+    return `
+        <div class="rate-panel-header">
+            <span>Assistant</span>
+            <h2 id="ratePanelTitle">Help Me Choose</h2>
+            <p>Find the right base service, likely add-ons and quote checks before pricing the request.</p>
+        </div>
+        <div class="rate-guide-toolbar">
+            <div class="rate-guide-search">
+                <i data-lucide="search"></i>
+                <input type="search" id="rateGuideSearchInput" value="${escapeHtml(activeRateCardGuideSearch)}" placeholder="Describe what the client is asking for" oninput="handleRateCardGuideSearch(this.value)" aria-label="Search quote scenarios">
+            </div>
+            <button type="button" onclick="clearRateCardGuideSelection()">Clear</button>
+        </div>
+        <div class="rate-guide-tabs" aria-label="Scenario categories">
+            ${groups.map(group => `<button type="button" class="${group.id === activeRateCardGuideGroup ? 'active' : ''}" onclick="setRateCardGuideGroup('${group.id}')">${escapeHtml(group.label)}</button>`).join('')}
+        </div>
+        <div class="rate-guide-count">${rows.length} scenario${rows.length === 1 ? '' : 's'} found</div>
+        <div class="rate-choose-layout">
+            <div class="rate-choose-options">
+                ${rows.length ? rows.map(row => `
+                    <button type="button" class="${row.id === activeRateCardGuideId ? 'active' : ''}" onclick="selectRateCardGuide('${row.id}')">
+                        <span>${escapeHtml(getRateCardScenarioGroupLabel(row.group))}</span>
+                        <strong>${escapeHtml(shortenRateCardRequest(row.request))}</strong>
+                    </button>
+                `).join('') : '<div class="rate-choose-no-results">No matching scenarios. Try another phrase.</div>'}
+            </div>
+            <div class="rate-choose-result">
+                ${selectedFallback ? renderRateCardGuideResult(selectedFallback) : '<div class="rate-choose-empty"><i data-lucide="mouse-pointer-click"></i><strong>Choose a request.</strong><span>The recommendation will appear here.</span></div>'}
+            </div>
+        </div>
+    `;
+}
+
+function getRateCardScenarioGroups() {
+    const groups = Array.isArray(window.RATE_CARD_SCENARIO_GROUPS) ? window.RATE_CARD_SCENARIO_GROUPS : [];
+    return groups.length ? groups : [{ id: 'most-common', label: 'Most Common' }];
+}
+
+function getRateCardScenarioGroupLabel(groupId) {
+    return getRateCardScenarioGroups().find(group => group.id === groupId)?.label || 'Scenario';
+}
+
+function getRateCardGuideRows() {
+    return Array.isArray(window.RATE_CARD_CLASSIFICATION_GUIDE) ? window.RATE_CARD_CLASSIFICATION_GUIDE : [];
+}
+
+function getFilteredRateCardGuideRows() {
+    const query = activeRateCardGuideSearch.trim().toLowerCase();
+    const commonIds = new Set([
+        'guide-resize',
+        'guide-social-static-caption',
+        'guide-social-carousel-copy',
+        'guide-film-production',
+        'guide-standard-edit',
+        'guide-blog-article',
+        'guide-seo-article',
+        'guide-ai-assisted-light',
+        'guide-ai-property-product',
+        'guide-hybrid-short',
+        'guide-gdn-copy',
+        'guide-translation'
+    ]);
+    return getRateCardGuideRows().filter(row => {
+        const matchesGroup = query || (activeRateCardGuideGroup === 'most-common' ? commonIds.has(row.id) : row.group === activeRateCardGuideGroup);
+        const matchesQuery = !query || getRateCardScenarioSearchText(row).includes(query);
+        return matchesGroup && matchesQuery;
+    });
+}
+
+function getRateCardScenarioSearchText(row) {
+    return [
+        row.request,
+        row.category,
+        row.explanation,
+        row.scopeReminder,
+        row.separateQuote,
+        ...(row.questions || []),
+        ...(row.chargeTriggers || []),
+        ...(row.addonLabels || []),
+        ...(row.serviceIds || []).map(id => findRateCardItem(id)?.service || ''),
+        ...(row.addonServiceIds || []).map(id => findRateCardItem(id)?.service || '')
+    ].join(' ').toLowerCase();
+}
+
+function handleRateCardGuideSearch(value) {
+    activeRateCardGuideSearch = value || '';
+    renderRateCardModal();
+    setTimeout(() => {
+        const input = document.getElementById('rateGuideSearchInput');
+        if (!input) return;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+    }, 0);
+}
+
+function setRateCardGuideGroup(groupId) {
+    activeRateCardGuideGroup = groupId || 'most-common';
+    activeRateCardGuideSearch = '';
+    activeRateCardGuideId = '';
+    renderRateCardModal();
+}
+
+function shortenRateCardRequest(request = '') {
+    return request
+        .replace('We already have footage. Please edit it.', 'We already have footage.')
+        .replace('We have existing footage and only need a few AI enhancements.', 'Existing footage + light AI.')
+        .replace('We have property renders or product visuals and want a polished cinematic AI video.', 'Property/product cinematic AI.')
+        .replace('We have existing assets, but several scenes need advanced AI generation or major visual replacement.', 'Advanced AI scene work.')
+        .replace('Your team needs to come and shoot.', 'Your team needs to film.')
+        .replace('No filming is needed. Generate everything using AI.', 'Generate everything using AI.')
+        .replace('Your team needs to film real footage and add AI-generated scenes.', 'Film real footage + AI.')
+        .replace('Your team needs to film us and combine the footage with AI scenes.', 'Film real footage + AI.')
+        .replace('We need a 30-60 second shoot combined with multiple AI sequences.', 'Shoot + multiple AI scenes.')
+        .replace('Create a virtual presenter reading our script.', 'Create a virtual presenter.')
+        .replace('Animate our existing property render.', 'Animate an existing property render.')
+        .replace('Change the approved English video into Mandarin with matching mouth movements.', 'Localise an existing video.')
+        .replace(/^"|"$/g, '');
+}
+
+function selectRateCardGuide(guideId) {
+    activeRateCardGuideId = guideId;
+    renderRateCardModal();
+}
+
+function clearRateCardGuideSelection() {
+    activeRateCardGuideId = '';
+    activeRateCardGuideSearch = '';
+    renderRateCardModal();
+}
+
+function renderRateCardGuideResult(row) {
+    const items = getRateCardGuideRelevantItems(row);
+    const primary = items[0] || null;
+    const addons = getRateCardGuideAddonItems(row);
+    const addonLabels = [
+        ...addons.map(item => item.service),
+        ...(row.addonLabels || [])
+    ].filter(Boolean);
+    const questions = row.questions || [];
+    const triggers = row.chargeTriggers || [];
+    return `
+        <span>Recommended base service</span>
+        <h3>${escapeHtml(primary?.service || row.category)}</h3>
+        <p>${escapeHtml(row.explanation)}</p>
+        ${primary ? `<div class="rate-guide-price"><span>${escapeHtml(primary.billingBasis)}</span><strong>${formatRateCardCurrency(primary.priceFrom)}</strong></div>` : row.separateQuote ? `<div class="rate-guide-price"><span>Pricing</span><strong>${escapeHtml(row.separateQuote)}</strong></div>` : ''}
+        ${addonLabels.length ? renderRateCardGuideList('Likely Additional Charges', addonLabels.slice(0, 8)) : ''}
+        ${questions.length ? renderRateCardGuideList('Before You Quote', questions.slice(0, 8)) : ''}
+        ${triggers.length ? renderRateCardGuideList('Charge Triggers', triggers.slice(0, 5)) : ''}
+        ${row.scopeReminder ? `<div class="rate-guide-reminder"><strong>Scope note</strong><p>${escapeHtml(row.scopeReminder)}</p></div>` : ''}
+        ${items.length ? `<div class="rate-guide-services">${items.slice(0, 4).map(item => `<div class="rate-guide-service-item"><strong>${escapeHtml(item.service)}</strong><span>${formatRateCardCurrency(item.priceFrom)}</span></div>`).join('')}</div>` : ''}
+        <div class="rate-guide-actions">
+            <button type="button" class="rate-guide-view-btn" onclick="viewRateCardGuideServices('${row.id}')" ${items.length ? '' : 'disabled'}>View Services</button>
+            <button type="button" onclick="openQuoteRecommendationPicker('${row.id}')" ${items.length || addons.length ? '' : 'disabled'}><i data-lucide="plus"></i> Add to Quote</button>
+            <button type="button" onclick="copyRateCardRecommendation('${row.id}')"><i data-lucide="copy"></i> Copy Recommendation</button>
+            <button type="button" onclick="clearRateCardGuideSelection()">Clear Selection</button>
+        </div>
+    `;
+}
+
+function renderRateCardGuideList(title, rows = []) {
+    return `
+        <div class="rate-guide-list">
+            <strong>${escapeHtml(title)}</strong>
+            <ul>${rows.map(row => `<li>${escapeHtml(row)}</li>`).join('')}</ul>
+        </div>
+    `;
+}
+
+function getRateCardGuideRelevantItems(row) {
+    return (row.serviceIds || []).map(findRateCardItem).filter(Boolean);
+}
+
+function getRateCardGuideAddonItems(row) {
+    return (row.addonServiceIds || []).map(findRateCardItem).filter(Boolean);
+}
+
+function viewRateCardGuideServices(guideId) {
+    const row = getRateCardGuideRows().find(item => item.id === guideId);
+    const items = row ? getRateCardGuideRelevantItems(row) : [];
+    const first = items[0];
+    if (first) {
+        pendingRateCardNavigation = {
+            categoryId: first.categoryId,
+            serviceIds: items.map(item => item.id)
+        };
+        closeRateCardModal();
+    }
+}
+
+function applyPendingRateCardNavigation() {
+    const nav = pendingRateCardNavigation;
+    pendingRateCardNavigation = null;
+    if (!nav?.categoryId) return;
+    activeRateCardCategoryId = nav.categoryId;
+    activeRateCardSearch = '';
+    activeRateCardSort = 'recommended';
+    if (nav.categoryId === 'ai-videos') openRateCardAiGroupsForServices(nav.serviceIds);
+    const input = document.getElementById('rateCardSearch');
+    if (input) input.value = '';
+    updateRateCardUrl();
+    renderRateCardPage();
+    requestAnimationFrame(() => focusRateCardRecommendedService(nav.serviceIds));
+}
+
+function openRateCardAiGroupsForServices(serviceIds = []) {
+    const services = serviceIds.map(findRateCardItem).filter(Boolean);
+    const hasTag = tag => services.some(item => (item.tags || []).includes(tag));
+    rateCardAiGroups = {
+        assisted: hasTag('assisted'),
+        'ai-only': hasTag('ai-only'),
+        hybrid: hasTag('hybrid'),
+        'add-on': hasTag('add-on')
+    };
+    if (!Object.values(rateCardAiGroups).some(Boolean)) resetRateCardAiGroups();
+}
+
+function focusRateCardRecommendedService(serviceIds = []) {
+    const firstId = serviceIds.find(Boolean);
+    const heading = document.getElementById('rateCardResultsHeading');
+    const target = firstId ? getVisibleRateCardServiceElement(firstId) : heading;
+    const focusTarget = target || heading;
+    if (!focusTarget) return;
+    const top = Math.max(0, window.scrollY + focusTarget.getBoundingClientRect().top - 120);
+    window.scrollTo({ top, behavior: 'smooth' });
+    focusTarget.focus?.({ preventScroll: true });
+    if (target) {
+        if (rateCardHighlightTimer) clearTimeout(rateCardHighlightTimer);
+        target.classList.add('rate-service-highlight');
+        rateCardHighlightTimer = setTimeout(() => target.classList.remove('rate-service-highlight'), 2000);
+    }
+    announceRateCardNavigation(firstId ? `${findRateCardItem(firstId)?.service || 'Recommended service'} selected.` : 'Rate card services selected.');
+}
+
+function getVisibleRateCardServiceElement(serviceId) {
+    const nodes = [...document.querySelectorAll(`[data-rate-service-id="${escapeRateCardSelectorValue(serviceId)}"]`)];
+    return nodes.find(node => {
+        const rect = node.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }) || nodes[0] || null;
+}
+
+function escapeRateCardSelectorValue(value) {
+    if (window.CSS?.escape) return CSS.escape(String(value));
+    return String(value).replace(/["\\]/g, '\\$&');
+}
+
+function announceRateCardNavigation(message) {
+    const live = document.getElementById('rateCardLiveRegion');
+    if (live) live.textContent = message;
+}
+
+function copyRateCardRecommendation(guideId) {
+    const row = getRateCardGuideRows().find(item => item.id === guideId);
+    if (!row) return;
+    const items = getRateCardGuideRelevantItems(row);
+    const primary = items[0] || null;
+    const addons = [
+        ...getRateCardGuideAddonItems(row).map(item => item.service),
+        ...(row.addonLabels || [])
+    ].filter(Boolean);
+    const summary = [
+        'Client request:',
+        row.request,
+        '',
+        'Recommended service:',
+        primary?.service || row.category,
+        '',
+        'Starting rate:',
+        primary ? formatRateCardCurrency(primary.priceFrom) : (row.separateQuote || 'Separate quotation required'),
+        '',
+        'Billing basis:',
+        primary?.billingBasis || 'Confirm scope before quoting',
+        '',
+        'Likely add-ons:',
+        addons.length ? addons.join(', ') : 'None identified from this scenario.',
+        '',
+        'Confirm before quoting:',
+        (row.questions || []).length ? row.questions.join(', ') : 'Confirm scope, timeline and approval stage.',
+        '',
+        'Scope note:',
+        row.scopeReminder || row.chargeTriggers?.join(', ') || 'Final pricing depends on confirmed scope.'
+    ].join('\n');
+    navigator.clipboard?.writeText(summary)
+        ?.then(() => announceRateCardNavigation('Recommendation copied.'))
+        .catch(() => announceRateCardNavigation('Copy failed. Please try again.'));
+}
+
+function renderRateCardDiscountPanel() {
+    const rules = Array.isArray(window.RATE_CARD_VOLUME_DISCOUNTS) ? window.RATE_CARD_VOLUME_DISCOUNTS : [];
+    return `
+        <div class="rate-panel-header">
+            <span>Pricing Guidance</span>
+            <h2 id="ratePanelTitle">Volume Discounts</h2>
+            <p>Apply only to eligible creative and production fee subtotals.</p>
+        </div>
+        <table class="rate-compact-table">
+            <tbody>${rules.map(rule => `<tr><th>${escapeHtml(rule.range)}</th><td>${escapeHtml(rule.value)}</td></tr>`).join('')}</tbody>
+        </table>
+        <div class="rate-panel-small-copy">
+            <p>Volume discounts apply only when deliverables are confirmed under the same campaign, quotation or purchase order.</p>
+            <p>Discounts exclude talent, printing, media spending, travel, accommodation, venue rental, equipment rental, permits, stock assets, music licences and other third-party costs.</p>
+            <p>Calculate discounts from the eligible creative fee subtotal after scope and quantities are confirmed.</p>
+        </div>
+    `;
+}
+
+function renderRateCardTermsPanel() {
+    const terms = Array.isArray(window.RATE_CARD_COMMERCIAL_TERMS) ? window.RATE_CARD_COMMERCIAL_TERMS : [];
+    return `
+        <div class="rate-panel-header">
+            <span>Commercial</span>
+            <h2 id="ratePanelTitle">Standard Terms</h2>
+            <p>Use these notes before finalising a quotation.</p>
+        </div>
+        <div class="rate-panel-term-list">
+            ${terms.map(term => `<div><i data-lucide="check"></i><span>${escapeHtml(term)}</span></div>`).join('')}
+        </div>
+    `;
+}
+
+function trapRateCardModalFocus(event) {
+    if (event.key !== 'Tab') return;
+    const overlay = document.getElementById('rateCardPanelOverlay');
+    const focusables = [...(overlay?.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') || [])].filter(el => !el.disabled);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+document.addEventListener('keydown', event => {
+    focusRateCardSearch(event);
+    if (event.key === 'Escape') {
+        if (activeRateCardModal) closeRateCardModal();
+        else closeRateCardPopover();
+    }
+});
+
+document.addEventListener('click', event => {
+    const popover = getRateCardPopover();
+    if (!popover?.classList.contains('show')) return;
+    if (popover.contains(event.target) || event.target.closest('.rate-info-btn')) return;
+    closeRateCardPopover();
+});
+
+const SETTINGS_TABS = [
+    { id: 'overview', label: 'Overview', icon: 'layout-dashboard' },
+    { id: 'members', label: 'Members', icon: 'users' },
+    { id: 'access', label: 'Roles & Access', icon: 'shield-check' },
+    { id: 'coverage', label: 'Coverage', icon: 'globe-2' },
+    { id: 'workspace', label: 'Workspace', icon: 'sliders-horizontal' }
+];
+
+let activeSettingsTab = 'overview';
+let settingsMemberFilters = { search: '', region: 'all', role: 'all', access: 'all', sort: 'name' };
+let settingsCoverageFilter = 'active';
+let settingsDialogCanBackdropClose = true;
+let settingsDialogReturnFocus = null;
+
 function renderSettingsPage() {
     populateWorkspaceCountrySelects();
-    checkAdminUI();
+    const shell = document.getElementById('settingsShell');
+    if (!shell) return;
+
+    activeSettingsTab = getSettingsTabFromUrl();
+    shell.innerHTML = `
+        ${renderSettingsHeader()}
+        ${renderSettingsTabs()}
+        <div class="settings-tab-panel">
+            ${renderSettingsTabContent()}
+        </div>
+    `;
+
     renderSettingsMemberControls();
     renderSettingsAdminControls();
-    renderSettingsCountryList();
-    renderSettingsTeamList();
+    checkAdminUI();
+    refreshIcons();
+}
+
+function getSettingsTabFromUrl() {
+    const validTabs = SETTINGS_TABS.map(tab => tab.id);
+    const params = new URLSearchParams(window.location.search || '');
+    const requestedTab = params.get('tab');
+    if (validTabs.includes(requestedTab)) return requestedTab;
+    return validTabs.includes(activeSettingsTab) ? activeSettingsTab : 'overview';
+}
+
+function setSettingsTab(tab, shouldUpdateUrl = true) {
+    if (!SETTINGS_TABS.some(item => item.id === tab)) return;
+    activeSettingsTab = tab;
+    if (shouldUpdateUrl) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', tab);
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+    renderSettingsPage();
+}
+
+function renderSettingsHeader() {
+    const label = hasSuperAdminAccess() ? 'Superadmin' : hasAdminAccess() ? 'Admin' : 'View Mode';
+    const stateClass = hasAdminAccess() ? 'settings-state-pill unlocked' : 'settings-state-pill';
+    const icon = hasAdminAccess() ? 'unlock' : 'lock';
+    return `
+        <div class="settings-hero settings-hero-compact">
+            <div>
+                <h1>Settings</h1>
+                <p>Manage your team, permissions and workspace.</p>
+            </div>
+            <span id="settingsAdminState" class="${stateClass}"><i data-lucide="${icon}"></i> ${label}</span>
+        </div>
+    `;
+}
+
+function renderSettingsTabs() {
+    return `
+        <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+            ${SETTINGS_TABS.map(tab => `
+                <button type="button" role="tab" aria-selected="${activeSettingsTab === tab.id}" class="settings-tab ${activeSettingsTab === tab.id ? 'active' : ''}" onclick="setSettingsTab('${tab.id}')">
+                    <i data-lucide="${tab.icon}"></i>
+                    <span>${tab.label}</span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderSettingsTabContent() {
+    if (activeSettingsTab === 'members') return renderSettingsMembersTab();
+    if (activeSettingsTab === 'access') return renderSettingsAccessTab();
+    if (activeSettingsTab === 'coverage') return renderSettingsCoverageTab();
+    if (activeSettingsTab === 'workspace') return renderSettingsWorkspaceTab();
+    return renderSettingsOverviewTab();
+}
+
+function getSettingsMetrics() {
+    const team = getActiveTeamMembers();
+    const countryGroups = groupTeamMembersByCountry(team);
+    const coveredCountryKeys = new Set(team.map(member => getCountryConfig(member.region || 'Global').name));
+    return {
+        total: team.length,
+        creative: team.filter(isCreativeTeamMember).length,
+        admin: team.filter(isAdminTeamMember).length,
+        coveredCountries: coveredCountryKeys.size,
+        overseas: team.filter(member => !['malaysia', 'indonesia'].includes(String(member.region || '').toLowerCase())).length,
+        groupedCountries: countryGroups.length
+    };
+}
+
+function renderSettingsOverviewTab() {
+    const metrics = getSettingsMetrics();
+    return `
+        <section class="settings-overview-grid">
+            <div class="settings-panel settings-overview-main">
+                <div class="settings-panel-head simple">
+                    <div>
+                        <h3>Workspace Snapshot</h3>
+                        <p>Key team signals at a glance.</p>
+                    </div>
+                </div>
+                <div class="settings-metric-grid">
+                    ${renderSettingsMetric('Total Members', metrics.total, 'users')}
+                    ${renderSettingsMetric('Creative PICs', metrics.creative, 'palette')}
+                    ${renderSettingsMetric('Admins', metrics.admin, 'shield-check')}
+                    ${renderSettingsMetric('Covered Countries', metrics.coveredCountries, 'globe-2')}
+                </div>
+            </div>
+
+            <div class="settings-panel settings-quick-panel">
+                <div class="settings-panel-head simple">
+                    <div>
+                        <h3>Quick Actions</h3>
+                        <p>Common admin moves without crowding the page.</p>
+                    </div>
+                </div>
+                <div class="settings-quick-actions">
+                    <button type="button" class="settings-primary-btn settings-admin-only" onclick="openSettingsMemberModal('add')"><i data-lucide="user-plus"></i><span>Add Member</span></button>
+                    <button type="button" class="settings-action-btn" onclick="setSettingsTab('access')"><i data-lucide="shield"></i><span>Manage Access</span></button>
+                    <button type="button" class="settings-action-btn" onclick="exportSettingsRoster()"><i data-lucide="download"></i><span>Export Roster</span></button>
+                </div>
+            </div>
+
+            <div class="settings-panel">
+                <div class="settings-panel-head simple">
+                    <div>
+                        <h3>Recent Changes</h3>
+                        <p>Latest saved activity, when available.</p>
+                    </div>
+                </div>
+                ${renderSettingsRecentChanges()}
+            </div>
+
+            <div class="settings-panel">
+                <div class="settings-panel-head simple">
+                    <div>
+                        <h3>Workspace Status</h3>
+                        <p>Security and access state.</p>
+                    </div>
+                </div>
+                ${renderSettingsStatusList()}
+            </div>
+        </section>
+    `;
+}
+
+function renderSettingsMetric(label, value, icon) {
+    return `
+        <div class="settings-metric">
+            <i data-lucide="${icon}"></i>
+            <span>${label}</span>
+            <strong>${value}</strong>
+        </div>
+    `;
+}
+
+function renderSettingsRecentChanges() {
+    const logs = (globalActivityLogs || []).slice(0, 4);
+    if (!logs.length) {
+        return `
+            <div class="settings-empty-state">
+                <i data-lucide="history"></i>
+                <strong>No recent changes</strong>
+                <span>Workspace updates will appear here once available.</span>
+            </div>
+        `;
+    }
+
+    return `<div class="settings-change-list">${logs.map(log => `
+        <div class="settings-change-row">
+            <i data-lucide="activity"></i>
+            <div>
+                <strong>${escapeHtml(String(log.action_type || 'Workspace update').replace(/_/g, ' '))}</strong>
+                <span>${escapeHtml(log.actor_name || 'System')} · ${formatDateTime(log.created_at)}</span>
+            </div>
+        </div>
+    `).join('')}</div>`;
+}
+
+function renderSettingsStatusList() {
+    const metrics = getSettingsMetrics();
+    const currentTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Dark' : 'Light';
+    const accessLabel = hasSuperAdminAccess() ? 'Superadmin' : hasAdminAccess() ? 'Admin' : 'View only';
+    const activeRegions = `${metrics.coveredCountries} active`;
+    return `
+        <div class="settings-status-list">
+            ${renderSettingsStatusRow('Daily auto sign-out', 'Active', 'shield-check')}
+            ${renderSettingsStatusRow('Current theme', currentTheme, 'sun')}
+            ${renderSettingsStatusRow('Active regions', activeRegions, 'map-pin')}
+            ${renderSettingsStatusRow('Workspace access', accessLabel, 'lock')}
+        </div>
+    `;
+}
+
+function renderSettingsStatusRow(label, value, icon) {
+    return `
+        <div class="settings-status-row">
+            <i data-lucide="${icon}"></i>
+            <span>${label}</span>
+            <strong>${value}</strong>
+        </div>
+    `;
+}
+
+function renderSettingsMembersTab() {
+    const members = getFilteredSettingsMembers();
+    const totalMembers = getActiveTeamMembers().length;
+    return `
+        <section class="settings-panel settings-members-panel">
+            <div class="settings-section-head">
+                <div>
+                    <h3>Members</h3>
+                    <p>Search, edit and maintain the active roster.</p>
+                </div>
+                <button type="button" id="btnAddTeamMemberOpen" class="settings-primary-btn settings-admin-only" onclick="openSettingsMemberModal('add')">
+                    <i data-lucide="user-plus"></i><span>Add Member</span>
+                </button>
+            </div>
+            ${renderSettingsMemberFilters(totalMembers, members.length)}
+            <div id="settingsMembersList" class="settings-member-list">
+                ${renderSettingsMemberRows(members)}
+            </div>
+        </section>
+    `;
+}
+
+function renderSettingsMemberFilters(totalMembers, resultCount) {
+    const regionOptions = ['all', ...WORKSPACE_COUNTRIES.map(country => country.name)];
+    return `
+        <div class="settings-filter-bar">
+            <label class="settings-search">
+                <i data-lucide="search"></i>
+                <input type="search" id="settingsMemberSearchInput" value="${escapeHtml(settingsMemberFilters.search)}" placeholder="Search members" oninput="setSettingsMemberFilter('search', this.value)">
+            </label>
+            <select aria-label="Filter by region" onchange="setSettingsMemberFilter('region', this.value)">
+                ${regionOptions.map(region => `<option value="${escapeHtml(region)}" ${settingsMemberFilters.region === region ? 'selected' : ''}>${region === 'all' ? 'All regions' : `${getFlag(region)} ${region}`}</option>`).join('')}
+            </select>
+            <select aria-label="Filter by role" onchange="setSettingsMemberFilter('role', this.value)">
+                <option value="all" ${settingsMemberFilters.role === 'all' ? 'selected' : ''}>All roles</option>
+                <option value="creative" ${settingsMemberFilters.role === 'creative' ? 'selected' : ''}>Creative PIC</option>
+                <option value="requester" ${settingsMemberFilters.role === 'requester' ? 'selected' : ''}>Requester</option>
+            </select>
+            <select aria-label="Filter by access" onchange="setSettingsMemberFilter('access', this.value)">
+                <option value="all" ${settingsMemberFilters.access === 'all' ? 'selected' : ''}>All access</option>
+                <option value="superadmin" ${settingsMemberFilters.access === 'superadmin' ? 'selected' : ''}>Superadmin</option>
+                <option value="admin" ${settingsMemberFilters.access === 'admin' ? 'selected' : ''}>Admin</option>
+                <option value="member" ${settingsMemberFilters.access === 'member' ? 'selected' : ''}>Member</option>
+            </select>
+            <select aria-label="Sort members" onchange="setSettingsMemberFilter('sort', this.value)">
+                <option value="name" ${settingsMemberFilters.sort === 'name' ? 'selected' : ''}>Name</option>
+                <option value="region" ${settingsMemberFilters.sort === 'region' ? 'selected' : ''}>Region</option>
+                <option value="role" ${settingsMemberFilters.sort === 'role' ? 'selected' : ''}>Role</option>
+                <option value="access" ${settingsMemberFilters.sort === 'access' ? 'selected' : ''}>Access</option>
+            </select>
+            <button type="button" class="settings-link-btn" onclick="clearSettingsMemberFilters()">Clear Filters</button>
+            <span class="settings-result-count">${resultCount}/${totalMembers} members</span>
+        </div>
+    `;
+}
+
+function getFilteredSettingsMembers() {
+    const search = normalizeNameKey(settingsMemberFilters.search);
+    const region = settingsMemberFilters.region;
+    const role = settingsMemberFilters.role;
+    const access = settingsMemberFilters.access;
+
+    const filtered = getActiveTeamMembers().filter(member => {
+        const memberRole = getSettingsMemberRoleValue(member);
+        const memberAccess = getSettingsAccessValue(member);
+        const memberRegion = getCountryConfig(member.region || 'Global').name;
+        const haystack = normalizeNameKey(`${member.name} ${memberRegion} ${memberRole} ${memberAccess}`);
+        if (search && !haystack.includes(search)) return false;
+        if (region !== 'all' && memberRegion !== region) return false;
+        if (role !== 'all' && memberRole !== role) return false;
+        if (access !== 'all' && memberAccess !== access) return false;
+        return true;
+    });
+
+    return filtered.sort((a, b) => {
+        if (settingsMemberFilters.sort === 'region') return sortTeamMembersByCountryThenName(a, b);
+        if (settingsMemberFilters.sort === 'role') {
+            const roleDiff = getSettingsMemberRoleLabel(a).localeCompare(getSettingsMemberRoleLabel(b));
+            return roleDiff || String(a.name || '').localeCompare(String(b.name || ''));
+        }
+        if (settingsMemberFilters.sort === 'access') {
+            const order = { superadmin: 0, admin: 1, member: 2 };
+            const accessDiff = order[getSettingsAccessValue(a)] - order[getSettingsAccessValue(b)];
+            return accessDiff || String(a.name || '').localeCompare(String(b.name || ''));
+        }
+        return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+}
+
+function renderSettingsMemberRows(members) {
+    if (!members.length) {
+        return `
+            <div class="settings-empty-state">
+                <i data-lucide="search-x"></i>
+                <strong>No members found</strong>
+                <span>Try another search or filter.</span>
+                <button type="button" class="settings-action-btn compact" onclick="clearSettingsMemberFilters()">Clear Filters</button>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="settings-member-row settings-member-header" aria-hidden="true">
+            <span>Member</span>
+            <span>Region</span>
+            <span>Role</span>
+            <span>Access</span>
+            <span></span>
+        </div>
+        ${members.map(renderSettingsMemberRow).join('')}
+    `;
+}
+
+function renderSettingsMemberRow(member) {
+    const encodedName = encodeURIComponent(member.name || '');
+    const region = member.region || getCountryConfig(member.region).name || 'Global';
+    const accessValue = getSettingsAccessValue(member);
+    const accessLabel = getSettingsAccessLabel(member);
+    const roleLabel = getSettingsMemberRoleLabel(member);
+    return `
+        <div class="settings-member-row">
+            <div class="settings-member-person">
+                <span class="settings-member-avatar">${getInitials(member.name)}</span>
+                <div>
+                    <strong title="${escapeHtml(member.name)}">${escapeHtml(member.name)}</strong>
+                    <small>${getFlag(region)} ${escapeHtml(region)}</small>
+                </div>
+            </div>
+            <span class="settings-member-region">${getFlag(region)} ${escapeHtml(region)}</span>
+            <span class="settings-chip quiet">${roleLabel}</span>
+            <span class="settings-chip ${accessValue !== 'member' ? 'elevated' : 'muted'}">${accessLabel}</span>
+            <details class="settings-member-actions">
+                <summary aria-label="Member actions for ${escapeHtml(member.name)}"><i data-lucide="more-horizontal"></i></summary>
+                <div class="settings-member-menu">
+                    ${renderSettingsMemberActionButtons(member, encodedName)}
+                </div>
+            </details>
+        </div>
+    `;
+}
+
+function renderSettingsMemberActionButtons(member, encodedName) {
+    const canManageMembers = hasAdminAccess();
+    const canManageAdmins = hasSuperAdminAccess();
+    const isSelf = normalizeNameKey(member.name) === normalizeNameKey(getCurrentUserName());
+    const isSuper = isSuperAdminName(member.name);
+    const isAdmin = isAdminTeamMember(member);
+    const buttons = [
+        `<button type="button" onclick="openSettingsMemberDetails('${encodedName}')"><i data-lucide="info"></i>View Details</button>`
+    ];
+
+    if (canManageMembers) {
+        buttons.push(`<button type="button" onclick="openSettingsMemberModal('edit', '${encodedName}')"><i data-lucide="pencil"></i>Edit Member</button>`);
+    }
+    if (canManageAdmins && !isSuper && !isAdmin) {
+        buttons.push(`<button type="button" onclick="openSettingsAdminAccessDialog('${encodedName}')"><i data-lucide="user-check"></i>Grant Admin Access</button>`);
+    }
+    if (canManageAdmins && isAdmin && !isSuper && !isSelf) {
+        buttons.push(`<button type="button" onclick="openSettingsAdminAccessDialog('${encodedName}')"><i data-lucide="user-x"></i>Remove Admin Access</button>`);
+    }
+    if (canManageMembers && !isSuper && !isSelf) {
+        buttons.push(`<button type="button" class="danger" onclick="openSettingsRemoveMemberDialog('${encodedName}')"><i data-lucide="user-minus"></i>Remove Member</button>`);
+    }
+
+    return buttons.join('');
+}
+
+function setSettingsMemberFilter(key, value) {
+    settingsMemberFilters = { ...settingsMemberFilters, [key]: value };
+    renderSettingsPage();
+}
+
+function clearSettingsMemberFilters() {
+    settingsMemberFilters = { search: '', region: 'all', role: 'all', access: 'all', sort: 'name' };
+    renderSettingsPage();
+}
+
+function getSettingsMemberRoleValue(member) {
+    return isCreativeTeamMember(member) ? 'creative' : 'requester';
+}
+
+function getSettingsMemberRoleLabel(member) {
+    return isCreativeTeamMember(member) ? 'Creative PIC' : 'Requester';
+}
+
+function getSettingsAccessValue(member) {
+    if (isSuperAdminName(member?.name)) return 'superadmin';
+    return isAdminTeamMember(member) ? 'admin' : 'member';
+}
+
+function getSettingsAccessLabel(member) {
+    if (isSuperAdminName(member?.name)) return 'Superadmin';
+    return isAdminTeamMember(member) ? 'Admin' : 'Member';
+}
+
+function getInitials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '??';
+    return parts.slice(0, 2).map(part => part[0]).join('').toUpperCase();
+}
+
+function renderSettingsAccessTab() {
+    const team = getActiveTeamMembers();
+    const roleCards = [
+        { title: 'Superadmin', count: team.filter(member => isSuperAdminName(member.name)).length, desc: 'Owner controls and confidential access.' },
+        { title: 'Admin', count: team.filter(member => isAdminTeamMember(member) && !isSuperAdminName(member.name)).length, desc: 'Manages roster, requests and exports.' },
+        { title: 'Creative PIC', count: team.filter(isCreativeTeamMember).length, desc: 'Can be assigned production ownership.' },
+        { title: 'Requester', count: team.filter(member => !isCreativeTeamMember(member)).length, desc: 'Creates and tracks creative requests.' }
+    ];
+
+    return `
+        <section class="settings-access-layout">
+            <div class="settings-panel">
+                <div class="settings-section-head">
+                    <div>
+                        <h3>Roles</h3>
+                        <p>Simple role map for the workspace.</p>
+                    </div>
+                </div>
+                <div class="settings-role-grid">
+                    ${roleCards.map(card => `
+                        <article class="settings-role-card">
+                            <span>${card.title}</span>
+                            <strong>${card.count}</strong>
+                            <p>${card.desc}</p>
+                            <button type="button" class="settings-link-btn" onclick="openSettingsRoleMembers('${card.title}')">View Members</button>
+                        </article>
+                    `).join('')}
+                </div>
+            </div>
+
+            <div class="settings-panel">
+                <div class="settings-section-head">
+                    <div>
+                        <h3>Admin Access</h3>
+                        <p>Superadmin access is required to manage administrators.</p>
+                    </div>
+                    <button type="button" class="settings-action-btn ${hasSuperAdminAccess() ? '' : 'disabled'}" ${hasSuperAdminAccess() ? 'onclick="openSettingsAdminAccessDialog()"' : 'disabled'}>
+                        <i data-lucide="shield"></i><span>Manage Access</span>
+                    </button>
+                </div>
+                <div id="settingsAdminList" class="settings-admin-list expanded"></div>
+                <div id="settingsAdminHelp" class="settings-note"></div>
+            </div>
+        </section>
+    `;
+}
+
+function renderSettingsCoverageTab() {
+    const metrics = getSettingsMetrics();
+    const countries = getFilteredSettingsCountries();
+    return `
+        <section class="settings-panel settings-coverage-panel">
+            <div class="settings-section-head">
+                <div>
+                    <h3>Coverage</h3>
+                    <p>Regional coverage using the existing workspace country list.</p>
+                </div>
+            </div>
+            <div class="settings-metric-grid compact">
+                ${renderSettingsMetric('Active Countries', metrics.coveredCountries, 'map-pin')}
+                ${renderSettingsMetric('Total Members', metrics.total, 'users')}
+                ${renderSettingsMetric('Overseas Members', metrics.overseas, 'plane')}
+                ${renderSettingsMetric('No Members', WORKSPACE_COUNTRIES.length - metrics.coveredCountries, 'circle-alert')}
+            </div>
+            <div class="settings-segmented">
+                ${['active', 'no-members', 'asia-pacific', 'all'].map(filter => `
+                    <button type="button" class="${settingsCoverageFilter === filter ? 'active' : ''}" onclick="setSettingsCoverageFilter('${filter}')">${getSettingsCoverageFilterLabel(filter)}</button>
+                `).join('')}
+            </div>
+            <div id="settingsCountryList" class="settings-country-grid">
+                ${renderSettingsCountryCards(countries)}
+            </div>
+        </section>
+    `;
+}
+
+function getSettingsCoverageFilterLabel(filter) {
+    if (filter === 'no-members') return 'No Members';
+    if (filter === 'asia-pacific') return 'Asia-Pacific';
+    if (filter === 'all') return 'All';
+    return 'Active';
+}
+
+function setSettingsCoverageFilter(filter) {
+    settingsCoverageFilter = filter;
+    renderSettingsPage();
+}
+
+function getSettingsCountriesWithMembers() {
+    const team = getActiveTeamMembers();
+    return WORKSPACE_COUNTRIES.map(country => {
+        const members = team.filter(member => getCountryConfig(member.region || 'Global').name === country.name);
+        return { ...country, members };
+    });
+}
+
+function getFilteredSettingsCountries() {
+    const countries = getSettingsCountriesWithMembers();
+    if (settingsCoverageFilter === 'active') return countries.filter(country => country.members.length);
+    if (settingsCoverageFilter === 'no-members') return countries.filter(country => !country.members.length);
+    return countries;
+}
+
+function renderSettingsCountryCards(countries) {
+    if (!countries.length) {
+        return `
+            <div class="settings-empty-state full">
+                <i data-lucide="globe-2"></i>
+                <strong>No regional coverage found</strong>
+                <span>Assign members to a supported region to display coverage.</span>
+            </div>
+        `;
+    }
+
+    return countries.map(country => {
+        const status = country.members.length ? 'Active' : 'No members';
+        return `
+            <button type="button" class="settings-country-card ${country.members.length ? 'active' : ''}" onclick="openSettingsCountryDrawer('${encodeURIComponent(country.name)}')">
+                <span class="settings-country-flag">${country.flag}</span>
+                <span>
+                    <strong>${escapeHtml(country.name)}</strong>
+                    <small>${country.code}</small>
+                </span>
+                <em>${country.members.length}</em>
+                <small class="settings-country-status">${status}</small>
+            </button>
+        `;
+    }).join('');
+}
+
+function renderSettingsWorkspaceTab() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Dark mode' : 'Light mode';
+    return `
+        <section class="settings-workspace-layout">
+            <div class="settings-panel">
+                <div class="settings-section-head">
+                    <div>
+                        <h3>Appearance</h3>
+                        <p>${currentTheme} is active.</p>
+                    </div>
+                    <button type="button" class="settings-action-btn" onclick="toggleTheme(event)"><i data-lucide="sun"></i><span>Toggle Theme</span></button>
+                </div>
+            </div>
+
+            <div class="settings-panel">
+                <div class="settings-section-head">
+                    <div>
+                        <h3>Security</h3>
+                        <p>Daily auto sign-out is active for every user.</p>
+                    </div>
+                    <span class="settings-chip elevated"><i data-lucide="shield-check"></i> Active</span>
+                </div>
+            </div>
+
+            <div class="settings-panel">
+                <div class="settings-section-head">
+                    <div>
+                        <h3>Data & Maintenance</h3>
+                        <p>Refresh and export workspace data for reporting.</p>
+                    </div>
+                </div>
+                <div class="settings-actions settings-actions-row">
+                    <button type="button" onclick="fetchSupabaseData(true)" class="settings-action-btn"><i data-lucide="refresh-cw"></i><span>Refresh Workspace Data</span></button>
+                    <button type="button" onclick="exportReportPack()" class="settings-action-btn settings-admin-only"><i data-lucide="file-down"></i><span>Export Workspace Data</span></button>
+                    <button type="button" onclick="exportSettingsRoster()" class="settings-action-btn"><i data-lucide="download"></i><span>Export Member Roster</span></button>
+                </div>
+            </div>
+
+            <div class="settings-panel settings-danger-zone">
+                <div class="settings-section-head">
+                    <div>
+                        <h3>Danger Zone</h3>
+                        <p>Archive workspace data only when the reporting cycle is ready.</p>
+                    </div>
+                    <button type="button" onclick="openArchiveModal()" class="settings-danger-btn settings-admin-only"><i data-lucide="archive"></i><span>Archive Workspace</span></button>
+                </div>
+            </div>
+        </section>
+    `;
 }
 
 function renderSettingsTeamList() {
     const wrap = document.getElementById('settingsTeamList');
     if (!wrap) return;
-
-    const team = getActiveTeamMembers().sort(sortTeamMembersByCountryThenName);
-    if (!team.length) {
-        wrap.innerHTML = '<div class="empty-state" style="padding:24px;"><i data-lucide="users"></i><p>No team members loaded yet.</p></div>';
-        refreshIcons();
-        return;
-    }
-
-    const counts = {
-        total: team.length,
-        creative: team.filter(isCreativeTeamMember).length,
-        admin: team.filter(isAdminTeamMember).length,
-        overseas: team.filter(t => !['malaysia', 'indonesia'].includes(String(t.region || '').toLowerCase())).length
-    };
-
-    const rosterGroups = groupTeamMembersByCountry(team).map(group => {
-        const rows = group.members.map(member => {
-            const isCreative = isCreativeTeamMember(member);
-            const isAdmin = isAdminTeamMember(member);
-            const region = member.region || group.country.name || 'Global';
-            return `
-                <div class="settings-team-row">
-                    <div>
-                        <strong title="${escapeHtml(member.name)}">${escapeHtml(member.name)}</strong>
-                        <span>${getFlag(region)} ${escapeHtml(region)}</span>
-                    </div>
-                    <div class="settings-team-badges">
-                        ${isAdmin ? `<small class="admin">${isSuperAdminName(member.name) ? 'Superadmin' : 'Admin'}</small>` : ''}
-                        <small class="${isCreative ? 'creative' : ''}">${isCreative ? 'Creative PIC' : 'Requester'}</small>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        return `
-            <section class="settings-roster-country">
-                <div class="settings-roster-country-head">
-                    <span>${group.country.flag} ${escapeHtml(group.country.name)}</span>
-                    <small>${group.members.length}</small>
-                </div>
-                <div class="settings-team-rows">${rows}</div>
-            </section>
-        `;
-    }).join('');
-
-    wrap.innerHTML = `
-        <div class="settings-team-summary">
-            <div><span>Total</span><strong>${counts.total}</strong></div>
-            <div><span>Creative</span><strong>${counts.creative}</strong></div>
-            <div><span>Admin</span><strong>${counts.admin}</strong></div>
-            <div><span>Overseas</span><strong>${counts.overseas}</strong></div>
-        </div>
-        <div class="settings-roster-groups">${rosterGroups}</div>
-    `;
+    wrap.innerHTML = renderSettingsMemberRows(getFilteredSettingsMembers());
     refreshIcons();
 }
 
@@ -2235,9 +3825,12 @@ function renderSettingsMemberControls() {
     const select = document.getElementById('settingsRemoveMember');
     const btn = document.getElementById('btnRemoveTeamMember');
     const note = document.getElementById('settingsRemoveHelp');
+    const addBtn = document.getElementById('btnAddTeamMember');
+    const canManage = hasAdminAccess();
+
+    if (addBtn) addBtn.disabled = !canManage;
     if (!select && !btn && !note) return;
 
-    const canManage = hasAdminAccess();
     const team = getActiveTeamMembers()
         .filter(member => !isSuperAdminName(member.name))
         .sort(sortTeamMembersByCountryThenName);
@@ -2261,38 +3854,37 @@ function renderSettingsMemberControls() {
 function renderSettingsCountryList() {
     const wrap = document.getElementById('settingsCountryList');
     if (!wrap) return;
-    wrap.innerHTML = WORKSPACE_COUNTRIES.map(country => `
-        <div class="settings-country-pill ${country.primary ? 'primary' : ''}">
-            <span>${country.flag}</span>
-            <strong>${country.name}</strong>
-            <small>${country.code}</small>
-        </div>
-    `).join('');
+    wrap.innerHTML = renderSettingsCountryCards(getFilteredSettingsCountries());
 }
 
 function renderSettingsAdminControls() {
-    const select = document.getElementById('settingsAdminMember');
-    const list = document.getElementById('settingsAdminList');
-    const grantBtn = document.getElementById('btnGrantAdmin');
-    const revokeBtn = document.getElementById('btnRevokeAdmin');
-    const note = document.getElementById('settingsAdminHelp');
-    if (!select && !list) return;
+    const overlay = document.getElementById('settingsDialogOverlay');
+    const scope = overlay?.classList.contains('show') && overlay.querySelector('#settingsAdminMember') ? overlay : document;
+    const select = scope.querySelector('#settingsAdminMember');
+    const list = scope.querySelector('#settingsAdminList');
+    const grantBtn = scope.querySelector('#btnGrantAdmin');
+    const revokeBtn = scope.querySelector('#btnRevokeAdmin');
+    const note = scope.querySelector('#settingsAdminHelp');
+    if (!select && !list && !note) return;
 
     const team = getActiveTeamMembers().sort(sortTeamMembersByCountryThenName);
-    const currentSelection = select ? select.value : '';
-    const canManageAdmins = isSuperAdminName();
+    const currentSelection = select ? (select.dataset.preferredSelection || select.value) : '';
+    const canManageAdmins = hasSuperAdminAccess();
 
     if (select) {
         select.innerHTML = '<option value="">Select member...</option>' + renderTeamMemberOptionGroups(team, currentSelection);
+        if (currentSelection) select.value = currentSelection;
         select.disabled = !canManageAdmins;
+        select.onchange = updateSettingsAdminCurrentAccess;
+        updateSettingsAdminCurrentAccess();
     }
 
     if (grantBtn) grantBtn.disabled = !canManageAdmins;
     if (revokeBtn) revokeBtn.disabled = !canManageAdmins;
     if (note) {
         note.innerHTML = canManageAdmins
-            ? '<i data-lucide="shield-check"></i><span>Superadmin only.</span>'
-            : '<i data-lucide="lock"></i><span>Superadmin only.</span>';
+            ? '<i data-lucide="shield-check"></i><span>Superadmin access is required to manage administrators.</span>'
+            : '<i data-lucide="lock"></i><span>Superadmin access is required to manage administrators.</span>';
     }
 
     if (list) {
@@ -2305,15 +3897,299 @@ function renderSettingsAdminControls() {
                 </div>
                 <small>${isSuperAdminName(member.name) ? 'Superadmin' : 'Admin'}</small>
             </div>
-        `).join('') : '<div class="settings-empty-note">No admin members assigned yet.</div>';
+        `).join('') : '<div class="settings-empty-note">No administrators found</div>';
     }
 
     refreshIcons();
 }
 
+function updateSettingsAdminCurrentAccess() {
+    const overlay = document.getElementById('settingsDialogOverlay');
+    const scope = overlay?.classList.contains('show') ? overlay : document;
+    const select = scope.querySelector('#settingsAdminMember');
+    const label = scope.querySelector('#settingsAdminCurrentAccess');
+    if (!select || !label) return;
+    const member = getActiveTeamMembers().find(row => normalizeNameKey(row.name) === normalizeNameKey(select.value));
+    label.textContent = member ? getSettingsAccessLabel(member) : 'Select member';
+}
+
+function openSettingsMemberModal(mode = 'add', encodedName = '') {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access before managing members.');
+
+    const isEdit = mode === 'edit';
+    const originalName = decodeSettingsName(encodedName);
+    const member = isEdit ? getActiveTeamMembers().find(row => normalizeNameKey(row.name) === normalizeNameKey(originalName)) : null;
+    if (isEdit && !member) return showAppleAlert('Missing Member', 'This member could not be found.');
+
+    const role = member ? (isCreativeTeamMember(member) ? 'Creative' : 'Requester') : 'Creative';
+    const region = member?.region || 'Malaysia';
+    const formId = 'settingsMemberForm';
+    const body = `
+        <form id="${formId}" class="settings-dialog-form" onsubmit="${isEdit ? `submitSettingsMemberEdit(event, '${encodeURIComponent(originalName)}')` : 'addTeamMember(event)'}">
+            <label>Name<input type="text" id="settingsMemberName" value="${escapeHtml(member?.name || '')}" placeholder="e.g. New Creative Name" autocomplete="off"></label>
+            <label>Region<select id="settingsMemberRegion">${getWorkspaceCountryOptions(region)}</select></label>
+            <label>Role<select id="settingsMemberRole">
+                <option value="Creative" ${role === 'Creative' ? 'selected' : ''}>Creative PIC</option>
+                <option value="Requester" ${role === 'Requester' ? 'selected' : ''}>Requester</option>
+            </select></label>
+        </form>
+    `;
+
+    openSettingsDialog({
+        kind: isEdit ? 'edit-member' : 'add-member',
+        mode: isEdit ? 'drawer' : 'modal',
+        icon: isEdit ? 'pencil' : 'user-plus',
+        title: isEdit ? 'Edit member' : 'Add member',
+        description: isEdit ? 'Update the member profile without changing task history.' : 'Add a new person to the active roster.',
+        body,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Cancel</button>
+            <button type="submit" form="${formId}" id="${isEdit ? 'btnSaveSettingsMember' : 'btnAddTeamMember'}" class="settings-primary-btn">
+                <i data-lucide="${isEdit ? 'save' : 'plus'}"></i><span>${isEdit ? 'Save Changes' : 'Add Member'}</span>
+            </button>
+        `
+    });
+}
+
+function openSettingsMemberDetails(encodedName) {
+    const name = decodeSettingsName(encodedName);
+    const member = getActiveTeamMembers().find(row => normalizeNameKey(row.name) === normalizeNameKey(name));
+    if (!member) return showAppleAlert('Missing Member', 'This member could not be found.');
+
+    openSettingsDialog({
+        kind: 'member-details',
+        mode: 'drawer',
+        icon: 'info',
+        title: member.name,
+        description: 'Member profile and current workspace access.',
+        body: `
+            <div class="settings-detail-list">
+                ${renderSettingsDetailRow('Region', `${getFlag(member.region)} ${escapeHtml(member.region || 'Global')}`)}
+                ${renderSettingsDetailRow('Role', getSettingsMemberRoleLabel(member))}
+                ${renderSettingsDetailRow('Access', getSettingsAccessLabel(member))}
+                ${renderSettingsDetailRow('Status', 'Active')}
+            </div>
+        `,
+        footer: hasAdminAccess() ? `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Close</button>
+            <button type="button" class="settings-primary-btn" onclick="openSettingsMemberModal('edit', '${encodeURIComponent(member.name)}')"><i data-lucide="pencil"></i><span>Edit Member</span></button>
+        ` : `<button type="button" class="settings-primary-btn" onclick="closeSettingsDialog()">Done</button>`
+    });
+}
+
+function renderSettingsDetailRow(label, value) {
+    return `<div class="settings-detail-row"><span>${label}</span><strong>${value}</strong></div>`;
+}
+
+function openSettingsRemoveMemberDialog(encodedName) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access before removing members.');
+
+    const name = decodeSettingsName(encodedName);
+    const member = getActiveTeamMembers().find(row => normalizeNameKey(row.name) === normalizeNameKey(name));
+    if (!member) return showAppleAlert('Missing Member', 'This member could not be found.');
+    if (isSuperAdminName(member.name)) return showAppleAlert('Protected Member', 'Superadmin cannot be removed from the team roster.');
+    if (normalizeNameKey(member.name) === normalizeNameKey(getCurrentUserName())) {
+        return showAppleAlert('Current User', 'You cannot remove your own active profile while you are signed in.');
+    }
+
+    openSettingsDialog({
+        kind: 'remove-member',
+        mode: 'modal',
+        tone: 'danger',
+        destructive: true,
+        backdropClose: false,
+        icon: 'user-minus',
+        title: 'Remove member?',
+        description: 'This will remove the member from the active roster. Existing task history will be preserved.',
+        body: `
+            <div class="settings-remove-summary">
+                <strong>${escapeHtml(member.name)}</strong>
+                <span>${getFlag(member.region)} ${escapeHtml(member.region || 'Global')} · ${getSettingsMemberRoleLabel(member)}</span>
+            </div>
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Cancel</button>
+            <button type="button" id="btnConfirmRemoveMember" class="settings-danger-btn" onclick="removeTeamMemberByName('${encodeURIComponent(member.name)}', true, false, 'btnConfirmRemoveMember')">
+                <i data-lucide="user-minus"></i><span>Remove Member</span>
+            </button>
+        `
+    });
+}
+
+function openSettingsAdminAccessDialog(encodedName = '') {
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Superadmin access is required to manage administrators.');
+    const name = decodeSettingsName(encodedName);
+    const body = `
+        <div class="settings-dialog-form">
+            <label>Team Member<select id="settingsAdminMember" data-preferred-selection="${escapeHtml(name)}"></select></label>
+            <div class="settings-admin-current">
+                <span>Current access</span>
+                <strong id="settingsAdminCurrentAccess">${name ? getSettingsAccessLabel(getActiveTeamMembers().find(row => normalizeNameKey(row.name) === normalizeNameKey(name)) || {}) : 'Select member'}</strong>
+            </div>
+            <div id="settingsAdminHelp" class="settings-note"></div>
+            <div id="settingsAdminList" class="settings-admin-list"></div>
+        </div>
+    `;
+    openSettingsDialog({
+        kind: 'admin-access',
+        mode: 'drawer',
+        icon: 'shield',
+        title: 'Manage admin access',
+        description: 'Grant or remove admin access for active team members.',
+        body,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Cancel</button>
+            <button type="button" id="btnRevokeAdmin" class="settings-danger-btn" onclick="setMemberAdminAccess(false)"><i data-lucide="user-x"></i><span>Remove Admin</span></button>
+            <button type="button" id="btnGrantAdmin" class="settings-primary-btn" onclick="setMemberAdminAccess(true)"><i data-lucide="user-check"></i><span>Grant Admin</span></button>
+        `
+    });
+    renderSettingsAdminControls();
+}
+
+function openSettingsRoleMembers(roleTitle) {
+    const team = getActiveTeamMembers().filter(member => {
+        if (roleTitle === 'Superadmin') return isSuperAdminName(member.name);
+        if (roleTitle === 'Admin') return isAdminTeamMember(member) && !isSuperAdminName(member.name);
+        if (roleTitle === 'Creative PIC') return isCreativeTeamMember(member);
+        return !isCreativeTeamMember(member);
+    }).sort(sortTeamMembersByCountryThenName);
+
+    openSettingsDialog({
+        kind: 'role-members',
+        mode: 'drawer',
+        icon: 'users',
+        title: roleTitle,
+        description: `${team.length} member${team.length === 1 ? '' : 's'} in this group.`,
+        body: `<div class="settings-compact-member-list">${team.map(member => `
+            <div>
+                <strong>${escapeHtml(member.name)}</strong>
+                <span>${getFlag(member.region)} ${escapeHtml(member.region || 'Global')}</span>
+            </div>
+        `).join('') || '<div class="settings-empty-note">No members found</div>'}</div>`,
+        footer: `<button type="button" class="settings-primary-btn" onclick="closeSettingsDialog()">Done</button>`
+    });
+}
+
+function openSettingsCountryDrawer(encodedCountryName) {
+    const countryName = decodeSettingsName(encodedCountryName);
+    const country = getSettingsCountriesWithMembers().find(item => item.name === countryName);
+    if (!country) return;
+
+    const creativeCount = country.members.filter(isCreativeTeamMember).length;
+    const adminCount = country.members.filter(isAdminTeamMember).length;
+    const requesterCount = country.members.length - creativeCount;
+    openSettingsDialog({
+        kind: 'country-members',
+        mode: 'drawer',
+        icon: 'globe-2',
+        title: `${country.flag} ${country.name}`,
+        description: `${country.members.length} active member${country.members.length === 1 ? '' : 's'} in this region.`,
+        body: `
+            <div class="settings-country-breakdown">
+                ${renderSettingsMetric('Members', country.members.length, 'users')}
+                ${renderSettingsMetric('Creative PICs', creativeCount, 'palette')}
+                ${renderSettingsMetric('Admins', adminCount, 'shield-check')}
+                ${renderSettingsMetric('Requesters', requesterCount, 'clipboard-list')}
+            </div>
+            <div class="settings-compact-member-list">
+                ${country.members.map(member => `
+                    <div>
+                        <strong>${escapeHtml(member.name)}</strong>
+                        <span>${getSettingsMemberRoleLabel(member)} · ${getSettingsAccessLabel(member)}</span>
+                    </div>
+                `).join('') || '<div class="settings-empty-note">No members assigned yet.</div>'}
+            </div>
+        `,
+        footer: `<button type="button" class="settings-primary-btn" onclick="closeSettingsDialog()">Done</button>`
+    });
+}
+
+function openSettingsDialog({ kind = '', mode = 'modal', tone = '', icon = 'sparkles', title = '', description = '', body = '', footer = '', destructive = false, backdropClose = true }) {
+    let overlay = document.getElementById('settingsDialogOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'settingsDialogOverlay';
+        document.body.appendChild(overlay);
+    }
+
+    settingsDialogCanBackdropClose = backdropClose && !destructive;
+    settingsDialogReturnFocus = document.activeElement && document.activeElement !== document.body ? document.activeElement : settingsDialogReturnFocus;
+    overlay.className = `settings-dialog-overlay show ${mode} ${tone}`.trim();
+    overlay.dataset.settingsDialog = kind;
+    overlay.setAttribute('role', 'presentation');
+    overlay.setAttribute('onclick', 'handleSettingsDialogBackdrop(event)');
+    overlay.innerHTML = `
+        <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settingsDialogTitle">
+            <button type="button" class="settings-dialog-close" onclick="closeSettingsDialog()" aria-label="Close"><i data-lucide="x"></i></button>
+            <div class="settings-dialog-head">
+                <span class="settings-dialog-icon"><i data-lucide="${icon}"></i></span>
+                <div>
+                    <h3 id="settingsDialogTitle">${escapeHtml(title)}</h3>
+                    ${description ? `<p>${escapeHtml(description)}</p>` : ''}
+                </div>
+            </div>
+            <div class="settings-dialog-body">${body}</div>
+            ${footer ? `<div class="settings-dialog-footer">${footer}</div>` : ''}
+        </div>
+    `;
+    document.body.classList.add('no-scroll');
+    refreshIcons();
+    setTimeout(() => {
+        const focusTarget = overlay.querySelector('input, select, textarea, button:not(.settings-dialog-close)');
+        (focusTarget || overlay.querySelector('.settings-dialog-close'))?.focus();
+    }, 40);
+}
+
+function handleSettingsDialogBackdrop(event) {
+    if (event.target?.id === 'settingsDialogOverlay' && settingsDialogCanBackdropClose) closeSettingsDialog();
+}
+
+function closeSettingsDialog() {
+    const overlay = document.getElementById('settingsDialogOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('show');
+    document.body.classList.remove('no-scroll');
+    const returnFocus = settingsDialogReturnFocus;
+    settingsDialogReturnFocus = null;
+    settingsDialogCanBackdropClose = true;
+    setTimeout(() => {
+        if (!overlay.classList.contains('show')) overlay.remove();
+        if (returnFocus && typeof returnFocus.focus === 'function') returnFocus.focus();
+    }, 180);
+}
+
+function handleSettingsDialogKeydown(event) {
+    const overlay = document.getElementById('settingsDialogOverlay');
+    if (!overlay?.classList.contains('show')) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSettingsDialog();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusables = [...overlay.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(el => !el.disabled);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+document.addEventListener('keydown', handleSettingsDialogKeydown);
+
+function decodeSettingsName(value) {
+    try { return decodeURIComponent(value || ''); }
+    catch(e) { return value || ''; }
+}
+
 async function setMemberAdminAccess(shouldBeAdmin) {
-    if (!isSuperAdminName()) {
-        return showAppleAlert('Superadmin Only', 'Faiz only.');
+    if (!hasSuperAdminAccess()) {
+        return showAppleAlert('Superadmin Only', 'Superadmin access is required to manage administrators.');
     }
 
     const select = document.getElementById('settingsAdminMember');
@@ -2321,6 +4197,9 @@ async function setMemberAdminAccess(shouldBeAdmin) {
     if (!name) return showAppleAlert('Missing Member', 'Please select a team member first.');
     if (!shouldBeAdmin && isSuperAdminName(name)) {
         return showAppleAlert('Protected Access', 'Superadmin access cannot be removed from Faiz Shamsul.');
+    }
+    if (!shouldBeAdmin && normalizeNameKey(name) === normalizeNameKey(getCurrentUserName())) {
+        return showAppleAlert('Current User', 'You cannot remove your own critical access while signed in.');
     }
 
     const payloadOptions = [
@@ -2349,6 +4228,7 @@ async function setMemberAdminAccess(shouldBeAdmin) {
     if (!savedToSupabase) {
         if (shouldBeAdmin) saveAdminOverrideName(name);
         else removeAdminOverrideName(name);
+        closeSettingsDialog();
         renderSettingsPage();
         return showAppleAlert(
             'Admin Saved Locally',
@@ -2359,6 +4239,7 @@ async function setMemberAdminAccess(shouldBeAdmin) {
     if (shouldBeAdmin) saveAdminOverrideName(name);
     else removeAdminOverrideName(name);
     await fetchSupabaseData(true, true);
+    closeSettingsDialog();
     renderSettingsPage();
     showNotification(shouldBeAdmin ? 'Admin Granted' : 'Admin Removed', `${name} access updated`);
 }
@@ -2366,7 +4247,8 @@ async function setMemberAdminAccess(shouldBeAdmin) {
 async function addTeamMember(event) {
     if (event) event.preventDefault();
     if (!hasAdminAccess()) {
-        return showAppleAlert('Admin Only', 'Please unlock Admin Access before adding members.');
+        showAppleAlert('Admin Only', 'Please unlock Admin Access before adding members.');
+        return false;
     }
 
     const nameInput = document.getElementById('settingsMemberName');
@@ -2377,7 +4259,10 @@ async function addTeamMember(event) {
     const region = regionInput ? regionInput.value : 'Malaysia';
     const role = roleInput ? roleInput.value : 'Requester';
 
-    if (!name) return showAppleAlert('Missing Name', 'Please enter the new team member name.');
+    if (!name) {
+        showAppleAlert('Missing Name', 'Please enter the new team member name.');
+        return false;
+    }
 
     const originalHtml = btn ? btn.innerHTML : '';
     if (btn) {
@@ -2443,13 +4328,102 @@ async function addTeamMember(event) {
         if (error) throw new Error(error.message);
 
         if (role === 'Creative') saveCreativeOverrideName(name);
+        else removeCreativeOverrideName(name);
         if (nameInput) nameInput.value = '';
 
         await fetchSupabaseData(true, true);
+        closeSettingsDialog();
         renderSettingsPage();
-        showNotification(memberAlreadyExists ? 'Member Updated' : 'Member Added', `${name} is now in the workspace`);
+        showNotification(memberAlreadyExists ? 'Member Updated' : 'Member Added', memberAlreadyExists ? `${name} is now in the workspace` : 'Member added successfully.');
+        return true;
     } catch(e) {
         showAppleAlert('Add Member Failed', e.message);
+        return false;
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+async function submitSettingsMemberEdit(event, encodedOriginalName) {
+    if (event) event.preventDefault();
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access before editing members.');
+
+    const originalName = decodeSettingsName(encodedOriginalName);
+    const member = getActiveTeamMembers().find(row => normalizeNameKey(row.name) === normalizeNameKey(originalName));
+    if (!member) return showAppleAlert('Missing Member', 'This member could not be found.');
+
+    const name = document.getElementById('settingsMemberName')?.value.trim() || '';
+    const region = document.getElementById('settingsMemberRegion')?.value || member.region || 'Malaysia';
+    const role = document.getElementById('settingsMemberRole')?.value || 'Requester';
+    const btn = document.getElementById('btnSaveSettingsMember');
+    if (!name) return showAppleAlert('Missing Name', 'Please enter the team member name.');
+    if (isSuperAdminName(originalName) && normalizeNameKey(name) !== normalizeNameKey(originalName)) {
+        return showAppleAlert('Protected Member', 'Superadmin profile name cannot be changed.');
+    }
+    const duplicate = getActiveTeamMembers().some(row => normalizeNameKey(row.name) === normalizeNameKey(name) && normalizeNameKey(row.name) !== normalizeNameKey(originalName));
+    if (duplicate) return showAppleAlert('Duplicate Member', 'A member with this name already exists.');
+
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Saving...';
+        refreshIcons();
+    }
+
+    try {
+        const richPayload = {
+            name,
+            region,
+            role,
+            team: role,
+            department: role === 'Creative' ? 'Creative' : 'Requester',
+            is_creative: role === 'Creative',
+            is_active: true,
+            status: 'active'
+        };
+        const minimalPayload = { name, region };
+
+        let { error } = await supabaseClient
+            .from('team_members')
+            .update(richPayload)
+            .eq('name', originalName);
+
+        if (error && /column|schema|cache|is_creative|department|role|team|is_active|status/i.test(error.message || '')) {
+            const retry = await supabaseClient
+                .from('team_members')
+                .update(minimalPayload)
+                .eq('name', originalName);
+            error = retry.error;
+        }
+        if (error) throw new Error(error.message);
+
+        if (role === 'Creative') saveCreativeOverrideName(name);
+        else removeCreativeOverrideName(name);
+        if (normalizeNameKey(name) !== normalizeNameKey(originalName)) {
+            removeCreativeOverrideName(originalName);
+            if (getAdminOverrideNames().some(admin => normalizeNameKey(admin) === normalizeNameKey(originalName))) {
+                removeAdminOverrideName(originalName);
+                saveAdminOverrideName(name);
+            }
+        }
+
+        globalTeamMembers = getActiveTeamMembers().map(row => (
+            normalizeNameKey(row.name) === normalizeNameKey(originalName)
+                ? { ...row, ...richPayload }
+                : row
+        ));
+        hydrateTeamCollections(globalTeamMembers);
+
+        await fetchSupabaseData(true, true);
+        closeSettingsDialog();
+        renderSettingsPage();
+        showNotification('Member Updated', 'Member profile saved.');
+    } catch(e) {
+        showAppleAlert('Update Member Failed', e.message);
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -2461,13 +4435,17 @@ async function addTeamMember(event) {
 
 async function removeTeamMember(event) {
     if (event) event.preventDefault();
+    const select = document.getElementById('settingsRemoveMember');
+    return removeTeamMemberByName(select ? select.value : '', false, true, 'btnRemoveTeamMember');
+}
+
+async function removeTeamMemberByName(nameInput, encoded = false, shouldConfirm = true, buttonId = '') {
     if (!hasAdminAccess()) {
         return showAppleAlert('Admin Only', 'Please unlock Admin Access before removing members.');
     }
 
-    const select = document.getElementById('settingsRemoveMember');
-    const btn = document.getElementById('btnRemoveTeamMember');
-    const name = select ? select.value : '';
+    const name = encoded ? decodeSettingsName(nameInput) : String(nameInput || '');
+    const btn = buttonId ? document.getElementById(buttonId) : null;
     if (!name) return showAppleAlert('Missing Member', 'Please select a team member to remove.');
     if (isSuperAdminName(name)) return showAppleAlert('Protected Member', 'Superadmin cannot be removed from the team roster.');
     if (normalizeNameKey(name) === normalizeNameKey(getCurrentUserName())) {
@@ -2482,9 +4460,11 @@ async function removeTeamMember(event) {
         return getAssignedPICNames(task.assignee).some(pic => normalizeNameKey(pic) === normalizeNameKey(name));
     }).length;
 
-    const taskWarning = activeTaskCount ? `\n\n${activeTaskCount} active task${activeTaskCount === 1 ? '' : 's'} will keep this assignee for history.` : '';
-    const confirmed = await showAppleConfirm('Remove Member?', `${name} will be removed from active dropdowns.${taskWarning}`, { confirmText: 'Remove', cancelText: 'Keep', tone: 'danger', icon: 'user-minus' });
-    if (!confirmed) return;
+    if (shouldConfirm) {
+        const taskWarning = activeTaskCount ? `\n\n${activeTaskCount} active task${activeTaskCount === 1 ? '' : 's'} will keep this assignee for history.` : '';
+        const confirmed = await showAppleConfirm('Remove Member?', `${name} will be removed from active dropdowns.${taskWarning}`, { confirmText: 'Remove Member', cancelText: 'Cancel', tone: 'danger', icon: 'user-minus' });
+        if (!confirmed) return;
+    }
 
     const originalHtml = btn ? btn.innerHTML : '';
     if (btn) {
@@ -2531,9 +4511,11 @@ async function removeTeamMember(event) {
         removeCreativeOverrideName(name);
         globalTeamMembers = getActiveTeamMembers().filter(row => normalizeNameKey(row.name) !== normalizeNameKey(name));
         hydrateTeamCollections(globalTeamMembers);
+        const select = document.getElementById('settingsRemoveMember');
         if (select) select.value = '';
 
         await fetchSupabaseData(true, true);
+        closeSettingsDialog();
         renderSettingsPage();
         showNotification('Member Removed', `${member?.name || name} has been removed from the active roster`);
     } catch(e) {
@@ -2545,6 +4527,20 @@ async function removeTeamMember(event) {
             refreshIcons();
         }
     }
+}
+
+function exportSettingsRoster() {
+    const team = getActiveTeamMembers().sort(sortTeamMembersByCountryThenName);
+    if (!team.length) return showAppleAlert('Export Failed', 'No active members available to export.');
+    const rows = team.map(member => ({
+        name: member.name || '',
+        region: member.region || '',
+        role: getSettingsMemberRoleLabel(member),
+        access: getSettingsAccessLabel(member),
+        status: 'active'
+    }));
+    downloadTextFile(`Adtechinno_Member_Roster_${new Date().toISOString().split('T')[0]}.csv`, rowsToCSV(['name', 'region', 'role', 'access', 'status'], rows), 'text/csv;charset=utf-8;');
+    showNotification('Roster Exported', 'Member data is ready for reporting.');
 }
 
 
