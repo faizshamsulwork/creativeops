@@ -75,6 +75,35 @@ input, select, textarea { font-size: 16px !important; }
     gap: 4px !important;
 }
 .monthly-progress-mini strong { text-align: left !important; }
+.request-filter-shell { padding-bottom: 8px !important; }
+.request-filter-chip { min-height: 32px !important; font-size: 0.68rem !important; }
+.task-deadline-row { min-height: 28px !important; }
+.bulk-due-summary { grid-template-columns: 1fr !important; }
+.bulk-due-head { display: none !important; }
+.bulk-due-row { grid-template-columns: 1fr !important; gap: 5px !important; }
+.awaiting-client-detail-panel {
+    grid-template-columns: 1fr 1fr !important;
+}
+.client-review-detail-panel {
+    grid-template-columns: 1fr 1fr !important;
+}
+.client-review-action-row {
+    flex-direction: column !important;
+}
+.client-review-action-row .settings-action-btn,
+.client-review-action-row .settings-primary-btn {
+    width: 100% !important;
+}
+.client-review-audit-row {
+    grid-template-columns: 1fr !important;
+}
+.client-review-audit-actions {
+    justify-content: stretch !important;
+}
+.client-review-audit-actions .settings-link-btn {
+    flex: 1 !important;
+    justify-content: center !important;
+}
 .monthly-flow-head {
     align-items: flex-start !important;
     flex-direction: column !important;

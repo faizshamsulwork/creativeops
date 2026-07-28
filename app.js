@@ -32,6 +32,16 @@ let currentRegionFilter = 'all';
 let userRegion = '';
 let isSuperAdmin = false;
 let currentRequestType = 'adhoc';
+let requestBoardDeadlineFilter = 'all';
+let pendingDeadlineChangeUpdate = null;
+let pendingBulkInternalDueRows = [];
+let internalDueBackfillInFlight = false;
+let lastInternalDueBackfillSignature = '';
+let clientReviewAgingCheckInFlight = false;
+let lastAssignedRegionVisibility = { hidden: [], visible: [] };
+let calendarViewMode = localStorage.getItem('adtech_calendar_view') || '';
+let calendarShowCompleted = localStorage.getItem('adtech_calendar_show_completed') === 'true';
+let selectedCalendarDateKey = '';
 const CORE_CREATIVE_NAMES = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
 const SUPER_ADMIN_NAMES = ["Faiz Shamsul"];
 const SUPER_ADMIN_LOGIN_PASSCODE = 'Act3030300!';
@@ -40,6 +50,54 @@ const SUPER_ADMIN_VERIFIED_DATE_KEY = 'adtech_superadmin_verified_date';
 const ADMIN_ACCESS_STORAGE_KEY = 'adtech_admin_members_override';
 const TEAM_REVIEW_LOCAL_KEY = 'adtech_team_review_store';
 const TEAM_REVIEW_CODE_VAULT_KEY = 'adtech_team_review_code_vault';
+const WORK_STATUS_AWAITING_CLIENT = 'Awaiting Client';
+const CLIENT_REVIEW_WINDOW_DAYS = 5;
+const CLIENT_REVIEW_WARNING_DAY = 4;
+const CLIENT_REVIEW_WATCH_DAY = 3;
+const CLIENT_REVIEW_DEFAULT_WAITING_REASON = 'Awaiting feedback / approval';
+const REQUEST_BOARD_FILTERS = [
+    { id: 'all', label: 'All Tasks' },
+    { id: 'overdue', label: 'Overdue' },
+    { id: 'today', label: 'Due Today' },
+    { id: 'week', label: 'Due Soon' },
+    { id: 'missing_internal', label: 'Missing Internal Due' },
+    { id: 'client_blocked', label: 'Client Blocked' },
+    { id: 'client_review_aging', label: 'Review Aging' },
+    { id: 'followup_due', label: 'Follow-up Due' },
+    { id: 'followup_overdue', label: 'Follow-up Overdue' }
+];
+const CLIENT_WAITING_REASONS = [
+    CLIENT_REVIEW_DEFAULT_WAITING_REASON,
+    'Awaiting client feedback',
+    'Awaiting requester confirmation',
+    'Awaiting missing assets',
+    'Awaiting approval',
+    'Awaiting revised brief',
+    'Other'
+];
+const DEADLINE_CHANGE_REASONS = [
+    'Client changed timeline',
+    'Scope changed',
+    'Missing assets / info',
+    'Internal reprioritisation',
+    'Creative capacity',
+    'Other'
+];
+const DEADLINE_ADJUSTMENT_REASONS = [
+    'Changed production priority',
+    'Client requested extension',
+    'Scope changed',
+    'Missing client assets',
+    'Client feedback delay',
+    'Resource availability',
+    'Internal rescheduling',
+    'Incorrect original date',
+    'Urgent request',
+    'Other'
+];
+const AWAITING_CLIENT_EXIT_STATUSES = ['Drafting', 'Partial Ready', 'Revision', 'Internal Review', 'Client Review', 'Done'];
+const INTERNAL_PRODUCTION_STATUS_KEYS = ['pending', 'inbox', 'not started', 'drafting', 'partial ready', 'revision', 'internal review'];
+const INTERNAL_DUE_BACKFILL_BATCH_LIMIT = 75;
 const WORKSPACE_COUNTRIES = [
     { name: 'Malaysia', code: 'MY', flag: '🇲🇾', timezone: 'Asia/Kuala_Lumpur', primary: true },
     { name: 'Indonesia', code: 'ID', flag: '🇮🇩', timezone: 'Asia/Jakarta', primary: true },
@@ -470,10 +528,733 @@ async function gasPost(payload, options = {}) {
     }
 }
 
+function parseDateOnly(value) {
+    if (!value) return null;
+    if (value instanceof Date) {
+        const copy = new Date(value.getTime());
+        copy.setHours(0, 0, 0, 0);
+        return isNaN(copy) ? null : copy;
+    }
+    const raw = String(value).trim();
+    const dateMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateMatch) {
+        const d = new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]));
+        d.setHours(0, 0, 0, 0);
+        return isNaN(d) ? null : d;
+    }
+    const parsed = new Date(raw);
+    if (isNaN(parsed)) return null;
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+}
+
+function toDateInputValue(value) {
+    const d = parseDateOnly(value);
+    if (!d) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function isWeekendDate(value) {
+    const d = parseDateOnly(value);
+    return !d ? false : d.getDay() === 0 || d.getDay() === 6;
+}
+
+function subtractWorkingDays(value, numberOfDays = 2) {
+    const d = parseDateOnly(value);
+    if (!d) return '';
+    let remaining = Math.max(0, Number(numberOfDays || 0));
+    while (remaining > 0) {
+        d.setDate(d.getDate() - 1);
+        if (!isWeekendDate(d)) remaining -= 1;
+    }
+    while (isWeekendDate(d)) d.setDate(d.getDate() - 1);
+    return toDateInputValue(d);
+}
+
+function addWorkingDays(value, numberOfDays = 1) {
+    const d = parseDateOnly(value || new Date());
+    if (!d) return '';
+    let remaining = Math.max(0, Number(numberOfDays || 0));
+    while (remaining > 0) {
+        d.setDate(d.getDate() + 1);
+        if (!isWeekendDate(d)) remaining -= 1;
+    }
+    while (isWeekendDate(d)) d.setDate(d.getDate() + 1);
+    return toDateInputValue(d);
+}
+
+function calculateWorkingDaysBetween(startValue, endValue) {
+    const start = parseDateOnly(startValue);
+    const end = parseDateOnly(endValue);
+    if (!start || !end) return null;
+    const direction = start <= end ? 1 : -1;
+    let count = 0;
+    const cursor = new Date(start);
+    while ((direction === 1 && cursor < end) || (direction === -1 && cursor > end)) {
+        cursor.setDate(cursor.getDate() + direction);
+        if (!isWeekendDate(cursor)) count += direction;
+    }
+    return count;
+}
+
+function getWorkingDayDiffFromToday(value) {
+    return calculateWorkingDaysBetween(new Date(), value);
+}
+
+function isDateDueWithinWorkingDays(value, windowDays = 3) {
+    const diff = getWorkingDayDiffFromToday(value);
+    return diff !== null && diff >= 0 && diff <= windowDays;
+}
+
+function generateSuggestedInternalDue(clientDeadline, bufferDays = 2) {
+    const clientDate = parseDateOnly(clientDeadline);
+    if (!clientDate) return { date: '', flag: 'missing-client-deadline' };
+    const safeBuffer = Math.max(1, Number(bufferDays || 2));
+    const today = parseDateOnly(new Date());
+    const clientDiff = getDateOnlyDiffDays(clientDate, today);
+    if (clientDiff < 0) return { date: '', flag: 'client-deadline-passed' };
+
+    const suggested = parseDateOnly(subtractWorkingDays(clientDate, safeBuffer));
+    if (!suggested) return { date: '', flag: 'invalid' };
+    if (suggested < today) {
+        return { date: toDateInputValue(today), flag: clientDiff === 0 ? 'same-day' : 'short-lead-time', bufferDays: safeBuffer };
+    }
+    const workingBuffer = calculateWorkingDaysBetween(suggested, clientDate);
+    return { date: toDateInputValue(suggested), flag: workingBuffer < safeBuffer ? 'short-lead-time' : 'normal', bufferDays: safeBuffer };
+}
+
+function getSuggestedInternalDueDate(clientDeadline, bufferDays = 2) {
+    return generateSuggestedInternalDue(clientDeadline, bufferDays).date;
+}
+
 function formatDate(dateStr) {
-    if (!dateStr) return '-'; const d = new Date(dateStr); if (isNaN(d)) return dateStr;
+    if (!dateStr) return '-'; const d = parseDateOnly(dateStr); if (!d) return dateStr;
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function formatDateOnly(dateStr) {
+    if (!dateStr) return '';
+    const d = parseDateOnly(dateStr);
+    if (!d) return String(dateStr);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${d.getDate()} ${months[d.getMonth()]}`;
+}
+
+function getDateOnlyDiffDays(value, base = new Date()) {
+    const d = parseDateOnly(value);
+    if (!d) return null;
+    const today = parseDateOnly(base);
+    if (!today) return null;
+    return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+function getTaskClientDeadline(task = {}) {
+    return task.client_deadline || task.deadline || '';
+}
+
+function getTaskOriginalClientDeadline(task = {}) {
+    return task.original_client_deadline || task.client_deadline || task.deadline || '';
+}
+
+function getTaskInternalDueDate(task = {}) {
+    return task.internal_due_date || task.internal_deadline || '';
+}
+
+function getTaskOriginalInternalDueDate(task = {}) {
+    return task.original_internal_due_date || task.internal_due_date || task.internal_deadline || '';
+}
+
+function normalizeWorkStatus(status) {
+    return String(status || 'Not started').replace(/_/g, ' ').trim().toLowerCase();
+}
+
+function getTaskStatusKey(task = {}) {
+    const requestStatus = String(task.status || '').trim().toLowerCase();
+    if (requestStatus === 'pending') return 'pending';
+    return normalizeWorkStatus(task.work_status || 'Not started');
+}
+
+function isInternalProductionTask(task = {}) {
+    return INTERNAL_PRODUCTION_STATUS_KEYS.includes(getTaskStatusKey(task));
+}
+
+function isTaskDone(task = {}) {
+    return normalizeWorkStatus(task.work_status) === 'done';
+}
+
+function isTaskAwaitingClient(task = {}) {
+    return normalizeWorkStatus(task.work_status) === 'awaiting client';
+}
+
+function isTaskClientReview(task = {}) {
+    return normalizeWorkStatus(task.work_status) === 'client review';
+}
+
+function getTaskInternalDueSource(task = {}) {
+    return String(task.internal_due_source || task.internal_due_date_source || '').trim().toLowerCase();
+}
+
+function isInternalDueManuallyAdjusted(task = {}) {
+    const manualValue = task.internal_due_manually_adjusted;
+    return manualValue === true ||
+        String(manualValue || '').toLowerCase() === 'true' ||
+        ['manual', 'manually_adjusted'].includes(getTaskInternalDueSource(task));
+}
+
+function getCurrentUserMember() {
+    const currentUser = getCurrentUserName();
+    if (!currentUser) return null;
+    return getActiveTeamMembers().find(member => normalizeNameKey(member.name) === normalizeNameKey(currentUser)) || null;
+}
+
+function isCurrentUserCreativeTeamMember() {
+    const member = getCurrentUserMember();
+    return member ? isCreativeTeamMember(member) : CORE_CREATIVE_NAMES.some(name => normalizeNameKey(name) === normalizeNameKey(getCurrentUserName()));
+}
+
+function isCurrentUserAssignedPIC(task = {}) {
+    return isTaskAssignedToUser(task);
+}
+
+function shouldUseInternalDeadlineForTask(task = {}) {
+    return hasAdminAccess() || isCurrentUserCreativeTeamMember() || isCurrentUserAssignedPIC(task);
+}
+
+function getDeliverableLineCount(task = {}) {
+    const monthly = typeof getMonthlyDeliverableSummary === 'function' ? getMonthlyDeliverableSummary(task) : null;
+    if (monthly?.total) return Number(monthly.total) || 0;
+    const brief = String(task.brief || '');
+    const lines = brief.split(/\n+/).map(line => line.trim()).filter(Boolean);
+    return lines.filter(line => /^[•*-]\s+/.test(line)).length;
+}
+
+function getInternalDueRule(task = {}) {
+    const jobType = String(task.job_type || task.type || '').toLowerCase();
+    const requestType = String(task.request_type || task.requestType || '').toLowerCase();
+    const text = [
+        jobType,
+        requestType,
+        task.project_title,
+        task.objective,
+        task.brief
+    ].map(value => String(value || '').toLowerCase()).join(' ');
+
+    const selectedTypes = jobType.split(',').map(type => type.trim()).filter(Boolean);
+    const deliverableCount = getDeliverableLineCount(task);
+    const hasComplexSignal = /(monthly|content plan|pitch|proposal|presentation|deck|video|reel|motion|carousel|campaign|multi|webinar|event|launch|key visual|\bkv\b|concept|mockup|template|production)/i.test(text);
+    if (requestType.includes('monthly') || requestType.includes('pitch') || hasComplexSignal || deliverableCount > 1) {
+        return { bufferDays: 2, complexity: 'complex' };
+    }
+
+    const simpleType = /(poster\/graphic|poster|graphic|static|banner|resize|adaptation|adapt|minor amendment|minor amend|copy replacement|small copy|caption only|one-off artwork|simple one-off|social post)/i;
+    const onlySimpleTypes = selectedTypes.length > 0 && selectedTypes.every(type => simpleType.test(type));
+    if (onlySimpleTypes || simpleType.test(text)) return { bufferDays: 1, complexity: 'simple' };
+
+    return { bufferDays: 2, complexity: 'complex' };
+}
+
+function generateSuggestedInternalDueForTask(task = {}) {
+    const rule = getInternalDueRule(task);
+    const suggestion = generateSuggestedInternalDue(getTaskClientDeadline(task), rule.bufferDays);
+    return { ...suggestion, ...rule };
+}
+
+function getTaskGeneratedInternalDueDate(task = {}) {
+    return generateSuggestedInternalDueForTask(task).date || '';
+}
+
+function getTaskEffectiveInternalDueDate(task = {}) {
+    return getTaskInternalDueDate(task) || getTaskGeneratedInternalDueDate(task);
+}
+
+function getTaskDeadlineForView(task = {}, mode = '') {
+    const viewMode = mode || (shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client');
+    return viewMode === 'client' ? getTaskClientDeadline(task) : getTaskEffectiveInternalDueDate(task);
+}
+
+function getTaskCompletedAt(task = {}) {
+    return task.completed_at || task.done_at || '';
+}
+
+function getClientWaitingSince(task = {}) {
+    return task.client_waiting_since || task.awaiting_client_since || (isTaskAwaitingClient(task) ? task.last_moved_at : '') || '';
+}
+
+function getClientWaitingReason(task = {}) {
+    return task.client_waiting_reason || task.awaiting_client_reason || 'Awaiting client feedback';
+}
+
+function getClientFollowUpDate(task = {}) {
+    return task.client_follow_up_date || task.follow_up_date || '';
+}
+
+function getClientFollowUpOwner(task = {}) {
+    return task.client_follow_up_owner || task.follow_up_owner || '';
+}
+
+function getClientWaitingDays(task = {}) {
+    const since = getClientWaitingSince(task);
+    if (!since || !isTaskAwaitingClient(task)) return 0;
+    const start = new Date(since);
+    if (isNaN(start)) return 0;
+    return Math.max(0, Math.round(((new Date()) - start) / 86400000));
+}
+
+function isTruthyFlag(value) {
+    return value === true || ['true', '1', 'yes', 'y'].includes(String(value || '').toLowerCase());
+}
+
+function isFalseFlag(value) {
+    return value === false || ['false', '0', 'no', 'n'].includes(String(value || '').toLowerCase());
+}
+
+function getTaskClientReviewWindowDays(task = {}) {
+    const value = Number(task.client_review_window_days);
+    return Number.isFinite(value) && value > 0 ? value : CLIENT_REVIEW_WINDOW_DAYS;
+}
+
+function getClientReviewStartedAt(task = {}) {
+    if (!task) return '';
+    if (task.client_review_started_at || task.review_started_at) return task.client_review_started_at || task.review_started_at;
+    if (isTaskClientReview(task)) return getStatusStartedAt(task) || task.last_moved_at || task.created_at || '';
+    return '';
+}
+
+function getClientReviewEndedAt(task = {}) {
+    return task.client_review_ended_at || (!isTaskClientReview(task) ? (task.last_moved_at || task.completed_at || task.done_at || '') : '');
+}
+
+function getClientReviewSnoozedUntil(task = {}) {
+    return task.auto_move_snoozed_until || '';
+}
+
+function isClientReviewSnoozed(task = {}) {
+    const snoozedUntil = getClientReviewSnoozedUntil(task);
+    if (!snoozedUntil) return false;
+    const value = new Date(snoozedUntil);
+    return !isNaN(value) && value > new Date();
+}
+
+function isClientReviewAutomationExempt(task = {}) {
+    const statusText = [task.status, task.work_status, task.lifecycle_status, task.task_status]
+        .map(value => String(value || '').toLowerCase())
+        .join(' ');
+    return isTruthyFlag(task.client_review_auto_move_exempt) ||
+        isFalseFlag(task.client_review_auto_move_enabled) ||
+        /cancel|archiv|pause|paused|postpone|postponed|deleted/.test(statusText);
+}
+
+function getClientReviewMeaningfulResponseAt(task = {}) {
+    const startedAt = getClientReviewStartedAt(task);
+    const started = startedAt ? new Date(startedAt) : null;
+    const direct = task.client_review_meaningful_response_at || task.client_response_received_at || '';
+    if (direct) {
+        const directDate = new Date(direct);
+        if (!isNaN(directDate) && (!started || directDate >= started)) return direct;
+    }
+
+    const meaningfulTypes = new Set([
+        'client_response_recorded',
+        'client_approval_recorded',
+        'client_revision_requested',
+        'client_assets_received',
+        'client_review_period_restarted'
+    ]);
+    const log = getTaskLogs(task.job_id).find(row => {
+        if (!meaningfulTypes.has(row.action_type)) return false;
+        if (!started) return true;
+        const created = new Date(row.created_at);
+        return !isNaN(created) && created >= started;
+    });
+    return log?.created_at || '';
+}
+
+function hasMeaningfulClientResponseInCurrentReview(task = {}) {
+    return Boolean(getClientReviewMeaningfulResponseAt(task));
+}
+
+function getClientReviewAge(task = {}) {
+    const startAt = getClientReviewStartedAt(task);
+    const endAt = getClientReviewEndedAt(task) || new Date().toISOString();
+    const windowDays = getTaskClientReviewWindowDays(task);
+    const workingDays = startAt ? calculateWorkingDaysBetween(startAt, endAt) : null;
+    const calendarHours = startAt ? getHoursBetween(startAt, endAt) : '';
+    const calendarDays = calendarHours === '' ? '' : Math.round((Number(calendarHours) / 24) * 10) / 10;
+    const exempt = isClientReviewAutomationExempt(task);
+    const snoozed = isClientReviewSnoozed(task);
+    const responded = hasMeaningfulClientResponseInCurrentReview(task);
+    const auditRequired = isTruthyFlag(task.client_review_audit_required);
+    let urgency = 'normal';
+
+    if (!isTaskClientReview(task)) urgency = 'inactive';
+    else if (!startAt || workingDays === null) urgency = 'missing';
+    else if (exempt) urgency = 'exempt';
+    else if (snoozed) urgency = 'snoozed';
+    else if (responded) urgency = 'responded';
+    else if (workingDays > windowDays) urgency = 'overdue';
+    else if (workingDays === windowDays) urgency = 'moving-soon';
+    else if (workingDays >= CLIENT_REVIEW_WARNING_DAY) urgency = 'warning';
+    else if (workingDays >= CLIENT_REVIEW_WATCH_DAY) urgency = 'watch';
+
+    const label = getClientReviewAgeLabel({ workingDays, urgency, windowDays, snoozedUntil: getClientReviewSnoozedUntil(task) });
+    return {
+        startAt,
+        endAt,
+        workingDays,
+        calendarDays,
+        calendarHours,
+        windowDays,
+        urgency,
+        label,
+        exempt,
+        snoozed,
+        responded,
+        auditRequired,
+        eligibleForAutoMove: urgency === 'overdue' && !auditRequired && !task.client_review_auto_moved_at
+    };
+}
+
+function getClientReviewAgeLabel({ workingDays, urgency, windowDays, snoozedUntil } = {}) {
+    if (urgency === 'inactive') return '';
+    if (urgency === 'missing') return 'Review start missing';
+    if (urgency === 'exempt') return 'Review timer paused';
+    if (urgency === 'snoozed') return `Review held until ${formatDateOnly(snoozedUntil)}`;
+    if (urgency === 'responded') return 'Client response recorded';
+    if (workingDays === 0) return 'Sent to client today';
+    if (urgency === 'overdue') return 'Client review overdue';
+    if (urgency === 'moving-soon') return 'Moving to Awaiting Client after today';
+    return `Client review · ${workingDays} working day${workingDays === 1 ? '' : 's'}`;
+}
+
+function isClientReviewAgingTask(task = {}) {
+    if (!isTaskClientReview(task)) return false;
+    const age = getClientReviewAge(task);
+    return ['warning', 'moving-soon', 'overdue', 'missing'].includes(age.urgency);
+}
+
+function getClientWaitingShortReason(task = {}) {
+    const reason = String(getClientWaitingReason(task) || '').toLowerCase();
+    if (reason.includes('asset')) return 'Awaiting assets';
+    if (reason.includes('approval')) return 'Awaiting approval';
+    if (reason.includes('confirm')) return 'Awaiting confirmation';
+    if (reason.includes('decision')) return 'Awaiting decision';
+    return 'Awaiting feedback';
+}
+
+function renderClientReviewAgingRow(task = {}) {
+    const age = getClientReviewAge(task);
+    if (!age.label) return '';
+    const title = age.startAt
+        ? `Client Review started ${formatDate(age.startAt)}. Window: ${age.windowDays} working days.`
+        : 'Client Review start time is missing.';
+    return `<div class="task-deadline-row client-review-aging-row client-review-${age.urgency}" title="${escapeHtml(title)}" aria-label="${escapeHtml(age.label)}"><span class="deadline-light" aria-hidden="true"></span><span class="deadline-copy">${escapeHtml(age.label)}</span></div>`;
+}
+
+function renderAwaitingClientCompactRows(task = {}) {
+    const since = getClientWaitingSince(task);
+    const sinceLabel = since ? `Since ${formatDateOnly(since)}` : 'Since not set';
+    const clientPassed = getDateOnlyDiffDays(getTaskClientDeadline(task)) < 0;
+    const reasonLabel = clientPassed ? 'Client deadline passed · Client blocked' : `${getClientWaitingShortReason(task)} · ${sinceLabel}`;
+    const followUpLabel = formatFollowUpLabel(task);
+    const followUrgency = getFollowUpUrgency(task);
+
+    return `
+        <div class="task-deadline-row awaiting-client-row is-waiting-since ${clientPassed ? 'deadline-overdue' : 'deadline-upcoming'}" aria-label="${escapeHtml(reasonLabel)}">
+            <span class="deadline-light" aria-hidden="true"></span><span class="deadline-copy">${escapeHtml(reasonLabel)}</span>
+        </div>
+        <div class="task-deadline-row awaiting-client-row is-followup ${followUrgency.state}" aria-label="${escapeHtml(followUpLabel)}">
+            <span class="deadline-light" aria-hidden="true"></span><span class="deadline-copy">${escapeHtml(followUpLabel)}</span>
+        </div>
+    `;
+}
+
+function getTaskInternalOverdueDays(task = {}) {
+    const due = getTaskEffectiveInternalDueDate(task);
+    if (!due || isTaskDone(task) || isTaskAwaitingClient(task) || isTaskClientReview(task)) return '';
+    const diff = getDateOnlyDiffDays(due);
+    return diff !== null && diff < 0 ? Math.abs(diff) : 0;
+}
+
+function getTaskClientOverdueDays(task = {}) {
+    const due = getTaskClientDeadline(task);
+    if (!due || isTaskDone(task)) return '';
+    const diff = getDateOnlyDiffDays(due);
+    return diff !== null && diff < 0 ? Math.abs(diff) : 0;
+}
+
+function hasDeadlineEditAccess() {
+    return typeof hasAdminAccess === 'function' ? hasAdminAccess() : !!localStorage.getItem('adtech_lead_pin');
+}
+
+function pluralDay(count) {
+    return `${count} day${count === 1 ? '' : 's'}`;
+}
+
+function getDeadlineUrgency(task = {}, mode = '') {
+    if (isTaskDone(task)) return { state: 'deadline-complete', diff: null };
+    const due = getTaskDeadlineForView(task, mode);
+    if (!due) return { state: 'deadline-missing', diff: null };
+    const diff = getDateOnlyDiffDays(due);
+    if (diff === null) return { state: 'deadline-missing', diff: null };
+    if (diff < 0) return { state: 'deadline-overdue', diff };
+    if (diff === 0) return { state: 'deadline-today', diff };
+    if (diff === 1) return { state: 'deadline-tomorrow', diff };
+    if (diff <= 3) return { state: 'deadline-soon', diff };
+    if (diff <= 7) return { state: 'deadline-upcoming', diff };
+    return { state: 'deadline-safe', diff };
+}
+
+function formatDeadlineLabel(task = {}, mode = '') {
+    if (isTaskDone(task)) return 'Completed';
+    const viewMode = mode || (shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client');
+    const due = getTaskDeadlineForView(task, viewMode);
+    const urgency = getDeadlineUrgency(task, viewMode);
+    const prefix = viewMode === 'client' ? 'Deadline' : 'Due';
+    if (!due || urgency.diff === null) return viewMode === 'internal' && hasDeadlineEditAccess() ? '+ Set due date' : `${prefix} pending`;
+    if (urgency.diff < 0) return viewMode === 'client' ? `Deadline passed · ${pluralDay(Math.abs(urgency.diff))}` : `Overdue · ${pluralDay(Math.abs(urgency.diff))}`;
+    if (urgency.diff === 0) return viewMode === 'client' ? 'Deadline today' : 'Due today';
+    if (urgency.diff === 1) return viewMode === 'client' ? 'Deadline tomorrow' : 'Due tomorrow';
+    if (urgency.diff <= 7) return `${prefix} ${formatDateOnly(due)} · ${pluralDay(urgency.diff)} left`;
+    return `${prefix} ${formatDateOnly(due)}`;
+}
+
+function getFollowUpUrgency(task = {}) {
+    const followUp = getClientFollowUpDate(task);
+    if (!followUp) return { state: 'deadline-missing', diff: null };
+    const diff = getDateOnlyDiffDays(followUp);
+    if (diff === null) return { state: 'deadline-missing', diff: null };
+    if (diff < 0) return { state: 'deadline-overdue', diff };
+    if (diff === 0) return { state: 'deadline-today', diff };
+    if (diff === 1) return { state: 'deadline-tomorrow', diff };
+    if (diff <= 3) return { state: 'deadline-soon', diff };
+    return { state: 'deadline-upcoming', diff };
+}
+
+function formatFollowUpLabel(task = {}) {
+    const owner = getClientFollowUpOwner(task);
+    const followUp = getClientFollowUpDate(task);
+    const ownerText = owner ? ` · ${owner}` : '';
+    const urgency = getFollowUpUrgency(task);
+    if (!followUp || urgency.diff === null) return 'No follow-up scheduled';
+    if (urgency.diff < 0) return `Follow-up overdue · ${pluralDay(Math.abs(urgency.diff))}`;
+    if (urgency.diff === 0) return `Follow up today${ownerText}`;
+    if (urgency.diff === 1) return `Follow up tomorrow${ownerText}`;
+    return `Follow up ${formatDateOnly(followUp)}${ownerText}`;
+}
+
+function renderTaskDeadlineRow(task = {}) {
+    if (isTaskClientReview(task)) return renderClientReviewAgingRow(task);
+    if (isTaskAwaitingClient(task)) return renderAwaitingClientCompactRows(task);
+
+    const viewMode = shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client';
+    const urgency = getDeadlineUrgency(task, viewMode);
+    const label = formatDeadlineLabel(task, viewMode);
+    const editable = viewMode === 'internal' && !isTaskDone(task) && hasDeadlineEditAccess();
+    const title = viewMode === 'client'
+            ? `Client deadline${getTaskClientDeadline(task) ? `: ${formatDate(getTaskClientDeadline(task))}` : ''}`
+            : `Internal due${getTaskEffectiveInternalDueDate(task) ? `: ${formatDate(getTaskEffectiveInternalDueDate(task))}` : ''}. Client deadline: ${formatDate(getTaskClientDeadline(task))}`;
+    const attrs = editable ? `role="button" tabindex="0" onclick="openInternalDueModal(event, '${escapeJsString(task.job_id)}')" onkeydown="handleInternalDueRowKeydown(event, '${escapeJsString(task.job_id)}')"` : '';
+    return `<div class="task-deadline-row ${viewMode === 'client' ? 'is-client-deadline' : 'is-internal-deadline'} ${urgency.state} ${editable ? 'is-editable' : ''}" ${attrs} title="${escapeHtml(title)}" aria-label="${escapeHtml(label)}"><span class="deadline-light" aria-hidden="true"></span><span class="deadline-copy">${escapeHtml(label)}</span></div>`;
+}
+
+function renderClientWaitingRow() {
+    return '';
+}
+
+function canManageClientReviewAutomation(task = {}) {
+    return hasAdminAccess();
+}
+
+function canRecordClientReviewResponse(task = {}) {
+    return hasAdminAccess() || isCurrentUserAssignedPIC(task) || isCurrentUserCreativeTeamMember();
+}
+
+function renderClientReviewDetailPanel(task = {}) {
+    if (!isTaskClientReview(task)) return '';
+    const age = getClientReviewAge(task);
+    const canRecord = canRecordClientReviewResponse(task);
+    const canManage = canManageClientReviewAutomation(task);
+    const stateLabel = age.auditRequired ? 'Audit first' : age.exempt ? 'Exempt' : age.snoozed ? 'Held' : age.responded ? 'Response recorded' : age.eligibleForAutoMove ? 'Auto-move ready' : 'Active';
+    const stateClass = age.urgency;
+    const actionRow = canRecord || canManage ? `
+        <div class="client-review-action-row">
+            ${canRecord ? `<button type="button" class="settings-action-btn compact" onclick="recordClientReviewResponse('${escapeJsString(task.job_id)}')"><i data-lucide="message-circle-check"></i><span>Client Replied</span></button>` : ''}
+            ${canManage ? `<button type="button" class="settings-action-btn compact" onclick="openClientReviewOverrideDialog('${escapeJsString(task.job_id)}')"><i data-lucide="sliders-horizontal"></i><span>Review Control</span></button>` : ''}
+            ${canManage ? `<button type="button" class="settings-primary-btn compact" onclick="autoMoveClientReviewToAwaiting('${escapeJsString(task.job_id)}', { source: 'manual_admin' })"><i data-lucide="message-square-clock"></i><span>Move Awaiting</span></button>` : ''}
+        </div>
+    ` : '';
+
+    return `
+        <div class="client-review-detail-panel client-review-${stateClass}">
+            <div>
+                <span>Client Review</span>
+                <strong>${escapeHtml(age.label)}</strong>
+            </div>
+            <div>
+                <span>Started</span>
+                <strong>${age.startAt ? formatDate(age.startAt) : 'Missing'}</strong>
+            </div>
+            <div>
+                <span>Window</span>
+                <strong>${age.windowDays} working days</strong>
+            </div>
+            <div>
+                <span>Automation</span>
+                <strong>${escapeHtml(stateLabel)}</strong>
+            </div>
+            ${age.auditRequired ? '<p>Historical review detected. Admin should review before auto-moving.</p>' : ''}
+            ${task.client_review_exemption_reason ? `<p>${escapeHtml(task.client_review_exemption_reason)}</p>` : ''}
+            ${actionRow}
+        </div>
+    `;
+}
+
+function renderAwaitingClientDetailPanel(task = {}) {
+    if (!isTaskAwaitingClient(task)) return '';
+    const followUp = getClientFollowUpDate(task);
+    const internalPassed = getDateOnlyDiffDays(getTaskEffectiveInternalDueDate(task)) < 0;
+    const clientPassed = getDateOnlyDiffDays(getTaskClientDeadline(task)) < 0;
+    const blockedContext = (internalPassed || clientPassed) ? '<p class="awaiting-client-context">Deadline passed · Client blocked</p>' : '';
+    const undoAutoMove = hasAdminAccess() && wasClientReviewAutoMoved(task) ? `
+        <div class="client-review-action-row awaiting-client-actions">
+            <button type="button" class="settings-action-btn compact" onclick="openDetailModal('${escapeJsString(task.job_id)}', true)"><i data-lucide="eye"></i><span>Review</span></button>
+            <button type="button" class="settings-primary-btn compact" onclick="undoClientReviewAutoMove('${escapeJsString(task.job_id)}')"><i data-lucide="rotate-ccw"></i><span>Undo Auto Move</span></button>
+        </div>
+    ` : '';
+    return `
+        <div class="awaiting-client-detail-panel">
+            <div>
+                <span>Client Blocked</span>
+                <strong>${escapeHtml(getClientWaitingReason(task))}</strong>
+            </div>
+            <div>
+                <span>Waiting Since</span>
+                <strong>${formatDate(getClientWaitingSince(task))}</strong>
+            </div>
+            <div>
+                <span>Follow-up</span>
+                <strong>${followUp ? formatDate(followUp) : 'Not set'}</strong>
+            </div>
+            <div>
+                <span>Owner</span>
+                <strong>${escapeHtml(getClientFollowUpOwner(task) || 'Unassigned')}</strong>
+            </div>
+            ${blockedContext}
+            ${task.client_waiting_note ? `<p>${escapeHtml(task.client_waiting_note)}</p>` : ''}
+            ${undoAutoMove}
+        </div>
+    `;
+}
+
+function getTaskStatusSortKey(task = {}, statusName = '') {
+    const statusKey = normalizeWorkStatus(statusName);
+    const viewMode = shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client';
+    if (viewMode === 'internal' && (statusKey === 'awaiting client' || isTaskAwaitingClient(task))) {
+        const followUpDiff = getDateOnlyDiffDays(getClientFollowUpDate(task));
+        const urgency = followUpDiff === null ? 9999 : followUpDiff;
+        return [urgency < 0 ? -1000 + urgency : urgency, -getClientWaitingDays(task), getCreatedAtTime(task)];
+    }
+    if (statusKey === 'client review' || isTaskClientReview(task)) {
+        const age = getClientReviewAge(task);
+        const urgencyOrder = { overdue: -5, 'moving-soon': -4, warning: -3, missing: -2, watch: -1, normal: 0, snoozed: 1, exempt: 2, responded: 3 };
+        const clientDiff = getDateOnlyDiffDays(getTaskClientDeadline(task));
+        return [urgencyOrder[age.urgency] ?? 0, -(age.workingDays || 0), clientDiff === null ? 9999 : clientDiff, getCreatedAtTime(task)];
+    }
+    if (statusKey === 'done' || isTaskDone(task)) {
+        return [-(new Date(getTaskCompletedAt(task) || task.updated_at || task.last_moved_at || task.created_at || 0).getTime() || 0), 0, 0];
+    }
+    const due = getTaskDeadlineForView(task, isTaskClientReview(task) ? 'client' : viewMode);
+    const diff = getDateOnlyDiffDays(due);
+    return [diff === null ? 9999 : diff, getCreatedAtTime(task), 0];
+}
+
+function getCreatedAtTime(task = {}) {
+    return new Date(task.created_at || task.updated_at || task.last_moved_at || 0).getTime() || 0;
+}
+
+function sortTasksForStatus(tasks = [], statusName = '') {
+    return [...tasks].sort((a, b) => compareTasksForStatus(a, b, statusName));
+}
+
+function compareTasksForStatus(a = {}, b = {}, statusName = '') {
+    const aKey = getTaskStatusSortKey(a, statusName);
+    const bKey = getTaskStatusSortKey(b, statusName);
+    for (let i = 0; i < Math.max(aKey.length, bKey.length); i++) {
+        if ((aKey[i] || 0) !== (bKey[i] || 0)) return (aKey[i] || 0) - (bKey[i] || 0);
+    }
+    return String(a.job_id || '').localeCompare(String(b.job_id || ''));
+}
+
+function getRequestBoardFilterCounts(tasks = []) {
+    const counts = {};
+    getVisibleRequestBoardFilters().forEach(filter => counts[filter.id] = 0);
+    tasks.forEach(task => {
+        const viewMode = shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client';
+        const due = getTaskDeadlineForView(task, viewMode);
+        const diff = getDateOnlyDiffDays(due);
+        const followDiff = getDateOnlyDiffDays(getClientFollowUpDate(task));
+        if (counts.all !== undefined) counts.all += 1;
+        if (counts.missing_internal !== undefined && !getTaskEffectiveInternalDueDate(task) && String(task.status || '').toLowerCase() === 'approved' && !isTaskDone(task)) counts.missing_internal += 1;
+        if (counts.overdue !== undefined && diff !== null && diff < 0 && (viewMode === 'client' || isInternalProductionTask(task))) counts.overdue += 1;
+        if (counts.today !== undefined && diff === 0 && (viewMode === 'client' || isInternalProductionTask(task))) counts.today += 1;
+        if (counts.week !== undefined && isDateDueWithinWorkingDays(due, 3) && (viewMode === 'client' || isInternalProductionTask(task))) counts.week += 1;
+        if (counts.client_blocked !== undefined && isTaskAwaitingClient(task)) counts.client_blocked += 1;
+        if (counts.client_review_aging !== undefined && isClientReviewAgingTask(task)) counts.client_review_aging += 1;
+        if (counts.followup_due !== undefined && isTaskAwaitingClient(task) && followDiff !== null && followDiff <= 0) counts.followup_due += 1;
+        if (counts.followup_overdue !== undefined && isTaskAwaitingClient(task) && followDiff !== null && followDiff < 0) counts.followup_overdue += 1;
+    });
+    return counts;
+}
+
+function taskMatchesRequestBoardFilter(task = {}) {
+    const viewMode = shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client';
+    const due = getTaskDeadlineForView(task, viewMode);
+    const diff = getDateOnlyDiffDays(due);
+    const followDiff = getDateOnlyDiffDays(getClientFollowUpDate(task));
+    switch (requestBoardDeadlineFilter) {
+        case 'overdue': return diff !== null && diff < 0 && (viewMode === 'client' || isInternalProductionTask(task));
+        case 'today': return diff === 0 && (viewMode === 'client' || isInternalProductionTask(task));
+        case 'week': return isDateDueWithinWorkingDays(due, 3) && (viewMode === 'client' || isInternalProductionTask(task));
+        case 'missing_internal': return getVisibleRequestBoardFilters().some(filter => filter.id === 'missing_internal') && !getTaskEffectiveInternalDueDate(task) && String(task.status || '').toLowerCase() === 'approved' && !isTaskDone(task);
+        case 'client_blocked': return isTaskAwaitingClient(task);
+        case 'client_review_aging': return isClientReviewAgingTask(task);
+        case 'followup_due': return isTaskAwaitingClient(task) && followDiff !== null && followDiff <= 0;
+        case 'followup_overdue': return isTaskAwaitingClient(task) && followDiff !== null && followDiff < 0;
+        default: return true;
+    }
+}
+
+function getVisibleRequestBoardFilters() {
+    if (hasAdminAccess() || isCurrentUserCreativeTeamMember()) return REQUEST_BOARD_FILTERS;
+    return REQUEST_BOARD_FILTERS.filter(filter => !['missing_internal', 'followup_due', 'followup_overdue'].includes(filter.id));
+}
+
+function renderRequestBoardFilters(tasks = []) {
+    const shell = document.getElementById('requestDeadlineFilters');
+    if (!shell) return;
+    const filters = getVisibleRequestBoardFilters();
+    if (!filters.some(filter => filter.id === requestBoardDeadlineFilter)) requestBoardDeadlineFilter = 'all';
+    const counts = getRequestBoardFilterCounts(tasks);
+    const hiddenAssignedCount = lastAssignedRegionVisibility.hidden.length;
+    const hiddenAssignedAction = hiddenAssignedCount
+        ? `<button type="button" class="request-filter-chip request-filter-action" onclick="filterByRegion('all')" title="Show assigned tasks across all regions"><span>Assigned Hidden</span><strong>${hiddenAssignedCount}</strong></button>`
+        : '';
+    const bulkAction = hasDeadlineEditAccess() && counts.missing_internal
+        ? `<button type="button" class="request-filter-chip request-filter-action" onclick="openBulkInternalDueModal(event)"><span>Generate Due Dates</span><strong>${counts.missing_internal}</strong></button>`
+        : '';
+    shell.innerHTML = filters.map(filter => `
+        <button type="button" class="request-filter-chip ${requestBoardDeadlineFilter === filter.id ? 'active' : ''}" onclick="setRequestBoardFilter('${filter.id}')">
+            <span>${escapeHtml(filter.label)}</span>
+            <strong>${counts[filter.id] || 0}</strong>
+        </button>
+    `).join('') + hiddenAssignedAction + bulkAction;
+}
+
+function setRequestBoardFilter(filterId) {
+    requestBoardDeadlineFilter = getVisibleRequestBoardFilters().some(filter => filter.id === filterId) ? filterId : 'all';
+    renderBoards();
+    if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
 }
 
 function getFlag(region) {
@@ -487,6 +1268,304 @@ function filterDataByRegion(data, regionFilter) {
         return data.filter(d => !primaryNames.includes(String(d.region || '').toLowerCase()));
     }
     return data.filter(d => String(d.region).toLowerCase() === String(regionFilter).toLowerCase());
+}
+
+function parseIdentityValue(value) {
+    if (value === null || value === undefined) return [];
+    if (Array.isArray(value)) return value.flatMap(parseIdentityValue);
+    if (typeof value === 'object') {
+        const identityFields = [
+            'name', 'member_name', 'full_name', 'display_name',
+            'email', 'member_email', 'member_key', 'id', 'member_id', 'team_member_id',
+            'auth_user_id', 'user_id', 'uuid'
+        ];
+        return identityFields.flatMap(field => parseIdentityValue(value[field]));
+    }
+
+    const raw = String(value || '').trim();
+    if (!raw || raw === 'null' || raw === 'undefined' || raw === 'Unassigned') return [];
+
+    if (/^[\[{]/.test(raw)) {
+        try {
+            const parsed = JSON.parse(raw);
+            return parseIdentityValue(parsed);
+        } catch(e) {}
+    }
+
+    return raw
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean);
+}
+
+function uniqueIdentityValues(values = []) {
+    const seen = new Set();
+    return values.filter(value => {
+        const key = normalizeNameKey(value);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function getMemberIdentityValues(member = {}) {
+    return uniqueIdentityValues(parseIdentityValue({
+        name: member.name,
+        member_name: member.member_name,
+        full_name: member.full_name,
+        display_name: member.display_name,
+        email: member.email,
+        member_email: member.member_email,
+        member_key: member.member_key,
+        id: member.id,
+        member_id: member.member_id,
+        team_member_id: member.team_member_id,
+        auth_user_id: member.auth_user_id,
+        user_id: member.user_id,
+        uuid: member.uuid
+    }));
+}
+
+function getCurrentUserAccessContext() {
+    const currentUser = getCurrentUserName();
+    const member = getCurrentUserMember();
+    return {
+        name: currentUser,
+        member,
+        identityValues: uniqueIdentityValues([
+            currentUser,
+            ...getMemberIdentityValues(member || {})
+        ])
+    };
+}
+
+function getTaskAssigneeIdentityValues(task = {}) {
+    return uniqueIdentityValues([
+        ...parseIdentityValue(task.assignee),
+        ...parseIdentityValue(task.creative_pic),
+        ...parseIdentityValue(task.creative_pics),
+        ...parseIdentityValue(task.pic),
+        ...parseIdentityValue(task.assigned_pic),
+        ...parseIdentityValue(task.assigned_pics),
+        ...parseIdentityValue(task.assigned_pic_names),
+        ...parseIdentityValue(task.assignee_names),
+        ...parseIdentityValue(task.assignee_ids),
+        ...parseIdentityValue(task.assignee_member_ids),
+        ...parseIdentityValue(task.assigned_pic_member_ids),
+        ...parseIdentityValue(task.assigned_pic_member_keys),
+        ...parseIdentityValue(task.assigned_pic_auth_user_ids)
+    ]);
+}
+
+function identityValuesMatch(left, right) {
+    const a = String(left || '').trim();
+    const b = String(right || '').trim();
+    if (!a || !b) return false;
+    const aKey = normalizeNameKey(a);
+    const bKey = normalizeNameKey(b);
+    if (aKey === bKey) return true;
+    if (a.includes('@') || b.includes('@')) return a.toLowerCase() === b.toLowerCase();
+
+    const aFirst = aKey.split(' ')[0];
+    const bFirst = bKey.split(' ')[0];
+    if (aFirst && bFirst && aFirst === bFirst) {
+        const memberMatch = getActiveTeamMembers().find(member =>
+            getMemberIdentityValues(member).some(value => normalizeNameKey(value) === aKey || normalizeNameKey(value) === bKey)
+        );
+        return Boolean(memberMatch);
+    }
+
+    return false;
+}
+
+function isTaskAssignedToUser(task = {}, context = getCurrentUserAccessContext()) {
+    if (!context.identityValues.length) return false;
+    const assigneeValues = getTaskAssigneeIdentityValues(task);
+    return assigneeValues.some(assigneeValue =>
+        context.identityValues.some(userValue => identityValuesMatch(assigneeValue, userValue))
+    );
+}
+
+function isTaskRequesterForUser(task = {}, context = getCurrentUserAccessContext()) {
+    if (!context.identityValues.length) return false;
+    const requesterValues = uniqueIdentityValues([
+        ...parseIdentityValue(task.requester_name),
+        ...parseIdentityValue(task.requester),
+        ...parseIdentityValue(task.requester_email),
+        ...parseIdentityValue(task.requester_id),
+        ...parseIdentityValue(task.created_by)
+    ]);
+    return requesterValues.some(requesterValue =>
+        context.identityValues.some(userValue => identityValuesMatch(requesterValue, userValue))
+    );
+}
+
+function isTaskOtherRoleForUser(task = {}, context = getCurrentUserAccessContext()) {
+    if (!context.identityValues.length) return false;
+    const roleValues = uniqueIdentityValues([
+        ...parseIdentityValue(task.approver),
+        ...parseIdentityValue(task.client_follow_up_owner),
+        ...parseIdentityValue(task.follow_up_owner),
+        ...parseIdentityValue(task.owner),
+        ...parseIdentityValue(task.lead)
+    ]);
+    return roleValues.some(roleValue =>
+        context.identityValues.some(userValue => identityValuesMatch(roleValue, userValue))
+    );
+}
+
+function taskMatchesRegionFilter(task = {}, regionFilter = 'all') {
+    return filterDataByRegion([task], regionFilter).length > 0;
+}
+
+function canCurrentUserViewTask(task = {}, options = {}) {
+    const context = options.context || getCurrentUserAccessContext();
+    if (hasAdminAccess() || isSuperAdmin) return true;
+    if (isTaskRequesterForUser(task, context)) return true;
+    if (isTaskAssignedToUser(task, context)) return true;
+    if (isTaskOtherRoleForUser(task, context)) return true;
+    return false;
+}
+
+function filterTasksForCurrentAccess(data = [], options = {}) {
+    const rows = Array.isArray(data) ? data : [];
+    const context = getCurrentUserAccessContext();
+    const viewerHasGlobalAccess = hasAdminAccess() || isSuperAdmin;
+    const regionFilter = options.regionFilter || currentRegionFilter || 'all';
+
+    lastAssignedRegionVisibility = { hidden: [], visible: [] };
+
+    return rows.filter(task => {
+        const assignedToCurrentUser = isTaskAssignedToUser(task, context);
+        const authorised = viewerHasGlobalAccess || canCurrentUserViewTask(task, { context });
+        const regionMatch = taskMatchesRegionFilter(task, regionFilter);
+
+        if (assignedToCurrentUser) {
+            if (!regionMatch && regionFilter !== 'all') lastAssignedRegionVisibility.hidden.push(task);
+            else lastAssignedRegionVisibility.visible.push(task);
+        }
+
+        return authorised && regionMatch;
+    });
+}
+
+function cleanPostgrestFilterValue(value) {
+    return String(value || '')
+        .replace(/[,%*()']/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getCurrentAccessQueryIdentities(context = getCurrentUserAccessContext()) {
+    return uniqueIdentityValues([
+        context.name,
+        ...context.identityValues
+    ])
+        .map(cleanPostgrestFilterValue)
+        .filter(value => value.length >= 2)
+        .slice(0, 16);
+}
+
+function buildLegacyCreativeRequestAccessFilter(fieldNames = []) {
+    const identities = getCurrentAccessQueryIdentities();
+    const safeFields = (fieldNames || []).filter(Boolean);
+    if (!identities.length || !safeFields.length) return '';
+    return safeFields
+        .flatMap(field => identities.map(identity => `${field}.ilike.*${identity}*`))
+        .join(',');
+}
+
+async function fetchCreativeRequestsForCurrentAccess() {
+    const baseQuery = () => supabaseClient
+        .from('creative_requests')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (hasAdminAccess() || isSuperAdmin) return await baseQuery();
+
+    const fullRoleFields = ['assignee', 'requester_name', 'approver', 'client_follow_up_owner', 'follow_up_owner', 'owner', 'lead'];
+    const knownLegacyFields = ['assignee', 'requester_name'];
+    let availableRoleFields = knownLegacyFields;
+
+    try {
+        const { data: sampleRows } = await supabaseClient
+            .from('creative_requests')
+            .select('*')
+            .limit(1);
+        const sample = Array.isArray(sampleRows) ? (sampleRows[0] || {}) : {};
+        const detectedFields = fullRoleFields.filter(field => Object.prototype.hasOwnProperty.call(sample, field));
+        if (detectedFields.length) availableRoleFields = detectedFields;
+    } catch(e) {}
+
+    const fullFilter = buildLegacyCreativeRequestAccessFilter(availableRoleFields);
+    const legacyFilter = buildLegacyCreativeRequestAccessFilter(knownLegacyFields);
+
+    if (!legacyFilter) return { data: [], error: null };
+
+    let result = fullFilter ? await baseQuery().or(fullFilter) : { data: [], error: null };
+    if (result.error && /column|schema|parse|syntax|filter/i.test(String(result.error.message || ''))) {
+        result = await baseQuery().or(legacyFilter);
+    }
+    return result;
+}
+
+function filterTaskScopedRowsForCurrentAccess(rows = []) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (hasAdminAccess() || isSuperAdmin) return list;
+    const allowedJobIds = new Set((globalData || []).map(task => String(task.job_id || '')).filter(Boolean));
+    return list.filter(row => allowedJobIds.has(String(row.job_id || '')));
+}
+
+async function fetchTaskRelatedLogsForCurrentAccess() {
+    const localActivity = filterTaskScopedRowsForCurrentAccess(getLocalActivityLogs().map(normalizeLogRow));
+    const localNotes = filterTaskScopedRowsForCurrentAccess(getLocalNoteLogs().map(normalizeNoteRow));
+    const authorisedJobIds = [...new Set((globalData || []).map(task => String(task.job_id || '')).filter(Boolean))];
+    const shouldNarrow = !(hasAdminAccess() || isSuperAdmin);
+
+    try {
+        if (shouldNarrow && !authorisedJobIds.length) {
+            globalActivityLogs = localActivity;
+        } else {
+            let activityQuery = supabaseClient
+                .from('task_activity_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(5000);
+            if (shouldNarrow) activityQuery = activityQuery.in('job_id', authorisedJobIds);
+            const { data: activityData, error: activityError } = await activityQuery;
+            globalActivityLogs = activityError ? localActivity : filterTaskScopedRowsForCurrentAccess([...(activityData || []).map(normalizeLogRow), ...localActivity]);
+        }
+    } catch(e) {
+        globalActivityLogs = localActivity;
+    }
+
+    try {
+        if (shouldNarrow && !authorisedJobIds.length) {
+            globalNoteLogs = localNotes;
+        } else {
+            let noteQuery = supabaseClient
+                .from('task_note_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(5000);
+            if (shouldNarrow) noteQuery = noteQuery.in('job_id', authorisedJobIds);
+            const { data: noteData, error: noteError } = await noteQuery;
+            globalNoteLogs = noteError ? localNotes : filterTaskScopedRowsForCurrentAccess([...(noteData || []).map(normalizeNoteRow), ...localNotes]);
+        }
+    } catch(e) {
+        globalNoteLogs = localNotes;
+    }
+}
+
+function closeDetailModalIfCurrentTaskRestricted() {
+    const modal = document.getElementById('globalDetailModal');
+    if (!modal || !modal.classList.contains('show')) return;
+    const currentJobId = modal.dataset.currentJobId || '';
+    if (!currentJobId) return;
+    const stillAuthorised = (globalData || []).some(task => String(task.job_id || '') === String(currentJobId));
+    if (stillAuthorised) return;
+    closeDetailModal();
+    showAppleAlert('Access Updated', 'This task is no longer available in your authorised workspace view.', { tone: 'warning', icon: 'shield-alert' });
 }
 
 function updateLiveClock() {
@@ -703,15 +1782,10 @@ function syncLeaveSession() {
 
 function setPresetDate() {
     const today = new Date(); const offset = today.getTimezoneOffset() * 60000; const localISOTime = (new Date(today - offset)).toISOString().slice(0, -1);
-    let minDate = new Date(); let addedDays = 0; const publicHolidays2026 = ["2026-01-01", "2026-02-17", "2026-02-18", "2026-03-17", "2026-03-20", "2026-05-01", "2026-05-31", "2026-06-06", "2026-08-31", "2026-09-16", "2026-10-31", "2026-12-25"];
-    while (addedDays < 3) {
-        minDate.setDate(minDate.getDate() + 1); const dayOfWeek = minDate.getDay(); const dateString = (new Date(minDate - offset)).toISOString().split('T')[0];
-        if (dayOfWeek !== 0 && dayOfWeek !== 6 && !publicHolidays2026.includes(dateString)) addedDays++;
-    }
-    const lockedMinDateStr = (new Date(minDate - offset)).toISOString().split('T')[0];
+    const todayStr = localISOTime.split('T')[0];
     const pDeadline = document.getElementById('pDeadline'); const leaveStart = document.getElementById('leaveStart'); const leaveEnd = document.getElementById('leaveEnd');
-    if(pDeadline) { pDeadline.value = lockedMinDateStr; pDeadline.min = lockedMinDateStr; }
-    if(leaveStart) leaveStart.value = localISOTime.split('T')[0]; if(leaveEnd) leaveEnd.value = localISOTime.split('T')[0];
+    if(pDeadline) { pDeadline.value = todayStr; pDeadline.min = todayStr; }
+    if(leaveStart) leaveStart.value = todayStr; if(leaveEnd) leaveEnd.value = todayStr;
 
     // Reset Session & Sync
     if(document.getElementById('leaveSession')) document.getElementById('leaveSession').value = 'Full Day';
@@ -736,74 +1810,57 @@ function updateDateLogic(jobType) {
     const dateInput = document.getElementById('pDeadline');
     const dateLabel = document.getElementById('deadlineLabel');
     const helperText = document.getElementById('deadlineHelper');
+    if (!dateInput || !dateLabel || !helperText) return;
 
-    function calculateWorkingDays(daysRequired) {
-        let tempDate = new Date();
-        let addedDays = 0;
-        const holidays = ["2026-01-01", "2026-02-17", "2026-02-18", "2026-03-17", "2026-03-20", "2026-05-01", "2026-05-31", "2026-06-06", "2026-08-31", "2026-09-16", "2026-10-31", "2026-12-25"];
-
-        while (addedDays < daysRequired) {
-            tempDate.setDate(tempDate.getDate() + 1);
-            const dayOfWeek = tempDate.getDay();
-            const offset = tempDate.getTimezoneOffset() * 60000;
-            const dateString = (new Date(tempDate - offset)).toISOString().split('T')[0];
-            if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidays.includes(dateString)) { addedDays++; }
+    const showDeadlineGuidance = () => {
+        const rule = getInternalDueRule({
+            job_type: jobType,
+            request_type: currentRequestType,
+            client_deadline: dateInput.value
+        });
+        const suggestion = generateSuggestedInternalDue(dateInput.value, rule.bufferDays);
+        let message = 'The final date you need the completed work.';
+        let tone = 'var(--text-muted)';
+        if (suggestion.flag === 'short-lead-time') {
+            message = 'Short lead time. This request provides less than the recommended production and review time.';
+            tone = 'var(--orange)';
+        } else if (suggestion.flag === 'same-day') {
+            message = 'Same-day request. The team may need admin review before production starts.';
+            tone = 'var(--red)';
+        } else if (suggestion.flag === 'client-deadline-passed') {
+            message = 'This deadline has passed. Please choose today or a future date.';
+            tone = 'var(--red)';
         }
-        const finalOffset = tempDate.getTimezoneOffset() * 60000;
-        return new Date(tempDate - finalOffset).toISOString().split('T')[0];
-    }
+        helperText.style.display = 'block';
+        helperText.style.color = tone;
+        helperText.innerText = message;
+    };
 
     if (jobType === 'Monthly Content Plan') {
-        dateLabel.innerText = 'Deadline (Locked to End of Month)';
-        helperText.style.display = 'none';
+        dateLabel.innerText = 'Client deadline';
         dateInput.readOnly = true;
         dateInput.style.pointerEvents = 'none';
         dateInput.style.opacity = '0.5';
         dateInput.value = '';
 
     } else if (jobType === 'Pitch Deck Proposal') {
-        dateLabel.innerText = 'Deadline (Min. 4 working days)';
-        helperText.style.display = 'block';
-        helperText.style.color = 'var(--orange)';
-        helperText.innerText = '*SLA: Minimum 4 working days required for Pitch Deck. Subject to Creative Lead bandwidth.';
+        dateLabel.innerText = 'Client deadline';
 
         dateInput.readOnly = false;
         dateInput.style.pointerEvents = 'auto';
         dateInput.style.opacity = '1';
-
-        const minWorkingDate = calculateWorkingDays(4);
-        dateInput.min = minWorkingDate;
-        if(!dateInput.value || dateInput.value < minWorkingDate) dateInput.value = minWorkingDate;
-
-        dateInput.onchange = function(e) {
-            const selectedDate = new Date(e.target.value);
-            const day = selectedDate.getDay();
-            if (day === 0 || day === 6) {
-                showAppleAlert("Invalid Date", "Weekends are off-limits! Please select a working day.");
-                e.target.value = dateInput.min;
-            }
-        };
+        dateInput.min = toDateInputValue(new Date());
+        dateInput.onchange = showDeadlineGuidance;
 
     } else {
-        dateLabel.innerText = 'Deadline (Min. 3 working days)';
-        helperText.style.display = 'none';
+        dateLabel.innerText = 'Client deadline';
         dateInput.readOnly = false;
         dateInput.style.pointerEvents = 'auto';
         dateInput.style.opacity = '1';
-
-        const minWorkingDate = calculateWorkingDays(3);
-        dateInput.min = minWorkingDate;
-        if(!dateInput.value || dateInput.value < minWorkingDate) dateInput.value = minWorkingDate;
-
-        dateInput.onchange = function(e) {
-            const selectedDate = new Date(e.target.value);
-            const day = selectedDate.getDay();
-            if (day === 0 || day === 6) {
-                showAppleAlert("Invalid Date", "Weekends are off-limits! Please select a working day.");
-                e.target.value = dateInput.min;
-            }
-        };
+        dateInput.min = toDateInputValue(new Date());
+        dateInput.onchange = showDeadlineGuidance;
     }
+    showDeadlineGuidance();
 }
 
 function selectRequestType(type) {
@@ -1446,44 +2503,21 @@ async function fetchSupabaseData(force = false, silent = false) {
             const { data: hoData } = await supabaseClient.from('handover_logs').select('*');
             if (hoData) globalHandovers = hoData;
 
-            const localActivity = getLocalActivityLogs().map(normalizeLogRow);
-            const localNotes = getLocalNoteLogs().map(normalizeNoteRow);
-
-            try {
-                const { data: activityData, error: activityError } = await supabaseClient
-                    .from('task_activity_logs')
-                    .select('*')
-                    .order('created_at', { ascending: false })
-                    .limit(5000);
-                globalActivityLogs = activityError ? localActivity : [...(activityData || []).map(normalizeLogRow), ...localActivity];
-            } catch(e) {
-                globalActivityLogs = localActivity;
-            }
-
-            try {
-                const { data: noteData, error: noteError } = await supabaseClient
-                    .from('task_note_logs')
-                    .select('*')
-                    .order('created_at', { ascending: false })
-                    .limit(5000);
-                globalNoteLogs = noteError ? localNotes : [...(noteData || []).map(normalizeNoteRow), ...localNotes];
-            } catch(e) {
-                globalNoteLogs = localNotes;
-            }
-
             if (typeof fetchTeamReviewData === 'function') {
                 await fetchTeamReviewData();
             }
 
         } catch (e) { console.log("Gagal tarik data sampingan Supabase:", e.message); }
 
-       const { data, error } = await supabaseClient.from('creative_requests').select('*').order('created_at', { ascending: false });
+        const { data, error } = await fetchCreativeRequestsForCurrentAccess();
         if (error) throw error;
 
         const oldDataString = JSON.stringify(globalData);
-        const newDataString = JSON.stringify(data || []);
-
-        globalData = data || [];
+        globalData = filterTasksForCurrentAccess(data || [], { regionFilter: 'all' });
+        await maybeAutoBackfillInternalDueDates({ silent });
+        await fetchTaskRelatedLogsForCurrentAccess();
+        closeDetailModalIfCurrentTaskRestricted();
+        const newDataString = JSON.stringify(globalData);
 
         if (oldDataString !== newDataString || force) {
             if(document.getElementById('dashboard').classList.contains('active')) renderDashboard();
@@ -1534,6 +2568,8 @@ function setupRealtimeSubscription() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_cycles' }, () => fetchSupabaseData(true, true))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_assignments' }, () => fetchSupabaseData(true, true))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_responses' }, () => fetchSupabaseData(true, true))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_activity_logs' }, () => fetchSupabaseData(true, true))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_client_waiting_periods' }, () => fetchSupabaseData(true, true))
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('🚀 Berjaya sambung ke Supabase Real-Time!');
@@ -1545,22 +2581,102 @@ function setupRealtimeSubscription() {
 // Aktifkan Real-Time ini secara automatik 2 saat selepas website dibuka
 setTimeout(setupRealtimeSubscription, 2000);
 
+function isTaskEligibleForInternalDueBackfill(task = {}) {
+    const status = String(task.status || '').toLowerCase();
+    if (status === 'deleted' || isTaskDone(task) || getTaskInternalDueDate(task)) return false;
+    return status === 'pending' || status === 'approved';
+}
+
+function getInternalDueBackfillRows(tasks = []) {
+    return (tasks || []).filter(isTaskEligibleForInternalDueBackfill).map(task => {
+        const clientDeadline = getTaskClientDeadline(task);
+        const suggestion = generateSuggestedInternalDueForTask(task);
+        let status = 'Ready';
+        let canGenerate = !!clientDeadline && !!suggestion.date;
+        if (!clientDeadline) {
+            status = 'No client deadline';
+            canGenerate = false;
+        } else if (!suggestion.date) {
+            status = suggestion.flag === 'client-deadline-passed' ? 'Client deadline passed' : 'Needs review';
+            canGenerate = false;
+        } else if (suggestion.flag !== 'normal') {
+            status = suggestion.flag.replace(/-/g, ' ');
+        }
+        return {
+            task,
+            job_id: task.job_id,
+            title: `${task.client_name || ''}: ${task.project_title || ''}`,
+            client_deadline: clientDeadline,
+            suggested_internal_due: suggestion.date,
+            buffer_days: suggestion.bufferDays || getInternalDueRule(task).bufferDays,
+            complexity: suggestion.complexity || getInternalDueRule(task).complexity,
+            status,
+            can_generate: canGenerate
+        };
+    });
+}
+
+async function maybeAutoBackfillInternalDueDates({ silent = true, force = false } = {}) {
+    if (!hasDeadlineEditAccess() || internalDueBackfillInFlight) return { saved: 0, skipped: 0, errors: [] };
+    const rows = getInternalDueBackfillRows(globalData || []);
+    const canGenerate = rows.filter(row => row.can_generate).slice(0, INTERNAL_DUE_BACKFILL_BATCH_LIMIT);
+    const skipped = rows.length - canGenerate.length;
+    if (!canGenerate.length) return { saved: 0, skipped, errors: [] };
+
+    const signature = canGenerate.map(row => `${row.job_id}:${row.suggested_internal_due}:${row.buffer_days}`).join('|');
+    if (!force && signature === lastInternalDueBackfillSignature) return { saved: 0, skipped, errors: [] };
+
+    internalDueBackfillInFlight = true;
+    lastInternalDueBackfillSignature = signature;
+    const errors = [];
+    let saved = 0;
+
+    for (const row of canGenerate) {
+        const task = row.task;
+        const payload = {
+            client_deadline: row.client_deadline || null,
+            original_client_deadline: getTaskOriginalClientDeadline(task) || row.client_deadline || null,
+            internal_due_date: row.suggested_internal_due,
+            original_internal_due_date: getTaskOriginalInternalDueDate(task) || row.suggested_internal_due,
+            internal_due_source: 'migrated',
+            internal_due_manually_adjusted: false,
+            latest_deadline_change_reason: `Backfilled from client deadline (${row.buffer_days} working day buffer)`
+        };
+        const fallbackPayload = {
+            client_deadline: payload.client_deadline,
+            original_client_deadline: payload.original_client_deadline,
+            internal_due_date: payload.internal_due_date,
+            original_internal_due_date: payload.original_internal_due_date,
+            latest_deadline_change_reason: payload.latest_deadline_change_reason
+        };
+
+        try {
+            const result = await saveCreativeRequestStatusPayload(row.job_id, payload, fallbackPayload);
+            Object.assign(task, result.savedFullPayload ? payload : fallbackPayload);
+            saved += 1;
+            logTaskActivity(row.job_id, 'internal_due_date_backfilled', 'Not set', row.suggested_internal_due, 'Generated from Client Deadline during admin sync', {
+                client_deadline: row.client_deadline,
+                buffer_working_days: row.buffer_days,
+                complexity: row.complexity,
+                lead_time_flag: row.status,
+                saved_full_payload: result.savedFullPayload
+            });
+        } catch(e) {
+            errors.push(`${row.job_id}: ${e.message}`);
+        }
+    }
+
+    internalDueBackfillInFlight = false;
+    if (!silent && saved) showNotification('Internal Due Dates Generated', `${saved} task${saved === 1 ? '' : 's'} updated`);
+    if (!silent && errors.length) showAppleAlert('Some Dates Need Review', errors.slice(0, 6).join('\n'));
+    return { saved, skipped: skipped + errors.length, errors };
+}
+
 // ========================================================
 // 🌟 7. RENDER FUNCTIONS (DASHBOARD & BOARDS)
 // ========================================================
 function updateGlobalBadge() {
-    let data = globalData || [];
-    const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
-    data = filterDataByRegion(data, finalRegion);
-
-    // 🌟 LOGIK BARU: Tapis ikut privasi (Admin nampak semua, Staf nampak tiket mereka sahaja)
-    const currentUser = localStorage.getItem('adtech_user_name');
-    if (!isSuperAdmin && currentUser) {
-        data = data.filter(d =>
-            String(d.requester_name).toLowerCase() === currentUser.toLowerCase() ||
-            String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
-        );
-    }
+    let data = filterTasksForCurrentAccess(globalData || []);
 
     const pendingData = data.filter(d => String(d.status || '').toLowerCase() === 'pending');
     const pendingCount = pendingData.length;
@@ -1592,19 +2708,8 @@ function updateGlobalBadge() {
 function renderDashboard() {
     updateGlobalBadge();
 
-    let data = globalData || []; const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
-    data = filterDataByRegion(data, finalRegion);
-
-
-
-    // 🌟 FIX: FILTER IKUT NAMA USER (JIKA BUKAN ADMIN) 🌟
-    const currentUser = localStorage.getItem('adtech_user_name');
-    if (!isSuperAdmin && currentUser) {
-        data = data.filter(d =>
-            String(d.requester_name).toLowerCase() === currentUser.toLowerCase() ||
-            String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
-        );
-    }
+    const finalRegion = currentRegionFilter || 'all';
+    let data = filterTasksForCurrentAccess(globalData || []);
 
     // 🌟 FIX BARU: BUANG TERUS DATA 'DELETED' DARI DASHBOARD
     data = data.filter(d => String(d.status || '').toLowerCase() !== 'deleted');
@@ -1614,9 +2719,16 @@ function renderDashboard() {
     const approvedData = data.filter(d => String(d.status || '').toLowerCase() === 'approved');
     renderAdminHealthDashboard(data);
 
-    const today = new Date(); today.setHours(0,0,0,0); const nextWeek = new Date(today); nextWeek.setDate(today.getDate() + 7);
-    const overdueJobs = activeData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); dDate.setHours(0,0,0,0); return dDate < today; }).sort((a,b) => new Date(a.deadline) - new Date(b.deadline));
-    const urgentJobs = activeData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); dDate.setHours(0,0,0,0); return dDate >= today && dDate <= nextWeek; }).sort((a,b) => new Date(a.deadline) - new Date(b.deadline));
+    const overdueJobs = sortTasksForStatus(activeData.filter(d => {
+        const mode = shouldUseInternalDeadlineForTask(d) ? 'internal' : 'client';
+        const diff = getDateOnlyDiffDays(getTaskDeadlineForView(d, mode));
+        return diff !== null && diff < 0 && (mode === 'client' || isInternalProductionTask(d));
+    }), 'Drafting');
+    const urgentJobs = sortTasksForStatus(activeData.filter(d => {
+        const mode = shouldUseInternalDeadlineForTask(d) ? 'internal' : 'client';
+        const due = getTaskDeadlineForView(d, mode);
+        return isDateDueWithinWorkingDays(due, 3) && (mode === 'client' || isInternalProductionTask(d));
+    }), 'Drafting');
 
     const overdueVal = document.getElementById('overdue-val') || document.getElementById('total-val');
     if (overdueVal) overdueVal.innerText = overdueJobs.length;
@@ -1639,12 +2751,40 @@ function renderDashboard() {
     document.getElementById('recent-list').innerHTML = recent5.length ? recent5.map((d, index) => {
         const statusKey = String(d.status || '').toLowerCase();
         const statusLabel = statusKey === 'pending' ? 'Pending' : 'Approved';
-        return `<tr onclick="if(typeof openDetailModal === 'function') openDetailModal('${d.job_id}')" class="clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" title="Click to view details"><td><span class="job-id-pill">${d.job_id} ${getFlag(d.region)}</span></td><td><div class="td-client">${d.client_name}</div><div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;">${d.project_title}</div></td><td>${formatDate(d.deadline)}</td><td style="text-align:center;"><span class="status-mini ${statusKey === 'pending' ? 'pending' : 'approved'}">${statusLabel}</span></td></tr>`;
+        return `<tr onclick="if(typeof openDetailModal === 'function') openDetailModal('${d.job_id}')" class="clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" title="Click to view details"><td><span class="job-id-pill">${d.job_id} ${getFlag(d.region)}</span></td><td><div class="td-client">${d.client_name}</div><div style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;">${d.project_title}</div></td><td>${formatDate(getTaskClientDeadline(d))}</td><td style="text-align:center;"><span class="status-mini ${statusKey === 'pending' ? 'pending' : 'approved'}">${statusLabel}</span></td></tr>`;
     }).join('') : '<tr><td colspan="4"><div class="empty-state" style="padding:20px;"><i data-lucide="inbox"></i><p>No requests yet.</p></div></td></tr>';
 
-    const visibleUrgent = urgentJobs.slice(0, window.innerWidth <= 992 ? 3 : 5);
-    const moreUrgent = urgentJobs.length - visibleUrgent.length;
-    document.getElementById('urgent-list').innerHTML = visibleUrgent.length ? `${visibleUrgent.map((u, index) => `<div class="urgent-item clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${u.job_id}')" title="Click to view details"><div style="flex:1; overflow:hidden; padding-right:10px;"><div class="urgent-client">${u.client_name}</div><div class="urgent-meta"><span class="job-id-pill" style="padding: 2px 6px; font-size: 0.65rem;">${u.job_id} ${getFlag(u.region)}</span> • ${u.assignee && u.assignee !== 'null' ? u.assignee : 'Unassigned'}</div></div><div class="urgent-date">${formatDate(u.deadline)}</div></div>`).join('')}${moreUrgent > 0 ? `<button class="dashboard-more-note" onclick="switchDashTab('cal')">${moreUrgent} more due soon · View calendar</button>` : ''}` : '<div class="empty-state" style="padding:20px;"><i data-lucide="coffee"></i><p>Relax, no urgent deadlines.</p></div>';
+    const isOperationalViewer = hasAdminAccess() || isCurrentUserCreativeTeamMember();
+    const deadlineAttentionRows = [
+        ...overdueJobs,
+        ...urgentJobs.filter(task => !overdueJobs.some(overdue => overdue.job_id === task.job_id))
+    ].map(task => {
+        const mode = shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client';
+        return { task, label: formatDeadlineLabel(task, mode), meta: task.assignee && task.assignee !== 'null' ? task.assignee : 'Unassigned' };
+    });
+    const extraAttentionRows = isOperationalViewer ? [
+        ...activeData.filter(task => !getTaskEffectiveInternalDueDate(task) && String(task.status || '').toLowerCase() === 'approved' && !isTaskDone(task))
+            .map(task => ({ task, label: 'Set due date', meta: 'Manual deadline review' })),
+        ...activeData.filter(task => {
+            const diff = getDateOnlyDiffDays(getClientFollowUpDate(task));
+            return isTaskAwaitingClient(task) && diff !== null && diff <= 0;
+        })
+            .map(task => ({ task, label: formatFollowUpLabel(task), meta: getClientFollowUpOwner(task) || 'No owner' })),
+        ...activeData.filter(isClientReviewAgingTask)
+            .map(task => {
+                const age = getClientReviewAge(task);
+                return { task, label: age.urgency === 'overdue' ? 'Review overdue' : 'Review aging', meta: age.label };
+            })
+    ] : [];
+    const attentionRows = [...deadlineAttentionRows, ...extraAttentionRows]
+        .filter((row, index, rows) => rows.findIndex(item => item.task.job_id === row.task.job_id && item.label === row.label) === index);
+    const visibleUrgent = attentionRows.slice(0, window.innerWidth <= 992 ? 3 : 5);
+    const moreUrgent = attentionRows.length - visibleUrgent.length;
+    const emptyAttentionText = hasAdminAccess() || isCurrentUserCreativeTeamMember() ? 'No urgent internal deadlines.' : 'No urgent client deadlines.';
+    document.getElementById('urgent-list').innerHTML = visibleUrgent.length ? `${visibleUrgent.map((row, index) => {
+        const u = row.task;
+        return `<div class="urgent-item clickable-row stagger-card" style="animation-delay: ${index * 0.05}s;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${u.job_id}')" title="Click to view details"><div style="flex:1; overflow:hidden; padding-right:10px;"><div class="urgent-client">${u.client_name}</div><div class="urgent-meta"><span class="job-id-pill" style="padding: 2px 6px; font-size: 0.65rem;">${u.job_id} ${getFlag(u.region)}</span> • ${escapeHtml(row.meta)}</div></div><div class="urgent-date">${escapeHtml(row.label)}</div></div>`;
+    }).join('')}${moreUrgent > 0 ? `<button class="dashboard-more-note" onclick="switchDashTab('cal')">${moreUrgent} more need attention · View calendar</button>` : ''}` : `<div class="empty-state" style="padding:20px;"><i data-lucide="coffee"></i><p>${emptyAttentionText}</p></div>`;
 
     let currentPicList = []; if (finalRegion === 'Malaysia') currentPicList = дизайнериMY; else if (finalRegion === 'Indonesia') currentPicList = дизайнериID; else currentPicList = PIC_LIST;
     document.getElementById('team-workload').innerHTML = currentPicList.map((pic, index) => {
@@ -1683,34 +2823,73 @@ function renderAdminHealthDashboard(data) {
         const d = new Date(dateStr);
         return dateStr && !isNaN(d) ? (now - d) / 36e5 : 0;
     };
-    const active = (data || []).filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() !== 'done');
+    const active = (data || []).filter(d =>
+        (String(d.status || '').toLowerCase() === 'pending' || String(d.status || '').toLowerCase() === 'approved') &&
+        String(d.status || '').toLowerCase() !== 'deleted' &&
+        String(d.work_status || '').toLowerCase() !== 'done'
+    );
+    const approvedActive = active.filter(d => String(d.status || '').toLowerCase() === 'approved');
+    const internalActive = active.filter(isInternalProductionTask);
+    const clientBlocked = active.filter(isTaskAwaitingClient);
     const pending = (data || []).filter(d => String(d.status || '').toLowerCase() === 'pending');
     const completed = (data || []).filter(d => String(d.work_status || '').toLowerCase() === 'done');
-    const overdue = active.filter(d => d.deadline && new Date(d.deadline).setHours(23, 59, 59, 999) < now);
-    const dueSoon = active.filter(d => d.deadline && !overdue.includes(d) && (new Date(d.deadline).setHours(23, 59, 59, 999) - now) <= 172800000);
-    const stuckReview = active.filter(d => String(d.work_status || '').toLowerCase() === 'client review' && hoursSince(getStatusStartedAt(d)) >= 72);
-    const stuckDrafting = active.filter(d => String(d.work_status || '').toLowerCase() === 'drafting' && hoursSince(getStatusStartedAt(d)) >= 72);
+    const overdue = internalActive.filter(d => {
+        const diff = getDateOnlyDiffDays(getTaskEffectiveInternalDueDate(d));
+        return diff !== null && diff < 0;
+    });
+    const dueSoon = internalActive.filter(d => {
+        return isDateDueWithinWorkingDays(getTaskEffectiveInternalDueDate(d), 3);
+    });
+    const missingInternalDue = internalActive.filter(d => !getTaskEffectiveInternalDueDate(d));
+    const followUpOverdue = clientBlocked.filter(d => {
+        const diff = getDateOnlyDiffDays(getClientFollowUpDate(d));
+        return diff !== null && diff < 0;
+    });
+    const followUpToday = clientBlocked.filter(d => getDateOnlyDiffDays(getClientFollowUpDate(d)) === 0);
+    const clientWaitingDays = clientBlocked.map(getClientWaitingDays).filter(v => v >= 0);
+    const avgClientWaiting = clientWaitingDays.length ? Math.round((clientWaitingDays.reduce((a, b) => a + b, 0) / clientWaitingDays.length) * 10) / 10 : 0;
+    const longestClientWaitingTask = clientBlocked.slice().sort((a, b) => getClientWaitingDays(b) - getClientWaitingDays(a))[0];
+    const clientReviewAging = approvedActive.filter(isClientReviewAgingTask);
+    const clientReviewMovingSoon = approvedActive.filter(d => {
+        if (!isTaskClientReview(d)) return false;
+        const urgency = getClientReviewAge(d).urgency;
+        return urgency === 'moving-soon' || urgency === 'overdue';
+    });
+    const clientReviewMissingOwner = clientBlocked.filter(d => !getClientFollowUpOwner(d));
+    const stuckDrafting = approvedActive.filter(d => String(d.work_status || '').toLowerCase() === 'drafting' && hoursSince(getStatusStartedAt(d)) >= 72);
     const oldPending = pending.filter(d => hoursSince(d.created_at) >= 24);
     const highRevision = active.filter(d => Number(d.revision || 0) >= 2);
     const staleUpdate = active.filter(d => hoursSince(getLastUpdateAt(d)) >= 72);
 
     const counts = {};
-    active.forEach(d => (getAssignedPICNames(d.assignee).length ? getAssignedPICNames(d.assignee) : ['Unassigned']).forEach(n => counts[n] = (counts[n] || 0) + 1));
+    approvedActive.forEach(d => (getAssignedPICNames(d.assignee).length ? getAssignedPICNames(d.assignee) : ['Unassigned']).forEach(n => counts[n] = (counts[n] || 0) + 1));
     const overloaded = Object.entries(counts).filter(([name, count]) => name !== 'Unassigned' && count >= 6).sort((a, b) => b[1] - a[1]);
-    const score = Math.max(0, 100 - (overdue.length * 9 + stuckReview.length * 6 + stuckDrafting.length * 5 + overloaded.length * 8 + highRevision.length * 4 + oldPending.length * 3 + staleUpdate.length * 2));
+    const score = Math.max(0, 100 - (overdue.length * 9 + followUpOverdue.length * 7 + missingInternalDue.length * 5 + clientReviewAging.length * 5 + stuckDrafting.length * 5 + overloaded.length * 8 + highRevision.length * 4 + oldPending.length * 3 + staleUpdate.length * 2 + clientReviewMissingOwner.length * 4));
     const tone = score >= 80 ? 'good' : score >= 60 ? 'warn' : 'danger';
     if (badge) { badge.className = `health-score-badge ${tone}`; badge.innerText = `${score}% Health`; }
 
     const completedHours = completed.map(getTaskCompletionHours).filter(v => v !== '').map(Number);
     const avg = completedHours.length ? Math.round((completedHours.reduce((a, b) => a + b, 0) / completedHours.length) * 10) / 10 : '';
-    const criticalCount = overdue.length + overloaded.length;
-    const watchCount = stuckReview.length + stuckDrafting.length + oldPending.length + highRevision.length + staleUpdate.length;
+    const criticalCount = overdue.length + overloaded.length + followUpOverdue.length;
+    const watchCount = clientReviewAging.length + stuckDrafting.length + oldPending.length + highRevision.length + staleUpdate.length + missingInternalDue.length + clientBlocked.length + followUpToday.length + clientReviewMissingOwner.length;
     const headline = score >= 80 ? 'Team flow looks steady today.' : score >= 60 ? 'A few items need admin attention.' : 'Critical blockers need action today.';
     const issues = [
         ...overdue.map(d => ({ tone: 'danger', title: 'Overdue task', meta: `${d.job_id} · ${d.client_name}`, jobID: d.job_id })),
+        ...followUpOverdue.map(d => ({ tone: 'danger', title: 'Client follow-up overdue', meta: `${d.job_id} · ${getClientFollowUpOwner(d) || 'No owner'}`, jobID: d.job_id })),
         ...overloaded.map(([name, count]) => ({ tone: 'danger', title: 'PIC overloaded', meta: `${name} has ${count} active jobs`, jobID: '' })),
-        ...stuckReview.map(d => ({ tone: 'warn', title: 'Stuck in Client Review', meta: `${d.job_id} · ${d.client_name}`, jobID: d.job_id })),
+        ...followUpToday.map(d => ({ tone: 'warn', title: 'Client follow-up today', meta: `${d.job_id} · ${getClientFollowUpOwner(d) || 'No owner'}`, jobID: d.job_id })),
+        ...clientReviewMovingSoon.map(d => {
+            const age = getClientReviewAge(d);
+            return { tone: age.urgency === 'overdue' ? 'danger' : 'warn', title: age.urgency === 'overdue' ? 'Client review overdue' : 'Move to Awaiting soon', meta: `${d.job_id} · ${age.workingDays} working days`, jobID: d.job_id };
+        }),
+        ...missingInternalDue.map(d => ({ tone: 'warn', title: 'Missing internal due', meta: `${d.job_id} · ${d.client_name}`, jobID: d.job_id })),
+        ...clientReviewAging.filter(d => !clientReviewMovingSoon.includes(d)).map(d => {
+            const age = getClientReviewAge(d);
+            return { tone: 'warn', title: 'Client review aging', meta: `${d.job_id} · ${age.label}`, jobID: d.job_id };
+        }),
+        ...clientReviewMissingOwner.map(d => ({ tone: 'warn', title: 'Missing follow-up owner', meta: `${d.job_id} · Awaiting Client`, jobID: d.job_id })),
         ...stuckDrafting.map(d => ({ tone: 'warn', title: 'Drafting longer than 3 days', meta: `${d.job_id} · ${d.client_name}`, jobID: d.job_id })),
+        ...(longestClientWaitingTask ? [{ tone: 'neutral', title: 'Longest client wait', meta: `${longestClientWaitingTask.job_id} · ${getClientWaitingDays(longestClientWaitingTask)}d`, jobID: longestClientWaitingTask.job_id }] : []),
         ...oldPending.map(d => ({ tone: 'warn', title: 'Pending approval over 24h', meta: `${d.job_id} · ${d.client_name}`, jobID: d.job_id })),
         ...highRevision.map(d => ({ tone: 'warn', title: 'High revision count', meta: `${d.job_id} · ${d.revision || 0} revisions`, jobID: d.job_id })),
         ...staleUpdate.map(d => ({ tone: 'neutral', title: 'No update over 3 days', meta: `${d.job_id} · ${d.client_name}`, jobID: d.job_id }))
@@ -1732,7 +2911,7 @@ function renderAdminHealthDashboard(data) {
             <div class="health-signal ${watchCount ? 'warn' : 'good'}"><span>Watch</span><strong>${watchCount}</strong></div>
             <div class="health-signal"><span>Pace</span><strong>${avg ? `${avg}h` : `${completed.length} done`}</strong></div>
         </div>
-        <div class="health-subline"><span>${active.length} active</span><span>${pending.length} pending</span><span>${dueSoon.length} due soon</span></div>
+        <div class="health-subline"><span>${internalActive.length} internal active</span><span>${clientReviewAging.length} review aging</span><span>${clientBlocked.length} client blocked</span><span>${avgClientWaiting || 0}d avg wait</span></div>
         <div class="health-section-title">Focus Now</div>
         <div class="health-issue-list">${primaryIssues.length ? primaryIssues.map(renderIssue).join('') : `<div class="health-clear-state"><i data-lucide="check-circle"></i><div><strong>Healthy right now</strong><span>No urgent admin risks detected.</span></div></div>`}</div>
         ${hiddenIssues.length ? `<details class="health-more"><summary>Show ${hiddenIssues.length} more signals</summary><div class="health-issue-list">${hiddenIssues.map(renderIssue).join('')}</div></details>` : ''}
@@ -1746,17 +2925,7 @@ function renderBoards() {
 
     if (!isWorkloadTab && !isDoneTab) return;
 
-    let data = globalData || [];
-    const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
-    data = filterDataByRegion(data, finalRegion);
-
-    const currentUser = localStorage.getItem('adtech_user_name');
-    if (!isSuperAdmin && currentUser) {
-        data = data.filter(d =>
-            String(d.requester_name).toLowerCase() === currentUser.toLowerCase() ||
-            String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
-        );
-    }
+    let data = filterTasksForCurrentAccess(globalData || []);
 
     // ==========================================
     // RENDER WORKLOAD (REQUEST STATUS BOARD)
@@ -1771,9 +2940,11 @@ function renderBoards() {
         if(qW) {
             activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW) || getTaskNoteValue(d).toLowerCase().includes(qW));
         }
+        renderRequestBoardFilters(activeData);
+        activeData = activeData.filter(taskMatchesRequestBoardFilter);
 
         const statusOrder = {
-            'pending': 0, 'not started': 1, 'drafting': 2, 'partial ready': 3, 'revision': 4, 'internal review': 5, 'client review': 6
+            'pending': 0, 'not started': 1, 'drafting': 2, 'partial ready': 3, 'revision': 4, 'internal review': 5, 'client review': 6, 'awaiting client': 7
         };
 
         activeData.sort((a, b) => {
@@ -1784,10 +2955,7 @@ function renderBoards() {
             let orderB = statusOrder[statusB] !== undefined ? statusOrder[statusB] : 99;
 
             if (orderA !== orderB) return orderA - orderB;
-
-            let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31');
-            let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31');
-            return dateA - dateB;
+            return compareTasksForStatus(a, b, statusA);
         });
 
         if (typeof isKanbanMode !== 'undefined' && isKanbanMode) {
@@ -1804,13 +2972,15 @@ function renderBoards() {
                     { id: 'partial ready', label: 'Partial Ready', color: '#14b8a6', bg: 'rgba(20, 184, 166, 0.1)' },
                     { id: 'revision', label: 'Revision', color: '#ea580c', bg: 'rgba(234, 88, 12, 0.1)' },
                     { id: 'internal review', label: 'Internal Review', color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
-                    { id: 'client review', label: 'Client Review', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' }
+                    { id: 'client review', label: 'Client Review', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' },
+                    { id: 'awaiting client', label: 'Awaiting Client', color: '#d97706', bg: 'rgba(217, 119, 6, 0.1)' }
                 ];
 
                 statusGroups.forEach(cfg => {
                     let groupTasks = [];
                     if (cfg.id === 'pending') groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'pending');
                     else groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || 'not started').toLowerCase() === cfg.id);
+                    groupTasks = sortTasksForStatus(groupTasks, cfg.id);
 
                     if (groupTasks.length > 0) {
                         listHtml += `<h3 class="month-group-header" style="border-bottom-color: ${cfg.color}; color: ${cfg.color}; margin-top: 30px;"><span style="display:flex; align-items:center; gap:10px;"><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${cfg.color};"></span>${cfg.label.toUpperCase()}</span><span class="month-group-badge" style="background: ${cfg.bg}; color: ${cfg.color};">${groupTasks.length} Tasks</span></h3>`;
@@ -1837,10 +3007,10 @@ function renderBoards() {
             const groupedDone = {};
             doneData.forEach(item => {
                 let sortKey = "0000-00"; let displayLabel = "No Date";
-                let targetDate = item.done_at ? item.done_at : item.deadline;
+                let targetDate = getTaskCompletedAt(item) ? getTaskCompletedAt(item) : getTaskClientDeadline(item);
                 if(targetDate) {
-                    const d = new Date(targetDate);
-                    if(!isNaN(d)) {
+                    const d = parseDateOnly(targetDate);
+                    if(d) {
                         sortKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
                         const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
                         displayLabel = `Completed: ${months[d.getMonth()]} ${d.getFullYear()}`;
@@ -1857,7 +3027,7 @@ function renderBoards() {
                 doneHtml += '<div class="kanban-board-wrapper">';
                 sortedKeys.forEach(key => {
                     const group = groupedDone[key];
-                    group.tasks.sort((a, b) => { let dateA = a.done_at ? new Date(a.done_at) : new Date('1970-01-01'); let dateB = b.done_at ? new Date(b.done_at) : new Date('1970-01-01'); return dateB - dateA; });
+                    group.tasks.sort((a, b) => { let dateA = new Date(getTaskCompletedAt(a) || a.updated_at || '1970-01-01'); let dateB = new Date(getTaskCompletedAt(b) || b.updated_at || '1970-01-01'); return dateB - dateA; });
 
                     doneHtml += `
                     <div class="kanban-column" style="border-top-color: var(--green);">
@@ -1898,7 +3068,7 @@ function renderBoards() {
             } else {
                 sortedKeys.forEach(key => {
                     const group = groupedDone[key];
-                    group.tasks.sort((a, b) => { let dateA = a.done_at ? new Date(a.done_at) : new Date('1970-01-01'); let dateB = b.done_at ? new Date(b.done_at) : new Date('1970-01-01'); return dateB - dateA; });
+                    group.tasks.sort((a, b) => { let dateA = new Date(getTaskCompletedAt(a) || a.updated_at || '1970-01-01'); let dateB = new Date(getTaskCompletedAt(b) || b.updated_at || '1970-01-01'); return dateB - dateA; });
                     doneHtml += `<h3 class="month-group-header">${group.label} <span class="month-group-badge">${group.tasks.length} Tasks</span></h3>`;
                     doneHtml += `<div class="project-grid">` + group.tasks.map((item, idx) => generateJobCard(item, true, idx)).join('') + `</div>`;
                 });
@@ -1909,14 +3079,26 @@ function renderBoards() {
     refreshIcons();
 }
 
-function viewMyRequests() { showPage('workload'); const savedName = localStorage.getItem('adtech_user_name'); if (savedName) { const firstName = extractFirstName(savedName); const searchBox = document.getElementById('searchWorkload'); searchBox.value = firstName; renderBoards(); } }
+function viewMyRequests() {
+    showPage('workload');
+    currentRegionFilter = 'all';
+    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    const allToggle = document.getElementById('t-all');
+    if (allToggle) allToggle.classList.add('active');
+    requestBoardDeadlineFilter = 'all';
+
+    const savedName = localStorage.getItem('adtech_user_name');
+    const searchBox = document.getElementById('searchWorkload');
+    if (searchBox) searchBox.value = hasAdminAccess() && savedName ? extractFirstName(savedName) : '';
+    renderBoards();
+}
 
 function generateJobCard(item, isDoneTab = false, index = 0) {
     const isPending = String(item.status || '').toLowerCase() === 'pending';
     const ws = isPending ? 'Inbox (Pending)' : (item.work_status || 'Not started');
 
     const wsClass = isPending ? 'ws-pending' : `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
-    const borderColors = { 'Inbox (Pending)': '#ef4444', 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Partial Ready': '#14b8a6', 'Internal Review': '#0ea5e9', 'Revision': '#ea580c', 'Client Review': '#8b5cf6', 'Done': '#10b981' };
+    const borderColors = { 'Inbox (Pending)': '#ef4444', 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Partial Ready': '#14b8a6', 'Internal Review': '#0ea5e9', 'Revision': '#ea580c', 'Client Review': '#8b5cf6', 'Awaiting Client': '#d97706', 'Done': '#10b981' };
     const borderColor = borderColors[ws] || '#cbd5e1';
 
     const typeMeta = getRequestTypeMeta(item);
@@ -1945,146 +3127,313 @@ function generateJobCard(item, isDoneTab = false, index = 0) {
             <div class="kb-title">${item.client_name}: ${item.project_title}</div>
             ${renderMonthlyProgressChip(item)}
             ${renderTaskNotePreview(item)}
+            ${renderTaskDeadlineRow(item)}
             <div class="kb-footer">
                 <div class="kb-pic"><i data-lucide="user"></i> ${item.assignee && item.assignee !== 'null' ? item.assignee : 'Unassigned'}</div>
-                <div class="kb-date"><i data-lucide="calendar"></i> ${formatDate(item.deadline)}</div>
             </div>
         </div>
     `;
 }
 
 // ========================================================
-// 🌟 8. CALENDAR SYSTEM (DIKEMAS KINI DENGAN WARNA STATUS)
+// 🌟 8. CALENDAR SYSTEM
 // ========================================================
-function renderCalendar(approvedData) {
-    const calDiv = document.getElementById('deadline-calendar'); if(!calDiv) return;
-    const today = new Date(); const firstDay = new Date(calYear, calMonth, 1).getDay(); const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate(); const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    let html = `<div class="calendar-header"><h4 style="margin:0; font-size:1.1rem; color:var(--text-strong);">${monthNames[calMonth]} ${calYear}</h4><div style="display:flex; gap:8px;"><button onclick="changeMonth(-1)" style="background:var(--bg-card); border:1px solid var(--border-main); color:var(--text-muted); border-radius:6px; padding:4px 8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border-main)'"><i data-lucide="chevron-left" style="width:18px;height:18px;"></i></button><button onclick="changeMonth(1)" style="background:var(--bg-card); border:1px solid var(--border-main); color:var(--text-muted); border-radius:6px; padding:4px 8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border-main)'"><i data-lucide="chevron-right" style="width:18px;height:18px;"></i></button></div></div><div class="calendar-grid">`;
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]; dayNames.forEach(day => { html += `<div class="calendar-day-header">${day}</div>`; });
-    for (let i = 0; i < firstDay; i++) { html += `<div class="calendar-day empty"></div>`; }
-    for (let day = 1; day <= daysInMonth; day++) {
-        const isToday = (day === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear()); const currentDate = new Date(calYear, calMonth, day); currentDate.setHours(0,0,0,0);
-        const dayTasks = approvedData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); if(isNaN(dDate)) return false; return dDate.getFullYear() === calYear && dDate.getMonth() === calMonth && dDate.getDate() === day; });
+function getCalendarSourceTasks() {
+    return filterTasksForCurrentAccess((globalData || []).filter(task =>
+        String(task.status || '').toLowerCase() === 'approved' &&
+        String(task.status || '').toLowerCase() !== 'deleted'
+    ));
+}
 
-        let tasksHtml = '';
-        dayTasks.forEach(t => {
-            const isDone = String(t.work_status).toLowerCase() === 'done';
-            const taskDate = new Date(t.deadline);
-            const diffTime = Math.ceil((taskDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+function getCalendarMode() {
+    if (calendarViewMode === 'month' || calendarViewMode === 'agenda') return calendarViewMode;
+    return window.innerWidth <= 720 ? 'agenda' : 'month';
+}
 
-            const ws = t.work_status || 'Not started';
-            const wsKey = ws.toLowerCase();
-            const borderColors = { 'not started': '#94a3b8', 'drafting': '#f59e0b', 'internal review': '#0ea5e9', 'revision': '#ea580c', 'client review': '#8b5cf6', 'done': '#10b981' };
-            const bColor = borderColors[wsKey] || '#cbd5e1';
+function setCalendarView(mode) {
+    calendarViewMode = mode === 'agenda' ? 'agenda' : 'month';
+    localStorage.setItem('adtech_calendar_view', calendarViewMode);
+    renderCalendar(getCalendarSourceTasks());
+    refreshIcons();
+}
 
-            let daysLeftStr = diffTime > 0 ? `${diffTime}d left` : (diffTime === 0 ? 'Due Today' : 'Overdue');
-            let displayStatus = daysLeftStr;
-            let taskClass = 'calendar-task';
-            let customStyle = `border-left-color: ${bColor};`;
+function toggleCalendarCompleted(event) {
+    calendarShowCompleted = Boolean(event?.target?.checked);
+    localStorage.setItem('adtech_calendar_show_completed', calendarShowCompleted ? 'true' : 'false');
+    renderCalendar(getCalendarSourceTasks());
+    refreshIcons();
+}
 
-            if (isDone) {
-                taskClass += ' task-done';
-                displayStatus = 'Done';
-            } else {
-                if (diffTime < 0) {
-                    if (wsKey !== 'not started') {
-                        displayStatus = ws;
-                        customStyle += ` background: ${bColor}20; color: ${bColor}; font-weight: 700;`;
-                    } else {
-                        displayStatus = 'Overdue';
-                        taskClass += ' overdue';
-                    }
-                } else if (diffTime <= 2) {
-                    if (wsKey !== 'not started') {
-                        displayStatus = ws;
-                        customStyle += ` background: ${bColor}20;`;
-                    } else {
-                        taskClass += ' urgent';
-                    }
-                } else {
-                    if (wsKey !== 'not started') {
-                        displayStatus = ws;
-                        customStyle += ` background: ${bColor}10;`;
-                    }
-                }
-            }
+function goCalendarToday() {
+    const today = new Date();
+    calMonth = today.getMonth();
+    calYear = today.getFullYear();
+    selectedCalendarDateKey = toDateInputValue(today);
+    renderCalendar(getCalendarSourceTasks());
+    refreshIcons();
+}
 
-            let flag = getFlag(t.region);
-            tasksHtml += `<div class="${taskClass}" style="${customStyle}" title="${t.client_name}: ${t.project_title}"><strong>${flag} ${t.client_name}</strong><br><span style="font-size:0.65rem; font-weight:700; opacity:0.9;">${isDone ? 'Done' : displayStatus}</span></div>`;
-        });
+function getTaskCalendarDateForViewer(task = {}) {
+    if (isTaskDone(task)) return calendarShowCompleted ? getTaskCompletedAt(task) : '';
+    if (isTaskAwaitingClient(task)) return getClientFollowUpDate(task);
+    const mode = shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client';
+    return getTaskDeadlineForView(task, mode);
+}
 
-        let leavesHtml = ''; const securePin = localStorage.getItem('adtech_lead_pin');
-        if (securePin && typeof globalTeamStatus !== 'undefined') {
-            const dayLeaves = globalTeamStatus.filter(t => {
-                if (t.Status && String(t.Status).toLowerCase().includes('on leave')) {
-                    const startStrs = t.Start_Date.toString().split('|').map(s => s.trim()); const endStrs = t.End_Date.toString().split('|').map(s => s.trim()); const dayOfWeek = currentDate.getDay();
-                    if(dayOfWeek === 0 || dayOfWeek === 6) return false;
-                    for(let i=0; i<startStrs.length; i++) {
-                        const start = new Date(startStrs[i]); start.setHours(0,0,0,0); const end = new Date(endStrs[i]); end.setHours(23,59,59,999);
-                        if (currentDate >= start && currentDate <= end) return true;
-                    }
-                }
-                return false;
-            });
-            dayLeaves.forEach(l => {
-                let leaveLabel = 'On Leave'; const startStrs = l.Start_Date.toString().split('|').map(s => s.trim()); const endStrs = l.End_Date.toString().split('|').map(s => s.trim()); const statusStrs = l.Status.toString().split('|').map(s => s.trim());
-                for(let i=0; i<startStrs.length; i++) {
-                    const start = new Date(startStrs[i]); start.setHours(0,0,0,0); const end = new Date(endStrs[i]); end.setHours(23,59,59,999);
-                    if (currentDate >= start && currentDate <= end) { let match = statusStrs[i].toString().match(/\(([^)]+)\)/); if(match) leaveLabel = match[1]; break; }
-                }
-                leavesHtml += `<div class="calendar-task" style="border-left-color: var(--text-muted); background: var(--bg-box); color: var(--text-muted);" title="${l.Name}: ${leaveLabel}"><strong>${l.Name}</strong><br><span style="font-size:0.65rem; opacity:0.8;">✈️ ${leaveLabel}</span></div>`;
-            });
-        }
-        html += `<div class="calendar-day ${isToday ? 'today' : ''}" onclick="if(typeof openCalDay === 'function') openCalDay(${calYear}, ${calMonth}, ${day})"><div class="calendar-date">${day}</div><div style="display:flex; flex-direction:column; gap:4px;">${tasksHtml}${leavesHtml}</div></div>`;
+function getTaskCalendarDateType(task = {}) {
+    if (isTaskDone(task)) return 'Completed';
+    if (isTaskAwaitingClient(task)) return 'Follow-up';
+    return shouldUseInternalDeadlineForTask(task) ? 'Internal Due' : 'Client Deadline';
+}
+
+function getCalendarUrgency(dateValue, task = {}) {
+    if (isTaskDone(task)) return { state: 'done', label: 'Completed', diff: null };
+    const diff = getDateOnlyDiffDays(dateValue);
+    if (diff === null) return { state: 'missing', label: 'No date', diff: null };
+    if (diff < 0) return { state: 'overdue', label: `Overdue ${Math.abs(diff)}d`, diff };
+    if (diff === 0) return { state: 'today', label: 'Today', diff };
+    if (diff === 1) return { state: 'tomorrow', label: 'Tomorrow', diff };
+    if (diff <= 3) return { state: 'soon', label: `${diff}d`, diff };
+    if (diff <= 7) return { state: 'week', label: `${diff}d`, diff };
+    return { state: 'neutral', label: `${diff}d`, diff };
+}
+
+function getCalendarStatusSlug(task = {}) {
+    return getTaskStatusKey(task).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'not-started';
+}
+
+function getCalendarEvents(sourceTasks = []) {
+    const seen = new Set();
+    return sourceTasks
+        .map(task => {
+            const dateValue = getTaskCalendarDateForViewer(task);
+            const dateKey = toDateInputValue(dateValue);
+            if (!dateKey) return null;
+            const key = `${task.job_id}-${dateKey}`;
+            if (seen.has(key)) return null;
+            seen.add(key);
+            const urgency = getCalendarUrgency(dateKey, task);
+            return {
+                task,
+                dateKey,
+                urgency,
+                statusSlug: getCalendarStatusSlug(task),
+                dateType: getTaskCalendarDateType(task)
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.dateKey.localeCompare(b.dateKey) || String(a.task.job_id || '').localeCompare(String(b.task.job_id || '')));
+}
+
+function groupCalendarEventsByDate(events = []) {
+    return events.reduce((groups, event) => {
+        if (!groups[event.dateKey]) groups[event.dateKey] = [];
+        groups[event.dateKey].push(event);
+        return groups;
+    }, {});
+}
+
+function formatCalendarMonthLabel() {
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    return `${monthNames[calMonth]} ${calYear}`;
+}
+
+function formatCalendarDateTitle(dateKey) {
+    const date = parseDateOnly(dateKey);
+    if (!date) return 'Selected Day';
+    return date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function getCalendarEventTitle(task = {}) {
+    return `${task.client_name || 'Untitled'} - ${task.project_title || 'No title'}`;
+}
+
+function renderCalendarEvent(event, compact = false) {
+    const task = event.task;
+    const title = getCalendarEventTitle(task);
+    const status = String(task.work_status || 'Not started');
+    const assignee = getAssigneeDisplay(task.assignee);
+    const aria = `${title}, ${status}, ${event.dateType} ${formatDate(event.dateKey)}, assigned to ${assignee}`;
+    return `
+        <button type="button"
+            class="calendar-event status-${event.statusSlug} urgency-${event.urgency.state} ${isTaskDone(task) ? 'is-done' : ''}"
+            onclick="event.stopPropagation(); openDetailModal('${escapeJsString(task.job_id)}')"
+            title="${escapeHtml(`${title} · ${status} · ${event.dateType}: ${formatDate(event.dateKey)} · ${assignee}`)}"
+            aria-label="${escapeHtml(aria)}">
+            <span class="calendar-urgency-light" aria-hidden="true"></span>
+            <span class="calendar-event-title">${escapeHtml(compact ? (task.client_name || task.job_id) : title)}</span>
+        </button>
+    `;
+}
+
+function renderCalendarMonth(events = []) {
+    const eventsByDate = groupCalendarEventsByDate(events);
+    const firstDay = new Date(calYear, calMonth, 1).getDay();
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+    const weeks = totalCells / 7;
+    const startDate = new Date(calYear, calMonth, 1 - firstDay);
+    const todayKey = toDateInputValue(new Date());
+    const maxVisible = window.innerWidth <= 920 ? 2 : 3;
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    let html = `<div class="calendar-grid weeks-${weeks}">`;
+    dayNames.forEach(day => { html += `<div class="calendar-day-header">${day}</div>`; });
+
+    for (let index = 0; index < totalCells; index++) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + index);
+        const dateKey = toDateInputValue(date);
+        const inMonth = date.getMonth() === calMonth;
+        const isToday = dateKey === todayKey;
+        const isSelected = dateKey === selectedCalendarDateKey;
+        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+        const dayEvents = eventsByDate[dateKey] || [];
+        const visibleEvents = dayEvents.slice(0, maxVisible);
+        const moreCount = dayEvents.length - visibleEvents.length;
+        const className = [
+            'calendar-day',
+            inMonth ? '' : 'outside-month',
+            isToday ? 'today' : '',
+            isSelected ? 'selected' : '',
+            isWeekend ? 'weekend' : '',
+            dayEvents.length ? 'has-events' : ''
+        ].filter(Boolean).join(' ');
+
+        html += `
+            <div class="${className}" role="button" tabindex="0" aria-label="${escapeHtml(formatCalendarDateTitle(dateKey))}, ${dayEvents.length} task${dayEvents.length === 1 ? '' : 's'}"
+                onclick="openCalendarDayDrawer('${dateKey}')"
+                onkeydown="handleCalendarDayKeydown(event, '${dateKey}')">
+                <div class="calendar-date"><span>${date.getDate()}</span></div>
+                <div class="calendar-event-stack">
+                    ${visibleEvents.map(event => renderCalendarEvent(event, true)).join('')}
+                    ${moreCount > 0 ? `<button type="button" class="calendar-more-btn" onclick="event.stopPropagation(); openCalendarDayDrawer('${dateKey}')">+${moreCount} more</button>` : ''}
+                </div>
+            </div>
+        `;
     }
-    html += `</div>`; calDiv.innerHTML = html;
+
+    return html + '</div>';
+}
+
+function renderCalendarAgenda(events = []) {
+    const monthEvents = events.filter(event => {
+        const date = parseDateOnly(event.dateKey);
+        return date && date.getMonth() === calMonth && date.getFullYear() === calYear;
+    });
+    const eventsByDate = groupCalendarEventsByDate(monthEvents);
+    const dateKeys = Object.keys(eventsByDate).sort();
+
+    if (!dateKeys.length) {
+        return '<div class="calendar-empty-state"><i data-lucide="calendar-x"></i><strong>No scheduled tasks</strong><span>Nothing due in this month for your authorised task list.</span></div>';
+    }
+
+    return `<div class="calendar-agenda-list">${dateKeys.map(dateKey => `
+        <section class="calendar-agenda-day">
+            <button type="button" class="calendar-agenda-date" onclick="openCalendarDayDrawer('${dateKey}')">
+                <strong>${escapeHtml(formatCalendarDateTitle(dateKey))}</strong>
+                <span>${eventsByDate[dateKey].length} task${eventsByDate[dateKey].length === 1 ? '' : 's'}</span>
+            </button>
+            <div class="calendar-agenda-events">
+                ${eventsByDate[dateKey].map(event => {
+                    const task = event.task;
+                    return `
+                        <button type="button" class="calendar-agenda-event status-${event.statusSlug} urgency-${event.urgency.state}" onclick="openDetailModal('${escapeJsString(task.job_id)}')">
+                            <span class="calendar-urgency-light" aria-hidden="true"></span>
+                            <span>
+                                <strong>${escapeHtml(getCalendarEventTitle(task))}</strong>
+                                <small>${escapeHtml(String(task.work_status || 'Not started'))} · ${escapeHtml(event.dateType)} · ${escapeHtml(getAssigneeDisplay(task.assignee))}</small>
+                            </span>
+                        </button>
+                    `;
+                }).join('')}
+            </div>
+        </section>
+    `).join('')}</div>`;
+}
+
+function renderCalendar(approvedData = null) {
+    const calDiv = document.getElementById('deadline-calendar');
+    if (!calDiv) return;
+    const sourceTasks = Array.isArray(approvedData) ? approvedData : getCalendarSourceTasks();
+    const events = getCalendarEvents(sourceTasks);
+    const mode = getCalendarMode();
+    const monthEventCount = events.filter(event => {
+        const date = parseDateOnly(event.dateKey);
+        return date && date.getMonth() === calMonth && date.getFullYear() === calYear;
+    }).length;
+
+    calDiv.innerHTML = `
+        <div class="calendar-toolbar">
+            <div class="calendar-toolbar-main">
+                <button type="button" class="calendar-nav-btn" onclick="goCalendarToday()" aria-label="Go to today"><span>Today</span></button>
+                <button type="button" class="calendar-icon-btn" onclick="changeMonth(-1)" aria-label="Previous month"><i data-lucide="chevron-left"></i></button>
+                <div class="calendar-month-label">${formatCalendarMonthLabel()}<span>${monthEventCount} task${monthEventCount === 1 ? '' : 's'}</span></div>
+                <button type="button" class="calendar-icon-btn" onclick="changeMonth(1)" aria-label="Next month"><i data-lucide="chevron-right"></i></button>
+            </div>
+            <div class="calendar-toolbar-actions">
+                <div class="calendar-view-toggle" role="group" aria-label="Calendar view">
+                    <button type="button" class="${mode === 'month' ? 'active' : ''}" onclick="setCalendarView('month')">Month</button>
+                    <button type="button" class="${mode === 'agenda' ? 'active' : ''}" onclick="setCalendarView('agenda')">Agenda</button>
+                </div>
+                <label class="calendar-completed-toggle"><input type="checkbox" ${calendarShowCompleted ? 'checked' : ''} onchange="toggleCalendarCompleted(event)"><span>Completed</span></label>
+            </div>
+        </div>
+        ${mode === 'agenda' ? renderCalendarAgenda(events) : renderCalendarMonth(events)}
+    `;
 }
 
 function changeMonth(offset) {
-    calMonth += offset; if (calMonth < 0) { calMonth = 11; calYear--; } else if (calMonth > 11) { calMonth = 0; calYear++; }
-    const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion; let approvedData = globalData.filter(d => String(d.status).toLowerCase() === 'approved');
-    approvedData = filterDataByRegion(approvedData, finalRegion); renderCalendar(approvedData); refreshIcons();
+    calMonth += offset;
+    if (calMonth < 0) { calMonth = 11; calYear--; }
+    else if (calMonth > 11) { calMonth = 0; calYear++; }
+    renderCalendar(getCalendarSourceTasks());
+    refreshIcons();
+}
+
+function handleCalendarDayKeydown(event, dateKey) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    openCalendarDayDrawer(dateKey);
+}
+
+function openCalendarDayDrawer(dateKey) {
+    selectedCalendarDateKey = dateKey;
+    const events = getCalendarEvents(getCalendarSourceTasks()).filter(event => event.dateKey === dateKey);
+    const title = formatCalendarDateTitle(dateKey);
+    const body = events.length ? `
+        <div class="calendar-day-drawer-summary">${events.length} authorised task${events.length === 1 ? '' : 's'}</div>
+        <div class="calendar-day-drawer-list">
+            ${events.map(event => {
+                const task = event.task;
+                return `
+                    <button type="button" class="calendar-day-drawer-task status-${event.statusSlug} urgency-${event.urgency.state}" onclick="openDetailModal('${escapeJsString(task.job_id)}')">
+                        <span class="calendar-urgency-light" aria-hidden="true"></span>
+                        <span>
+                            <strong>${escapeHtml(getCalendarEventTitle(task))}</strong>
+                            <small>${escapeHtml(String(task.work_status || 'Not started'))} · ${escapeHtml(event.dateType)} ${escapeHtml(formatDate(event.dateKey))}</small>
+                            <em>${escapeHtml(getAssigneeDisplay(task.assignee))} · ${getFlag(task.region)} ${escapeHtml(task.region || 'No region')}</em>
+                        </span>
+                        <i data-lucide="chevron-right"></i>
+                    </button>
+                `;
+            }).join('')}
+        </div>
+    ` : '<div class="calendar-empty-state compact"><i data-lucide="calendar"></i><strong>No tasks</strong><span>No authorised tasks scheduled for this date.</span></div>';
+
+    document.getElementById('calDayTitle').innerText = title;
+    document.getElementById('calDayBody').innerHTML = body;
+    renderCalendar(getCalendarSourceTasks());
+    refreshIcons();
+    const modal = document.getElementById('calDayModal');
+    modal.style.display = 'flex';
+    modal.offsetHeight;
+    modal.classList.add('show');
+    document.body.classList.add('no-scroll');
 }
 
 function openCalDay(year, month, day) {
-    const date = new Date(year, month, day); date.setHours(0,0,0,0); document.getElementById('calDayTitle').innerText = "Agenda: " + formatDate(date.toISOString());
-    const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion; let approvedData = globalData.filter(d => String(d.status).toLowerCase() === 'approved');
-    approvedData = filterDataByRegion(approvedData, finalRegion);
-    const dayTasks = approvedData.filter(d => { if(!d.deadline) return false; const dDate = new Date(d.deadline); return dDate.getFullYear() === year && dDate.getMonth() === month && dDate.getDate() === day; });
-    let leaves = []; const securePin = localStorage.getItem('adtech_lead_pin');
-    if (securePin && typeof globalTeamStatus !== 'undefined') {
-        leaves = globalTeamStatus.filter(t => {
-            if (t.Status && String(t.Status).toLowerCase().includes('on leave')) {
-                const startStrs = t.Start_Date.toString().split('|').map(s => s.trim()); const endStrs = t.End_Date.toString().split('|').map(s => s.trim()); const dayOfWeek = date.getDay();
-                if(dayOfWeek === 0 || dayOfWeek === 6) return false;
-                for(let i=0; i<startStrs.length; i++) {
-                    const start = new Date(startStrs[i]); start.setHours(0,0,0,0); const end = new Date(endStrs[i]); end.setHours(23,59,59,999);
-                    if (date >= start && date <= end) return true;
-                }
-            }
-            return false;
-        });
-    }
-    let html = '';
-    if (leaves.length > 0) {
-        html += '<h4 style="margin:0 0 10px 0; font-size:0.85rem; color:var(--text-muted);">✈️ On Leave</h4>';
-        leaves.forEach(l => {
-            let leaveLabel = 'On Leave'; const startStrs = l.Start_Date.toString().split('|').map(s => s.trim()); const endStrs = l.End_Date.toString().split('|').map(s => s.trim()); const statusStrs = l.Status.toString().split('|').map(s => s.trim());
-            for(let i=0; i<startStrs.length; i++) { const start = new Date(startStrs[i]); start.setHours(0,0,0,0); const end = new Date(endStrs[i]); end.setHours(23,59,59,999); if (date >= start && date <= end) { let match = statusStrs[i].toString().match(/\(([^)]+)\)/); if(match) leaveLabel = match[1]; break; } }
-            html += `<div style="font-weight:600; font-size:0.9rem; color:var(--text-strong); margin-bottom:5px;">${l.Name} <span style="font-size:0.75rem; color:var(--red); font-weight:500;">(${leaveLabel})</span></div>`;
-        });
-        if(dayTasks.length > 0) html += '<hr style="border:none; border-top:1px dashed var(--border-main); margin:15px 0;">';
-    }
-    if (dayTasks.length > 0) {
-        html += '<h4 style="margin:0 0 10px 0; font-size:0.85rem; color:var(--text-muted);">📋 Tasks Due</h4>';
-        dayTasks.forEach(t => {
-            const isDone = String(t.work_status).toLowerCase() === 'done'; const flag = getFlag(t.region);
-            html += `<div style="margin-bottom:10px; padding:12px; background:var(--bg-box); border-radius:8px; border-left: 4px solid ${isDone ? 'var(--border-main)' : 'var(--accent)'}; opacity: ${isDone ? '0.6' : '1'}; cursor:pointer;" onclick="if(typeof openDetailModal === 'function') openDetailModal('${t.job_id}')"><div style="font-size:0.75rem; color:var(--text-muted); font-family:monospace; margin-bottom:4px;">[${t.job_id}] ${flag}</div><div style="font-weight:700; font-size:0.95rem; color:var(--text-strong); ${isDone ? 'text-decoration:line-through;' : ''}">${t.client_name}: ${t.project_title}</div><div style="font-size:0.75rem; margin-top:6px; color:var(--text-muted);"><i data-lucide="user" style="width:12px;height:12px;"></i> ${t.assignee}</div></div>`;
-        });
-    }
-    if (leaves.length === 0 && dayTasks.length === 0) { html = '<div class="empty-state" style="padding:20px; border:none;"><p>No events scheduled for this day.</p></div>'; }
-    document.getElementById('calDayBody').innerHTML = html; refreshIcons();
-    const modal = document.getElementById('calDayModal'); modal.style.display = 'flex'; modal.offsetHeight; modal.classList.add('show'); document.body.classList.add('no-scroll');
+    openCalendarDayDrawer(toDateInputValue(new Date(year, month, day)));
 }
 // ========================================================
 // 🌟 9. MODALS & POP-UPS
@@ -2092,6 +3441,7 @@ function openCalDay(year, month, day) {
 function closeDetailModal() {
     const modal = document.getElementById('globalDetailModal');
     if(!modal) return;
+    delete modal.dataset.currentJobId;
     modal.classList.remove('show');
     setTimeout(() => {
         modal.style.display = 'none';
@@ -2118,6 +3468,7 @@ function closeEditModal() {
 
 function openEditModal(jobID, client, title, deadlineStr, assignee) {
     closeDetailModal();
+    const task = (globalData || []).find(d => d.job_id === jobID) || {};
     document.getElementById('editJobId').value = jobID;
     document.getElementById('editClient').value = client;
     document.getElementById('editTitle').value = title;
@@ -2139,13 +3490,9 @@ function openEditModal(jobID, client, title, deadlineStr, assignee) {
         }
     }
 
-    let formattedDate = "";
-    if(deadlineStr) {
-        const d = new Date(deadlineStr);
-        if(!isNaN(d)) formattedDate = d.toISOString().split('T')[0];
-    }
-
-    document.getElementById('editDeadline').value = formattedDate;
+    document.getElementById('editDeadline').value = toDateInputValue(getTaskClientDeadline(task) || deadlineStr);
+    const internalDueInput = document.getElementById('editInternalDue');
+    if (internalDueInput) internalDueInput.value = toDateInputValue(getTaskEffectiveInternalDueDate(task));
     document.getElementById('editModal').style.display = 'flex';
 }
 
@@ -2155,9 +3502,172 @@ function getAssigneeDisplay(assignee) {
 }
 
 function getAssignedPICNames(assignee) {
-    const displayName = getAssigneeDisplay(assignee);
-    if (displayName === 'Unassigned') return [];
-    return displayName.split(',').map(name => name.trim()).filter(Boolean);
+    const values = parseIdentityValue(assignee).filter(value => {
+        const text = String(value || '').trim();
+        return text && !text.includes('@') && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
+    });
+    return uniqueIdentityValues(values);
+}
+
+function getPICChangeMeta(previousAssignee, nextAssignee) {
+    const previous = getAssignedPICNames(previousAssignee);
+    const next = getAssignedPICNames(nextAssignee);
+    const previousKeys = previous.map(normalizeNameKey);
+    const nextKeys = next.map(normalizeNameKey);
+    const added = next.filter(name => !previousKeys.includes(normalizeNameKey(name)));
+    const removed = previous.filter(name => !nextKeys.includes(normalizeNameKey(name)));
+    const retained = next.filter(name => previousKeys.includes(normalizeNameKey(name)));
+    return {
+        previous,
+        next,
+        added,
+        removed,
+        retained,
+        changed: added.length > 0 || removed.length > 0
+    };
+}
+
+function getMemberKey(member = {}) {
+    return String(member.member_key || normalizeNameKey(member.name)).trim();
+}
+
+function isUuidValue(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
+function buildPICAssignmentPayload(assignee) {
+    const names = getAssignedPICNames(assignee);
+    const members = names.map(findActiveTeamMemberByIdentity).filter(Boolean);
+    return {
+        assignee,
+        assigned_pic_member_keys: uniqueIdentityValues(members.map(getMemberKey)).filter(Boolean),
+        assigned_pic_auth_user_ids: uniqueIdentityValues(members.map(member => member.auth_user_id || member.user_id).filter(isUuidValue)),
+        assignment_updated_at: new Date().toISOString()
+    };
+}
+
+function stripPICAssignmentPayloadFields(payload = {}) {
+    const clean = { ...payload };
+    ['assigned_pic_member_keys', 'assigned_pic_auth_user_ids', 'assignment_updated_at'].forEach(key => delete clean[key]);
+    return clean;
+}
+
+function findActiveTeamMemberByIdentity(identityValue) {
+    return getActiveTeamMembers().find(member =>
+        getMemberIdentityValues(member).some(memberValue => identityValuesMatch(memberValue, identityValue))
+    ) || null;
+}
+
+function canMemberViewTask(task = {}, member = {}) {
+    if (!member?.name) return false;
+    if (isAdminTeamMember(member) || isSuperAdminName(member.name)) return true;
+    const context = {
+        name: member.name,
+        member,
+        identityValues: getMemberIdentityValues(member)
+    };
+    return isTaskRequesterForUser(task, context) ||
+        isTaskAssignedToUser(task, context) ||
+        isTaskOtherRoleForUser(task, context);
+}
+
+function getTaskAssignedMemberDiagnostics(task = {}) {
+    const assigneeNames = getAssignedPICNames(task.assignee);
+    const identityValues = uniqueIdentityValues([
+        ...assigneeNames,
+        ...getTaskAssigneeIdentityValues(task)
+    ]);
+    const seen = new Set();
+
+    return identityValues.map(identity => {
+        const member = findActiveTeamMemberByIdentity(identity);
+        const key = member ? `member:${normalizeNameKey(member.name)}` : `missing:${normalizeNameKey(identity)}`;
+        if (seen.has(key)) return null;
+        seen.add(key);
+        return {
+            identity,
+            member,
+            canView: member ? canMemberViewTask(task, member) : false,
+            authLink: member ? (member.auth_user_id || member.user_id || member.email || member.member_email || '') : '',
+            region: member?.region || ''
+        };
+    }).filter(Boolean);
+}
+
+function renderTaskAccessCheckPanel(task = {}) {
+    if (!hasAdminAccess()) return '';
+    return `
+        <div class="task-access-check-panel">
+            <div>
+                <span>Access Diagnostic</span>
+                <strong>Assigned PIC visibility</strong>
+            </div>
+            <button type="button" class="settings-action-btn compact" onclick="openTaskAccessDiagnostic('${escapeJsString(task.job_id)}')">
+                <i data-lucide="shield-check"></i><span>Check Access</span>
+            </button>
+        </div>
+    `;
+}
+
+function openTaskAccessDiagnostic(jobID) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const task = (globalData || []).find(row => row.job_id === jobID);
+    if (!task) return showAppleAlert('Missing Task', 'This task could not be found.');
+
+    const diagnostics = getTaskAssignedMemberDiagnostics(task);
+    const requesterMember = findActiveTeamMemberByIdentity(task.requester_name);
+    const requesterCanView = requesterMember ? canMemberViewTask(task, requesterMember) : Boolean(task.requester_name);
+    const currentFilter = (hasAdminAccess() || isSuperAdmin) ? currentRegionFilter : userRegion;
+    const mismatches = [];
+
+    if (!diagnostics.length) mismatches.push('No assigned PIC found on this task.');
+    diagnostics.forEach(row => {
+        if (!row.member) mismatches.push(`${row.identity} is assigned but not matched to an active team member.`);
+        else if (!row.canView) mismatches.push(`${row.member.name} is assigned but failed visibility logic.`);
+        if (row.member && !row.authLink) mismatches.push(`${row.member.name} has no auth/user/email link stored in team_members.`);
+    });
+
+    const renderDiagnosticRow = row => `
+        <div class="access-diagnostic-row ${row.canView ? 'ok' : 'warn'}">
+            <div>
+                <strong>${escapeHtml(row.member?.name || row.identity)}</strong>
+                <span>${row.member ? `${getFlag(row.region)} ${escapeHtml(row.region || 'No region')}` : 'No active roster match'}</span>
+            </div>
+            <div>
+                <small>Auth link</small>
+                <code>${escapeHtml(row.authLink || 'Missing')}</code>
+            </div>
+            <span class="access-diagnostic-pill ${row.canView ? 'ok' : 'warn'}">${row.canView ? 'Visible' : 'Blocked'}</span>
+        </div>
+    `;
+
+    openSettingsDialog({
+        mode: 'drawer',
+        icon: 'shield-check',
+        title: 'Check Access',
+        description: `${task.job_id} · ${task.client_name || 'No client'} · ${getFlag(task.region)} ${task.region || 'No region'}`,
+        body: `
+            <div class="access-diagnostic-summary">
+                <div><span>Task Region</span><strong>${getFlag(task.region)} ${escapeHtml(task.region || 'No region')}</strong></div>
+                <div><span>Current Filter</span><strong>${escapeHtml(currentFilter || 'all')}</strong></div>
+                <div><span>Requester</span><strong>${escapeHtml(task.requester_name || 'Missing')}</strong><small>${requesterCanView ? 'Visible' : 'Check roster/auth link'}</small></div>
+                <div><span>Assignment Field</span><strong>${escapeHtml(getAssigneeDisplay(task.assignee))}</strong></div>
+            </div>
+            <div class="access-diagnostic-section">
+                <h4>Assigned PICs</h4>
+                ${diagnostics.length ? diagnostics.map(renderDiagnosticRow).join('') : '<div class="settings-empty-card">No assigned PIC values found.</div>'}
+            </div>
+            <div class="access-diagnostic-section">
+                <h4>Data Check</h4>
+                ${mismatches.length ? mismatches.map(item => `<div class="access-diagnostic-note warn"><i data-lucide="alert-circle"></i><span>${escapeHtml(item)}</span></div>`).join('') : '<div class="access-diagnostic-note ok"><i data-lucide="check-circle"></i><span>No front-end data mismatch detected.</span></div>'}
+            </div>
+            <div class="access-diagnostic-note">
+                <i data-lucide="database"></i>
+                <span>If this shows Visible but the user still cannot open it on their own device, check Supabase RLS/auth mapping using the cross-region PIC migration.</span>
+            </div>
+        `,
+        footer: `<button type="button" class="settings-primary-btn" onclick="closeSettingsDialog()">Done</button>`
+    });
 }
 
 function escapeHtml(value) {
@@ -3347,6 +4857,7 @@ function renderSettingsOverviewTab() {
                 <div class="settings-quick-actions">
                     <button type="button" class="settings-primary-btn settings-admin-only" onclick="openSettingsMemberModal('add')"><i data-lucide="user-plus"></i><span>Add Member</span></button>
                     <button type="button" class="settings-action-btn" onclick="setSettingsTab('access')"><i data-lucide="shield"></i><span>Manage Access</span></button>
+                    <button type="button" class="settings-action-btn settings-admin-only" onclick="openClientReviewAuditDialog()"><i data-lucide="search-check"></i><span>Review Aging</span></button>
                     <button type="button" class="settings-action-btn" onclick="exportSettingsRoster()"><i data-lucide="download"></i><span>Export Roster</span></button>
                 </div>
             </div>
@@ -3797,6 +5308,8 @@ function renderSettingsWorkspaceTab() {
                 <div class="settings-actions settings-actions-row">
                     <button type="button" onclick="fetchSupabaseData(true)" class="settings-action-btn"><i data-lucide="refresh-cw"></i><span>Refresh Workspace Data</span></button>
                     <button type="button" onclick="exportReportPack()" class="settings-action-btn settings-admin-only"><i data-lucide="file-down"></i><span>Export Workspace Data</span></button>
+                    <button type="button" id="btnRunClientReviewAging" onclick="runClientReviewAgingCheck()" class="settings-action-btn settings-admin-only"><i data-lucide="play"></i><span>Run Aging Check</span></button>
+                    <button type="button" onclick="openClientReviewAuditDialog()" class="settings-action-btn settings-admin-only"><i data-lucide="search-check"></i><span>Client Review Audit</span></button>
                     <button type="button" onclick="exportSettingsRoster()" class="settings-action-btn"><i data-lucide="download"></i><span>Export Member Roster</span></button>
                 </div>
             </div>
@@ -6497,15 +8010,29 @@ async function updateTaskPIC(event, jobID) {
     }
 
     try {
+        const assignmentPayload = buildPICAssignmentPayload(selectedPIC);
         const { error } = await supabaseClient
             .from('creative_requests')
-            .update({ assignee: selectedPIC })
+            .update(assignmentPayload)
             .eq('job_id', jobID);
 
-        if (error) throw error;
+        if (error) {
+            if (/column|schema|cache|assigned_pic|assignment_updated/i.test(error.message || '')) {
+                const retry = await supabaseClient
+                    .from('creative_requests')
+                    .update(stripPICAssignmentPayloadFields(assignmentPayload))
+                    .eq('job_id', jobID);
+                if (retry.error) throw retry.error;
+            } else {
+                throw error;
+            }
+        }
 
-        if (job) job.assignee = selectedPIC;
-        logTaskActivity(jobID, 'pic_changed', oldAssignee, selectedPIC, 'PIC changed from task detail');
+        if (job) Object.assign(job, assignmentPayload);
+        logTaskActivity(jobID, 'pic_changed', oldAssignee, selectedPIC, 'PIC changed from task detail', {
+            ...getPICChangeMeta(oldAssignee, selectedPIC),
+            source: 'task_detail'
+        });
         renderDashboard();
         renderBoards();
         openDetailModal(jobID, true);
@@ -6569,14 +8096,18 @@ function openDetailModal(jobID, isUpdate = false) {
 
         const safeAssignee = String(actualAssignee).replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const safeRequester = String(actualRequester).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const safeDeadline = String(getTaskClientDeadline(item) || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const ws = String(item.work_status || 'Not started');
         const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
         const isDoneTab = String(item.status).toLowerCase() === 'approved' && String(item.work_status).toLowerCase() === 'done';
         const securePin = localStorage.getItem('adtech_lead_pin');
         const canEditPIC = securePin && String(item.status || '').toLowerCase() === 'approved';
+        const canViewInternalDeadline = shouldUseInternalDeadlineForTask(item);
 
         document.getElementById('dm-jobid').innerText = `[${item.job_id}]`;
         document.getElementById('dm-title').innerText = `${item.client_name}: ${item.project_title}`;
+        const modal = document.getElementById('globalDetailModal');
+        if (modal) modal.dataset.currentJobId = item.job_id;
 
         let playbookBtnHtml = '';
         if(item.playbook_link) {
@@ -6621,15 +8152,19 @@ function openDetailModal(jobID, isUpdate = false) {
                 <div class="detail-item"><span>Region</span><strong>${getFlag(item.region)} ${item.region || 'Malaysia'}</strong></div>
                 <div class="detail-item"><span>Requester</span><strong>${actualRequester}</strong></div>
                 <div class="detail-item detail-item-job-type"><span>Job Type</span>${renderJobTypeDetail(item)}</div>
-                <div class="detail-item"><span>Deadline</span><strong style="color:var(--red);">${formatDate(item.deadline)}</strong></div>
+                <div class="detail-item"><span>Client Deadline</span><strong style="color:var(--red);">${formatDate(getTaskClientDeadline(item))}</strong></div>
+                ${canViewInternalDeadline ? `<div class="detail-item"><span>Internal Due</span><strong>${getTaskEffectiveInternalDueDate(item) ? formatDate(getTaskEffectiveInternalDueDate(item)) : 'No internal due'}</strong></div>` : ''}
                 <div class="detail-item pic-detail"><span>Creative PIC</span>${canEditPIC ? renderPicEditor(item.job_id, actualAssignee) : `<strong>${actualAssignee}</strong>`}</div>
-                <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option><option value="Partial Ready" ${ws === 'Partial Ready' ? 'selected' : ''}>Partial Ready</option><option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option><option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option><option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option><option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>
+                <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option><option value="Partial Ready" ${ws === 'Partial Ready' ? 'selected' : ''}>Partial Ready</option><option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option><option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option><option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option><option value="Awaiting Client" ${ws === 'Awaiting Client' ? 'selected' : ''}>Awaiting Client</option><option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>
                 <div class="detail-item"><span>Revision Count</span>${securePin && !isDoneTab ? `<div style="display:flex; align-items:center; gap:8px; margin-top:2px;"><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, -1)">-</button><strong style="min-width:15px; text-align:center;">${item.revision || 0}</strong><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, 1)">+</button></div>` : `<strong>${item.revision || 0}</strong>`}</div>
                 ${(item.approver) ? `<div class="detail-item"><span>Approved By</span><strong>${item.approver}</strong></div>` : ''}
             </div>
+            ${renderClientReviewDetailPanel(item)}
+            ${renderAwaitingClientDetailPanel(item)}
             ${renderMonthlyFlowPanel(item)}
             ${renderTaskNotesBox(item)}
             ${renderAdminTrackingPanel(item)}
+            ${renderTaskAccessCheckPanel(item)}
             <div class="brief-box">
                 ${formattedBriefHTML}
                 ${item.ref_link ? `<p style="margin-top: 15px;"><strong>Reference:</strong> <a href="${item.ref_link}" target="_blank">Click to view reference</a></p>` : ''}
@@ -6644,15 +8179,15 @@ function openDetailModal(jobID, isUpdate = false) {
             if (securePin) {
                 warmPlaybookGenerator();
                 bodyHtml += `<div class="assign-area"><label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block; color: var(--text-main);">1. Select Creative PIC (Multiple Allowed):</label>${renderCreativePicGroups(item.job_id)}<label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block; color: var(--text-main);">2. Generate Creative Playbook:</label><div style="display:flex; gap:10px; margin-bottom: 15px; flex-wrap:wrap;"><input type="text" id="playbook-${item.job_id}" placeholder="Click Auto-Generate or paste link..." style="flex:1; min-width:200px; border-style: dashed; padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-input); color: var(--text-main);"><button onclick="generatePlaybook('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeRequester}')" id="btn-gen-${item.job_id}" class="btn-action" style="background:var(--link-color); color:white; border:none; min-width:140px; margin:0;"><i data-lucide="sparkles"></i> Auto-Generate</button></div></div>`;
-                footerHtml = handleHtml + `<div class="action-buttons"><button id="btn-approve-${item.job_id}" onclick="approveJob('${item.job_id}', '${safeClient}', '${safeTitle}')" class="btn-action btn-approve"><i data-lucide="check"></i> Approve & Assign</button><button onclick="openEditModal('${item.job_id}', '${safeClient}', '${safeTitle}', '${item.deadline}', '${safeAssignee}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit Request</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
+                footerHtml = handleHtml + `<div class="action-buttons"><button id="btn-approve-${item.job_id}" onclick="approveJob('${item.job_id}', '${safeClient}', '${safeTitle}')" class="btn-action btn-approve"><i data-lucide="check"></i> Approve & Assign</button><button onclick="openEditModal('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeDeadline}', '${safeAssignee}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit Request</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
             } else {
                 bodyHtml += `<div class="locked-msg"><i data-lucide="lock"></i> Status: Reviewing requirements. Awaiting Admin Assignment.</div>`;
             }
         } else {
             if (securePin && !isDoneTab) {
-                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('requester', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${item.deadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Requester</button><button onclick="copyText('team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${item.deadline}', '${item.playbook_link}', '')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Team</button>${String(item.work_status).toLowerCase() === 'client review' ? `<button onclick="copyText('review', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${item.deadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}${String(item.work_status).toLowerCase() === 'client review' ? `<button onclick="copyText('chase_client', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${item.deadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #0ea5e9; color: white; border: none;"><i data-lucide="message-circle"></i> Chase Requester</button>` : ''}${String(item.work_status).toLowerCase() === 'revision' ? `<button onclick="copyText('revision_alert', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${item.deadline}', '${item.playbook_link}', '')" class="btn-action" style="background: #ea580c; color: white; border: none;"><i data-lucide="alert-circle"></i> Msg: Revision</button>` : ''}<button onclick="copyText('chase', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${item.deadline}', '${item.playbook_link}', '')" class="btn-action" style="background: var(--orange); color: white; border: none;"><i data-lucide="bell-ring"></i> Chase Status</button><button onclick="openEditModal('${item.job_id}', '${safeClient}', '${safeTitle}', '${item.deadline}', '${safeAssignee}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
+                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('requester', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Requester</button><button onclick="copyText('team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Team</button>${String(item.work_status).toLowerCase() === 'client review' ? `<button onclick="copyText('review', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}${String(item.work_status).toLowerCase() === 'client review' ? `<button onclick="copyText('chase_client', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #0ea5e9; color: white; border: none;"><i data-lucide="message-circle"></i> Chase Requester</button>` : ''}${String(item.work_status).toLowerCase() === 'revision' ? `<button onclick="copyText('revision_alert', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action" style="background: #ea580c; color: white; border: none;"><i data-lucide="alert-circle"></i> Msg: Revision</button>` : ''}<button onclick="copyText('chase', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action" style="background: var(--orange); color: white; border: none;"><i data-lucide="bell-ring"></i> Chase Status</button><button onclick="openEditModal('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeDeadline}', '${safeAssignee}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
             } else if (securePin && isDoneTab) {
-                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('done_team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${item.deadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy" style="flex:1; background: var(--green); color: white; border: none;"><i data-lucide="check-circle"></i> Msg: Team (Done)</button><select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select" style="background: var(--text-muted); flex: 1;"><option value="">Undo Status...</option><option value="Client Review">Move back to Review</option></select><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="flex: 1;"><i data-lucide="trash-2"></i> Delete Record</button></div>`;
+                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('done_team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy" style="flex:1; background: var(--green); color: white; border: none;"><i data-lucide="check-circle"></i> Msg: Team (Done)</button><select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select" style="background: var(--text-muted); flex: 1;"><option value="">Undo Status...</option><option value="Client Review">Move back to Review</option></select><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="flex: 1;"><i data-lucide="trash-2"></i> Delete Record</button></div>`;
             }
         }
 
@@ -6665,7 +8200,6 @@ function openDetailModal(jobID, isUpdate = false) {
 
         if(!isUpdate) {
             document.body.classList.add('no-scroll');
-            const modal = document.getElementById('globalDetailModal');
             modal.style.display = 'flex';
             modal.offsetHeight;
             modal.classList.add('show');
@@ -6682,6 +8216,7 @@ function openDetailModal(jobID, isUpdate = false) {
 async function submitRequest() {
     const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
     const client = document.getElementById('pClient').value.trim();
+    const projectTitle = document.getElementById('pTitle').value;
     const deadline = document.getElementById('pDeadline').value;
     const region = document.getElementById('pRegion').value || userRegion;
 
@@ -6800,19 +8335,41 @@ async function submitRequest() {
             if(monthlyPlan) fullBrief += "\n\n[MONTHLY PLAN DETAILS]\n" + monthlyPlan;
         }
 
+        const deadlinePlan = generateSuggestedInternalDueForTask({
+            job_type: types,
+            request_type: currentRequestType,
+            project_title: projectTitle,
+            objective,
+            brief: fullBrief,
+            client_deadline: deadline
+        });
+        if (deadlinePlan.flag === 'client-deadline-passed') {
+            throw new Error('Client deadline has already passed. Please choose today or a future date, or ask an admin to review it.');
+        }
         const payload = {
-            job_id: finalJobID, requester_name: name, region: region, client_name: client, project_title: document.getElementById('pTitle').value,
-            job_type: types, objective: objective, brief: fullBrief, deadline: deadline, ref_link: document.getElementById('pRefLink').value,
+            job_id: finalJobID, requester_name: name, region: region, client_name: client, project_title: projectTitle,
+            job_type: types, objective: objective, brief: fullBrief, deadline: deadline, client_deadline: deadline, original_client_deadline: deadline, internal_due_date: deadlinePlan.date || null, original_internal_due_date: deadlinePlan.date || null, internal_due_source: deadlinePlan.date ? 'system_generated' : null, internal_due_manually_adjusted: false, ref_link: document.getElementById('pRefLink').value,
             remarks: document.getElementById('pRemarks').value, status: 'pending', assignee: 'Unassigned', playbook_link: '', work_status: 'Not started', revision: 0, approver: ''
         };
 
         // 3. HANTAR KE SUPABASE
-        const { error } = await supabaseClient.from('creative_requests').insert([payload]);
+        let { error } = await supabaseClient.from('creative_requests').insert([payload]);
+        if (error && /column|schema|cache|client_deadline|original_client_deadline|internal_due/i.test(error.message || '')) {
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.client_deadline;
+            delete fallbackPayload.original_client_deadline;
+            delete fallbackPayload.internal_due_date;
+            delete fallbackPayload.original_internal_due_date;
+            delete fallbackPayload.internal_due_source;
+            delete fallbackPayload.internal_due_manually_adjusted;
+            const retry = await supabaseClient.from('creative_requests').insert([fallbackPayload]);
+            error = retry.error;
+        }
         if (error) throw new Error(error.message);
 
         // Optimistic Update
         globalData.unshift(payload);
-        logTaskActivity(finalJobID, 'submitted', '', 'pending', `Request submitted by ${name}`, { region, job_type: types });
+        logTaskActivity(finalJobID, 'submitted', '', 'pending', `Request submitted by ${name}`, { region, job_type: types, client_deadline: deadline, internal_due_date: deadlinePlan.date, internal_due_source: 'system_generated', buffer_working_days: deadlinePlan.bufferDays, complexity: deadlinePlan.complexity, lead_time_flag: deadlinePlan.flag });
 
         const flag = getFlag(region);
         const tgMsg = `[NEW REQUEST] ${flag}\n\n*ID:* ${finalJobID}\n*Client:* ${client}\n*By:* ${name}\n\n🔗 [Open Adtechinno App](https://adtechinno-creativeengine.vercel.app/)`;
@@ -6899,28 +8456,52 @@ async function approveJob(jobID, client, title) {
     if (overlay) overlay.classList.add('show');
 
     try {
+        const item = globalData.find(d => d.job_id === jobID);
+        const clientDeadline = getTaskClientDeadline(item);
+        const generatedDue = generateSuggestedInternalDueForTask(item || { client_deadline: clientDeadline });
+        const internalDue = getTaskInternalDueDate(item) || generatedDue.date;
+        const approvalPayload = {
+            ...buildPICAssignmentPayload(selectedPIC),
+            status: 'approved',
+            playbook_link: playbookLink,
+            work_status: 'Not started',
+            revision: 0,
+            approver: currentUser,
+            client_deadline: clientDeadline || null,
+            original_client_deadline: getTaskOriginalClientDeadline(item) || clientDeadline || null,
+            internal_due_date: internalDue || null,
+            original_internal_due_date: getTaskOriginalInternalDueDate(item) || internalDue || null,
+            internal_due_source: getTaskInternalDueDate(item) ? (getTaskInternalDueSource(item) || 'manual') : (internalDue ? 'system_generated' : null),
+            internal_due_manually_adjusted: isInternalDueManuallyAdjusted(item)
+        };
+        const fallbackApprovalPayload = {
+            assignee: selectedPIC,
+            status: 'approved',
+            playbook_link: playbookLink,
+            work_status: 'Not started',
+            revision: 0,
+            approver: currentUser,
+            client_deadline: clientDeadline || null,
+            original_client_deadline: getTaskOriginalClientDeadline(item) || clientDeadline || null,
+            internal_due_date: internalDue || null,
+            original_internal_due_date: getTaskOriginalInternalDueDate(item) || internalDue || null
+        };
         // 2. Update pangkalan data Supabase
-        const { error } = await supabaseClient.from('creative_requests').update({
-            assignee: selectedPIC, status: 'approved', playbook_link: playbookLink, work_status: 'Not started', revision: 0, approver: currentUser
-        }).eq('job_id', jobID);
-
-        if (error) throw error;
+        await saveCreativeRequestStatusPayload(jobID, approvalPayload, fallbackApprovalPayload);
 
         // 3. Optimistic Update: Tukar data di memori serta-merta tanpa tunggu reload
-        const item = globalData.find(d => d.job_id === jobID);
         const flag = getFlag(item ? item.region : '');
         const oldAssignee = item ? getAssigneeDisplay(item.assignee) : 'Unassigned';
 
         if (item) {
-            item.status = 'approved';
-            item.assignee = selectedPIC;
-            item.playbook_link = playbookLink;
-            item.approver = currentUser;
-            item.work_status = 'Not started'; // Paksa status jadi 'Not started'
-            item.revision = 0;
+            Object.assign(item, approvalPayload);
         }
-        logTaskActivity(jobID, 'approved', 'pending', 'approved', `Approved by ${currentUser}`, { playbook_link: playbookLink });
-        logTaskActivity(jobID, 'pic_changed', oldAssignee, selectedPIC, 'PIC assigned during approval');
+        const picChange = getPICChangeMeta(oldAssignee, selectedPIC);
+        logTaskActivity(jobID, 'approved', 'pending', 'approved', `Approved by ${currentUser}`, { playbook_link: playbookLink, internal_due_date: internalDue, client_deadline: clientDeadline, buffer_working_days: generatedDue.bufferDays, complexity: generatedDue.complexity, lead_time_flag: generatedDue.flag, pic_change: picChange });
+        logTaskActivity(jobID, 'pic_changed', oldAssignee, selectedPIC, 'PIC assigned during approval', {
+            ...picChange,
+            source: 'approval'
+        });
 
         // 4. Render semula papan Kanban dan Dashboard terus
         renderDashboard();
@@ -6950,37 +8531,1288 @@ async function saveEdit() {
     const client = document.getElementById('editClient').value;
     const title = document.getElementById('editTitle').value;
     const deadline = document.getElementById('editDeadline').value;
+    const internalDue = document.getElementById('editInternalDue')?.value || '';
     const editAssignee = document.getElementById('editAssignee');
     const assignee = editAssignee ? (editAssignee.value || editAssignee.dataset.originalAssignee || 'Unassigned') : 'Unassigned';
 
     if(!client || !title || !deadline) return showAppleAlert("Missing Data", "Fields cannot be empty.");
     const job = globalData.find(d => d.job_id === jobID);
-    const oldSummary = job ? `${job.client_name || ''} | ${job.project_title || ''} | ${job.deadline || ''} | ${getAssigneeDisplay(job.assignee)}` : '';
-    const newSummary = `${client} | ${title} | ${deadline} | ${assignee}`;
+    const oldClientDeadline = toDateInputValue(getTaskClientDeadline(job));
+    const oldSavedInternalDue = toDateInputValue(getTaskInternalDueDate(job));
+    const oldInternalDue = toDateInputValue(getTaskEffectiveInternalDueDate(job));
+    let finalInternalDue = internalDue;
+    const clientDeadlineChanged = (oldClientDeadline || '') !== (deadline || '');
+    const internalChangedByInput = (oldInternalDue || '') !== (internalDue || '');
+    if (clientDeadlineChanged && !isInternalDueManuallyAdjusted(job) && !internalChangedByInput) {
+        finalInternalDue = generateSuggestedInternalDueForTask({ ...job, client_deadline: deadline, deadline, project_title: title }).date || '';
+    }
+    const oldSummary = job ? `${job.client_name || ''} | ${job.project_title || ''} | ${oldClientDeadline || ''} | ${oldInternalDue || ''} | ${getAssigneeDisplay(job.assignee)}` : '';
+    const newSummary = `${client} | ${title} | ${deadline} | ${finalInternalDue || 'No internal due'} | ${assignee}`;
+    const payload = {
+        client_name: client,
+        project_title: title,
+        deadline: deadline,
+        client_deadline: deadline,
+        ...buildPICAssignmentPayload(assignee),
+        internal_due_date: finalInternalDue || null
+    };
 
+    if (job && !job.original_client_deadline) payload.original_client_deadline = getTaskOriginalClientDeadline(job) || deadline;
+    if (finalInternalDue && job && !job.original_internal_due_date) payload.original_internal_due_date = finalInternalDue;
+    if (internalChangedByInput) {
+        payload.internal_due_source = 'manual';
+        payload.internal_due_manually_adjusted = true;
+    } else if (!oldSavedInternalDue && finalInternalDue) {
+        payload.internal_due_source = 'system_generated';
+        payload.internal_due_manually_adjusted = false;
+    }
+
+    const changedDeadlines = [];
+    if (oldClientDeadline && oldClientDeadline !== deadline) changedDeadlines.push({ field: 'client_deadline', label: 'Client deadline', from: oldClientDeadline, to: deadline });
+    if (!oldClientDeadline && deadline) changedDeadlines.push({ field: 'client_deadline', label: 'Client deadline', from: 'Not set', to: deadline });
+    if ((oldInternalDue || '') !== (finalInternalDue || '')) changedDeadlines.push({ field: 'internal_due_date', label: 'Internal due date', from: oldInternalDue || 'Not set', to: finalInternalDue || 'Removed' });
+
+    if (changedDeadlines.length) {
+        return openDeadlineChangeDialog(jobID, payload, oldSummary, newSummary, changedDeadlines);
+    }
+
+    await commitEditPayload(jobID, payload, oldSummary, newSummary, 'Request details edited');
+}
+
+async function commitEditPayload(jobID, payload, oldSummary, newSummary, noteText, meta = {}) {
     const btn = document.getElementById('saveEditBtn');
     btn.innerHTML = 'Updating...';
     btn.disabled = true;
+    const job = globalData.find(d => d.job_id === jobID);
+    const oldAssigneeForEdit = job ? getAssigneeDisplay(job.assignee) : 'Unassigned';
+    const nextAssigneeForEdit = payload.assignee !== undefined ? getAssigneeDisplay(payload.assignee) : oldAssigneeForEdit;
+    const picChangeMeta = payload.assignee !== undefined ? getPICChangeMeta(oldAssigneeForEdit, nextAssigneeForEdit) : { changed: false };
 
     try {
-        const { error } = await supabaseClient.from('creative_requests').update({
-            client_name: client, project_title: title, deadline: deadline, assignee: assignee
-        }).eq('job_id', jobID);
+        const { error } = await supabaseClient.from('creative_requests').update(payload).eq('job_id', jobID);
         if(error) throw error;
-        if (job) {
-            job.client_name = client;
-            job.project_title = title;
-            job.deadline = deadline;
-            job.assignee = assignee;
+        if (job) Object.assign(job, payload);
+        logTaskActivity(jobID, meta.deadline_changed ? 'deadline_changed' : 'request_updated', oldSummary, newSummary, noteText, { ...meta, pic_change: picChangeMeta.changed ? picChangeMeta : undefined });
+        if (picChangeMeta.changed) {
+            logTaskActivity(jobID, 'pic_changed', oldAssigneeForEdit, nextAssigneeForEdit, 'PIC changed from edit form', {
+                ...picChangeMeta,
+                source: 'edit_form'
+            });
         }
-        logTaskActivity(jobID, 'request_updated', oldSummary, newSummary, 'Request details edited');
         showNotification('Request Updated', '');
         closeEditModal();
+        closeSettingsDialog();
+        renderDashboard();
+        renderBoards();
     } catch(e) {
-        showAppleAlert("Update Error", e.message);
+        if (/column|schema|cache|client_deadline|internal_due|original_|assigned_pic|assignment_updated/i.test(e.message || '')) {
+            const fallbackPayload = stripPICAssignmentPayloadFields({ ...payload });
+            delete fallbackPayload.internal_due_source;
+            delete fallbackPayload.internal_due_manually_adjusted;
+            try {
+                const retry = await supabaseClient.from('creative_requests').update(fallbackPayload).eq('job_id', jobID);
+                if (retry.error && /column|schema|cache|client_deadline|internal_due|original_|assigned_pic|assignment_updated/i.test(retry.error.message || '')) {
+                    const minimalPayload = {
+                        client_name: payload.client_name,
+                        project_title: payload.project_title,
+                        deadline: payload.deadline,
+                        assignee: payload.assignee
+                    };
+                    const secondRetry = await supabaseClient.from('creative_requests').update(minimalPayload).eq('job_id', jobID);
+                    if (secondRetry.error) throw secondRetry.error;
+                } else if (retry.error) {
+                    throw retry.error;
+                }
+                if (job) Object.assign(job, payload);
+                logTaskActivity(jobID, meta.deadline_changed ? 'deadline_changed' : 'request_updated', oldSummary, newSummary, `${noteText} (deadline fields saved in legacy column until migration is applied)`, { ...meta, pic_change: picChangeMeta.changed ? picChangeMeta : undefined });
+                if (picChangeMeta.changed) {
+                    logTaskActivity(jobID, 'pic_changed', oldAssigneeForEdit, nextAssigneeForEdit, 'PIC changed from edit form', {
+                        ...picChangeMeta,
+                        source: 'edit_form'
+                    });
+                }
+                showNotification('Request Updated', 'Run deadline migration for full reporting fields');
+                closeEditModal();
+                closeSettingsDialog();
+                renderDashboard();
+                renderBoards();
+            } catch(retryError) {
+                showAppleAlert("Update Error", retryError.message);
+            }
+        } else {
+            showAppleAlert("Update Error", e.message);
+        }
     } finally {
         btn.innerHTML = 'Update Request';
         btn.disabled = false;
+    }
+}
+
+function openDeadlineChangeDialog(jobID, payload, oldSummary, newSummary, changedDeadlines) {
+    pendingDeadlineChangeUpdate = { jobID, payload, oldSummary, newSummary, changedDeadlines };
+    const changeList = changedDeadlines.map(item => `<div class="settings-change-row"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(formatDate(item.from) || item.from)} -> ${escapeHtml(formatDate(item.to) || item.to)}</strong></div>`).join('');
+    openSettingsDialog({
+        kind: 'deadline-change',
+        mode: 'modal',
+        icon: 'calendar-clock',
+        title: 'Reason required',
+        description: 'Deadline changes are saved into task history for monthly reporting.',
+        body: `
+            <div class="settings-dialog-form">
+                <div class="settings-change-list">${changeList}</div>
+                <label>Reason
+                    <select id="deadlineChangeReason">
+                        ${DEADLINE_CHANGE_REASONS.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join('')}
+                    </select>
+                </label>
+                <label>Note
+                    <textarea id="deadlineChangeNote" rows="3" placeholder="Short context for this change..."></textarea>
+                </label>
+            </div>
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Cancel</button>
+            <button type="button" class="settings-primary-btn" onclick="submitDeadlineChangeDialog()"><i data-lucide="save"></i><span>Save Change</span></button>
+        `
+    });
+}
+
+async function submitDeadlineChangeDialog() {
+    if (!pendingDeadlineChangeUpdate) return closeSettingsDialog();
+    const reason = document.getElementById('deadlineChangeReason')?.value || '';
+    const note = document.getElementById('deadlineChangeNote')?.value.trim() || '';
+    if (!reason) return showAppleAlert('Missing Reason', 'Please select a reason.');
+    const pending = pendingDeadlineChangeUpdate;
+    pendingDeadlineChangeUpdate = null;
+    const payload = {
+        ...pending.payload,
+        latest_deadline_change_reason: reason,
+        deadline_extension_count: ((globalData.find(d => d.job_id === pending.jobID)?.deadline_extension_count || 0) * 1) + 1
+    };
+    const changeText = pending.changedDeadlines.map(item => `${item.label}: ${item.from} -> ${item.to}`).join(' | ');
+    await commitEditPayload(pending.jobID, payload, pending.oldSummary, pending.newSummary, `${reason}${note ? ` - ${note}` : ''}`, {
+        deadline_changed: true,
+        changes: pending.changedDeadlines,
+        reason,
+        note,
+        change_text: changeText
+    });
+}
+
+function handleInternalDueRowKeydown(event, jobID) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    openInternalDueModal(event, jobID);
+}
+
+function validateInternalDueDate(internalDue, clientDeadline) {
+    const due = parseDateOnly(internalDue);
+    const client = parseDateOnly(clientDeadline);
+    if (!due) return { valid: false, warning: 'Please choose an internal due date.' };
+    if (isWeekendDate(due)) return { valid: false, warning: 'Internal due date cannot fall on a weekend.' };
+    if (!client) return { valid: true, warning: 'Client deadline is missing, so this date needs admin review.' };
+    if (due > client) return { valid: true, warning: 'Internal due date is later than the client deadline.' };
+    if (due.getTime() === client.getTime()) return { valid: true, warning: 'Same-day internal due date. This is a short-lead request.' };
+    return { valid: true, warning: '' };
+}
+
+function getLeadTimeWarning(clientDeadline, internalDue) {
+    const client = parseDateOnly(clientDeadline);
+    const due = parseDateOnly(internalDue);
+    if (!client) return 'Client deadline missing.';
+    if (getDateOnlyDiffDays(client) < 0) return 'Client deadline has passed. Review dates before saving.';
+    if (!due) return 'Choose an internal due date.';
+    const buffer = calculateWorkingDaysBetween(due, client);
+    if (getDateOnlyDiffDays(client) === 0) return 'Same-day request.';
+    if (buffer !== null && buffer < 2) return 'Short lead time.';
+    return '';
+}
+
+function openInternalDueModal(event, jobID) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    if (!hasDeadlineEditAccess()) return;
+    const task = (globalData || []).find(d => d.job_id === jobID);
+    if (!task) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const clientDeadline = getTaskClientDeadline(task);
+    const currentInternalDue = toDateInputValue(getTaskInternalDueDate(task));
+    const suggested = generateSuggestedInternalDueForTask(task);
+    const initialDue = currentInternalDue || suggested.date;
+    const warning = getLeadTimeWarning(clientDeadline, initialDue);
+    openSettingsDialog({
+        kind: 'internal-due',
+        mode: 'modal',
+        icon: 'calendar-clock',
+        title: 'Deadline',
+        description: 'Set the creative team due date while keeping the client deadline unchanged.',
+        body: `
+            <div class="settings-dialog-form internal-due-form" data-job-id="${escapeHtml(jobID)}">
+                <div class="settings-change-list">
+                    <div class="settings-change-row"><span>Client deadline</span><strong>${formatDate(clientDeadline)}</strong></div>
+                    <div class="settings-change-row"><span>Current internal due</span><strong>${currentInternalDue ? formatDate(currentInternalDue) : 'Not set'}</strong></div>
+                </div>
+                <label>Buffer
+                    <select id="internalDueBuffer" onchange="applyInternalDueBufferPreview('${escapeJsString(jobID)}')">
+                        <option value="2" ${suggested.bufferDays === 2 ? 'selected' : ''}>2 working days</option>
+                        <option value="1" ${suggested.bufferDays === 1 ? 'selected' : ''}>1 working day</option>
+                        <option value="custom">Custom date</option>
+                    </select>
+                </label>
+                <label>Internal due
+                    <input type="date" id="internalDueDateInput" value="${escapeHtml(initialDue)}" onchange="document.getElementById('internalDueBuffer').value='custom'; updateInternalDueWarning('${escapeJsString(jobID)}')">
+                </label>
+                <div id="internalDueWarning" class="deadline-modal-warning ${warning ? 'show' : ''}">${escapeHtml(warning)}</div>
+                <label>Reason for adjustment
+                    <select id="internalDueReason">
+                        <option value="">Select reason...</option>
+                        ${DEADLINE_ADJUSTMENT_REASONS.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join('')}
+                    </select>
+                </label>
+                <label>Note
+                    <textarea id="internalDueNote" rows="3" placeholder="Optional context..."></textarea>
+                </label>
+            </div>
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Cancel</button>
+            <button type="button" id="btnSaveInternalDue" class="settings-primary-btn" onclick="submitInternalDueModal('${escapeJsString(jobID)}')"><i data-lucide="save"></i><span>Save</span></button>
+        `
+    });
+}
+
+function applyInternalDueBufferPreview(jobID) {
+    const buffer = document.getElementById('internalDueBuffer')?.value || '2';
+    const input = document.getElementById('internalDueDateInput');
+    const task = (globalData || []).find(d => d.job_id === jobID);
+    if (!input || !task || buffer === 'custom') return updateInternalDueWarning(jobID);
+    input.value = generateSuggestedInternalDue(getTaskClientDeadline(task), Number(buffer)).date;
+    updateInternalDueWarning(jobID);
+}
+
+function updateInternalDueWarning(jobID) {
+    const task = (globalData || []).find(d => d.job_id === jobID);
+    const box = document.getElementById('internalDueWarning');
+    const input = document.getElementById('internalDueDateInput');
+    if (!task || !box || !input) return;
+    const validation = validateInternalDueDate(input.value, getTaskClientDeadline(task));
+    const lead = getLeadTimeWarning(getTaskClientDeadline(task), input.value);
+    const message = validation.warning || lead;
+    box.textContent = message;
+    box.classList.toggle('show', !!message);
+}
+
+async function submitInternalDueModal(jobID) {
+    const task = (globalData || []).find(d => d.job_id === jobID);
+    if (!task) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const internalDue = document.getElementById('internalDueDateInput')?.value || '';
+    const reason = document.getElementById('internalDueReason')?.value || '';
+    const note = document.getElementById('internalDueNote')?.value.trim() || '';
+    const oldDue = toDateInputValue(getTaskInternalDueDate(task));
+    if (oldDue === internalDue) return closeSettingsDialog();
+    const validation = validateInternalDueDate(internalDue, getTaskClientDeadline(task));
+    if (!validation.valid) return showAppleAlert('Invalid Due Date', validation.warning);
+    if (!reason) return showAppleAlert('Missing Reason', 'Please select a reason for the due date change.');
+
+    const btn = document.getElementById('btnSaveInternalDue');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Saving...</span>';
+        refreshIcons();
+    }
+
+    const oldSnapshot = { ...task };
+    const payload = {
+        internal_due_date: internalDue || null,
+        original_internal_due_date: getTaskOriginalInternalDueDate(task) || internalDue || null,
+        internal_due_source: 'manual',
+        internal_due_manually_adjusted: true,
+        latest_deadline_change_reason: reason,
+        deadline_extension_count: Number(task.deadline_extension_count || 0) + (oldDue ? 1 : 0),
+        last_moved_at: task.last_moved_at || new Date().toISOString()
+    };
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.internal_due_source;
+    delete fallbackPayload.internal_due_manually_adjusted;
+
+    try {
+        await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
+        Object.assign(task, payload);
+        logTaskActivity(jobID, oldDue ? 'internal_due_date_changed' : 'internal_due_date_set', oldDue || 'Not set', internalDue, `${reason}${note ? ` - ${note}` : ''}`, {
+            reason,
+            note,
+            client_deadline: getTaskClientDeadline(task),
+            warning: validateInternalDueDate(internalDue, getTaskClientDeadline(task)).warning || getLeadTimeWarning(getTaskClientDeadline(task), internalDue)
+        });
+        closeSettingsDialog();
+        renderDashboard();
+        renderBoards();
+        showNotification('Due Date Updated', formatDate(internalDue));
+    } catch(e) {
+        Object.assign(task, oldSnapshot);
+        showAppleAlert('Due Date Save Failed', /column|schema|cache|internal_due_date/i.test(e.message || '') ? 'Please run the deadline Supabase SQL migration first.' : e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+function getActiveBoardTasksForCurrentUser() {
+    let data = (globalData || []).filter(d =>
+        String(d.status || '').toLowerCase() === 'approved' &&
+        normalizeWorkStatus(d.work_status) !== 'done'
+    );
+    return filterTasksForCurrentAccess(data);
+}
+
+function getBulkInternalDuePreviewRows() {
+    return getInternalDueBackfillRows(getActiveBoardTasksForCurrentUser());
+}
+
+function openBulkInternalDueModal(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    if (!hasDeadlineEditAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    pendingBulkInternalDueRows = getBulkInternalDuePreviewRows();
+    const canGenerate = pendingBulkInternalDueRows.filter(row => row.can_generate);
+    const cannotGenerate = pendingBulkInternalDueRows.filter(row => !row.can_generate);
+    const visibleRows = pendingBulkInternalDueRows.slice(0, 12);
+    openSettingsDialog({
+        kind: 'bulk-internal-due',
+        mode: 'drawer',
+        icon: 'calendar-plus',
+        title: 'Generate Internal Due Dates',
+        description: 'Preview suggested due dates before saving them to active tasks.',
+        body: `
+            <div class="bulk-due-summary">
+                <div><span>Active missing</span><strong>${pendingBulkInternalDueRows.length}</strong></div>
+                <div><span>Can generate</span><strong>${canGenerate.length}</strong></div>
+                <div><span>Needs review</span><strong>${cannotGenerate.length}</strong></div>
+            </div>
+            <div class="deadline-modal-warning show">Simple ad-hoc tasks use 1 working day. Monthly, video, deck, campaign or multi-deliverable tasks use 2. Weekends are skipped.</div>
+            <div class="bulk-due-table">
+                <div class="bulk-due-head"><span>Job</span><span>Client</span><span>Suggested</span><span>Status</span></div>
+                ${visibleRows.map(row => `
+                    <div class="bulk-due-row ${row.can_generate ? '' : 'needs-review'}">
+                        <span><strong>${escapeHtml(row.job_id)}</strong><small>${escapeHtml(row.title)}</small></span>
+                        <span>${row.client_deadline ? formatDate(row.client_deadline) : '-'}</span>
+                        <span>${row.suggested_internal_due ? formatDate(row.suggested_internal_due) : '-'}</span>
+                        <span>${escapeHtml(row.status)} · ${row.buffer_days}d</span>
+                    </div>
+                `).join('') || '<div class="settings-empty-note">No active tasks are missing internal due dates.</div>'}
+            </div>
+            ${pendingBulkInternalDueRows.length > visibleRows.length ? `<div class="settings-empty-note">${pendingBulkInternalDueRows.length - visibleRows.length} more task(s) included in this preview.</div>` : ''}
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Cancel</button>
+            <button type="button" id="btnBulkInternalDue" class="settings-primary-btn" ${canGenerate.length ? '' : 'disabled'} onclick="submitBulkGenerateInternalDueDates()"><i data-lucide="calendar-plus"></i><span>Generate Dates</span></button>
+        `
+    });
+}
+
+async function submitBulkGenerateInternalDueDates() {
+    if (!hasDeadlineEditAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const rows = (pendingBulkInternalDueRows || []).filter(row => row.can_generate);
+    if (!rows.length) return showAppleAlert('Nothing To Generate', 'No tasks have both a client deadline and a valid suggested internal due date.');
+    const btn = document.getElementById('btnBulkInternalDue');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Generating...</span>';
+        refreshIcons();
+    }
+
+    const errors = [];
+    let saved = 0;
+    for (const row of rows) {
+        const task = row.task;
+        const payload = {
+            internal_due_date: row.suggested_internal_due,
+            original_internal_due_date: getTaskOriginalInternalDueDate(task) || row.suggested_internal_due,
+            internal_due_source: 'migrated',
+            internal_due_manually_adjusted: false,
+            latest_deadline_change_reason: `Bulk generated from client deadline (${row.buffer_days} working day buffer)`
+        };
+        const fallbackPayload = { ...payload };
+        delete fallbackPayload.internal_due_source;
+        delete fallbackPayload.internal_due_manually_adjusted;
+        try {
+            await saveCreativeRequestStatusPayload(row.job_id, payload, fallbackPayload);
+            Object.assign(task, payload);
+            saved += 1;
+            logTaskActivity(row.job_id, 'internal_due_date_bulk_generated', 'Not set', row.suggested_internal_due, `Generated from Client Deadline using ${row.buffer_days} working-day buffer`, {
+                client_deadline: row.client_deadline,
+                buffer_working_days: row.buffer_days,
+                complexity: row.complexity,
+                generation_status: row.status
+            });
+        } catch(e) {
+            errors.push(`${row.job_id}: ${/column|schema|cache|internal_due_date/i.test(e.message || '') ? 'Run deadline SQL migration first' : e.message}`);
+        }
+    }
+
+    pendingBulkInternalDueRows = [];
+    closeSettingsDialog();
+    renderDashboard();
+    renderBoards();
+    showNotification('Internal Due Dates Generated', `${saved} task${saved === 1 ? '' : 's'} updated`);
+    if (errors.length) {
+        showAppleAlert('Some Dates Not Saved', errors.slice(0, 6).join('\n'));
+    }
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        refreshIcons();
+    }
+}
+
+function formatLocalDateTimeInput(date = new Date()) {
+    const d = new Date(date);
+    if (isNaN(d)) return '';
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+}
+
+function localDateTimeInputToISO(value) {
+    if (!value) return new Date().toISOString();
+    const d = new Date(value);
+    return isNaN(d) ? new Date().toISOString() : d.toISOString();
+}
+
+function renderTeamMemberOptions(preferredName = '') {
+    const rows = typeof getActiveTeamMembers === 'function' ? getActiveTeamMembers() : [];
+    const members = rows.length ? rows : [...new Set([...(allStaffMY || []), ...(allStaffID || []), ...(PIC_LIST || [])])].map(name => ({ name, region: isIndonesiaCreativeName(name) ? 'Indonesia' : 'Malaysia' }));
+    const grouped = {};
+    members.filter(member => member?.name).forEach(member => {
+        const region = member.region || 'Other';
+        if (!grouped[region]) grouped[region] = [];
+        grouped[region].push(member.name);
+    });
+    return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([region, names]) => `
+        <optgroup label="${escapeHtml(region)}">
+            ${[...new Set(names)].sort((a, b) => a.localeCompare(b)).map(name => `<option value="${escapeHtml(name)}" ${normalizeNameKey(name) === normalizeNameKey(preferredName) ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
+        </optgroup>
+    `).join('');
+}
+
+function cancelWorkflowDialog(jobID, skipModal = false) {
+    closeSettingsDialog();
+    renderBoards();
+    if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+    if (!skipModal && jobID) openDetailModal(jobID, true);
+}
+
+function resolveClientReviewFollowUpOwner(task = {}) {
+    const candidates = [
+        task.client_servicing_pic,
+        getClientFollowUpOwner(task),
+        task.requester_name,
+        task.project_owner,
+        task.approver,
+        getCurrentUserName()
+    ].map(value => String(value || '').trim()).filter(Boolean);
+
+    const activeMembers = getActiveTeamMembers();
+    for (const candidate of candidates) {
+        const activeMatch = activeMembers.find(member => normalizeNameKey(member.name) === normalizeNameKey(candidate));
+        if (activeMatch) return activeMatch.name;
+    }
+    return candidates[0] || 'Admin';
+}
+
+function getClientReviewAutomationKey(task = {}, startedAt = '') {
+    const source = startedAt || getClientReviewStartedAt(task) || task.last_moved_at || task.created_at || '';
+    return `client-review-auto:${task.job_id || 'unknown'}:${String(source).replace(/[^0-9a-z]/gi, '').slice(0, 24)}`;
+}
+
+async function autoMoveClientReviewToAwaiting(jobID, options = {}) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    if (!isTaskClientReview(job)) return showAppleAlert('Not In Client Review', 'This task is no longer in Client Review.');
+
+    const age = getClientReviewAge(job);
+    const automated = options.source === 'system_automation' || options.source === 'browser_automation';
+    if (!options.skipConfirm) {
+        const confirmed = await showAppleConfirm(
+            'Move To Awaiting Client?',
+            `${job.client_name || job.job_id} has been in Client Review for ${age.workingDays ?? 0} working day(s). Move it to Awaiting Client and set the next follow-up?`,
+            { icon: 'message-square-clock', tone: 'default', confirmText: 'Move', cancelText: 'Cancel' }
+        );
+        if (!confirmed) return;
+    }
+
+    const nowISO = new Date().toISOString();
+    const followUp = addWorkingDays(nowISO, 1);
+    const owner = resolveClientReviewFollowUpOwner(job);
+    const note = options.note || `No client response after ${age.workingDays ?? 0} working day(s).`;
+    const automationKey = getClientReviewAutomationKey(job, age.startAt);
+    const oldSnapshot = { ...job };
+    const oldStatus = job.work_status || 'Client Review';
+    const payload = {
+        work_status: WORK_STATUS_AWAITING_CLIENT,
+        last_moved_at: nowISO,
+        client_waiting_since: nowISO,
+        client_waiting_reason: CLIENT_REVIEW_DEFAULT_WAITING_REASON,
+        client_follow_up_date: followUp,
+        client_follow_up_owner: owner,
+        client_waiting_note: note,
+        client_review_ended_at: nowISO,
+        client_review_auto_move_enabled: true
+    };
+    if (automated) payload.client_review_auto_moved_at = nowISO;
+    const fallbackPayload = {
+        work_status: WORK_STATUS_AWAITING_CLIENT,
+        last_moved_at: nowISO,
+        client_waiting_since: nowISO,
+        client_waiting_reason: CLIENT_REVIEW_DEFAULT_WAITING_REASON,
+        client_follow_up_date: followUp,
+        client_follow_up_owner: owner,
+        client_waiting_note: note
+    };
+
+    try {
+        Object.assign(job, payload);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        closeSettingsDialog();
+
+        const result = await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
+        try {
+            const { data: existingPeriods } = await supabaseClient
+                .from('task_client_waiting_periods')
+                .select('id')
+                .eq('job_id', jobID)
+                .is('waiting_ended_at', null)
+                .limit(1);
+            if (!existingPeriods?.length) {
+                await supabaseClient.from('task_client_waiting_periods').insert([{
+                    job_id: jobID,
+                    waiting_reason: CLIENT_REVIEW_DEFAULT_WAITING_REASON,
+                    waiting_note: note,
+                    waiting_started_at: nowISO,
+                    follow_up_date: followUp,
+                    follow_up_owner: owner,
+                    created_by: automated ? 'System automation' : getCurrentActor()
+                }]);
+            }
+        } catch(e) {
+            console.warn('Client waiting period history saved via activity log only:', e.message);
+        }
+
+        await logTaskActivity(
+            jobID,
+            automated ? 'client_review_auto_moved' : 'client_review_manual_moved_to_awaiting',
+            oldStatus,
+            WORK_STATUS_AWAITING_CLIENT,
+            automated ? 'Automatically moved from Client Review to Awaiting Client.' : note,
+            {
+                automation_key: automationKey,
+                automation_rule: `${CLIENT_REVIEW_WINDOW_DAYS}_working_day_client_review`,
+                review_started_at: age.startAt,
+                review_working_days: age.workingDays,
+                waiting_reason: CLIENT_REVIEW_DEFAULT_WAITING_REASON,
+                follow_up_owner: owner,
+                follow_up_date: followUp,
+                executed_at: nowISO,
+                saved_full_payload: result.savedFullPayload,
+                source: options.source || 'manual_admin'
+            }
+        );
+        showNotification('Moved To Awaiting Client', owner);
+        if (document.getElementById('globalDetailModal')?.classList.contains('show')) openDetailModal(jobID, true);
+    } catch(e) {
+        Object.assign(job, oldSnapshot);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        showAppleAlert('Client Review Move Failed', /column|schema|cache|client_review|client_waiting/i.test(e.message || '') ? 'Please run supabase-client-review-aging.sql in Supabase SQL Editor first.' : e.message);
+    }
+}
+
+async function undoClientReviewAutoMove(jobID) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    if (!isTaskAwaitingClient(job) || !wasClientReviewAutoMoved(job)) {
+        return showAppleAlert('Undo Not Available', 'This task was not auto-moved from Client Review.');
+    }
+
+    const reason = await showApplePrompt('Undo Auto Move', 'Add a short reason for moving this task back to Client Review:', false);
+    if (!reason) return;
+
+    const nowISO = new Date().toISOString();
+    const snoozeDate = addWorkingDays(nowISO, 1);
+    const reviewStart = getClientReviewStartedAt(job) || job.review_started_at || nowISO;
+    const oldSnapshot = { ...job };
+    const payload = {
+        work_status: 'Client Review',
+        last_moved_at: nowISO,
+        review_started_at: reviewStart,
+        client_review_started_at: reviewStart,
+        client_review_ended_at: null,
+        client_review_auto_moved_at: null,
+        client_review_auto_move_enabled: true,
+        client_review_auto_move_exempt: false,
+        client_review_exemption_reason: `Undo auto move: ${reason}`,
+        client_review_audit_required: false,
+        auto_move_snoozed_until: localDateTimeInputToISO(`${snoozeDate}T23:59`),
+        client_waiting_since: null,
+        client_waiting_reason: null,
+        client_follow_up_date: null,
+        client_follow_up_owner: null,
+        client_waiting_note: null
+    };
+    const fallbackPayload = { work_status: 'Client Review', last_moved_at: nowISO, review_started_at: reviewStart };
+
+    try {
+        Object.assign(job, payload);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+
+        const result = await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
+        try {
+            await supabaseClient
+                .from('task_client_waiting_periods')
+                .update({
+                    waiting_ended_at: nowISO,
+                    resolved_by: getCurrentActor(),
+                    resolution_status: 'Client Review',
+                    resolution_note: `Auto move undone: ${reason}`
+                })
+                .eq('job_id', jobID)
+                .is('waiting_ended_at', null);
+        } catch(e) {
+            console.warn('Auto move undo waiting period close saved via activity log only:', e.message);
+        }
+
+        await logTaskActivity(jobID, 'client_review_auto_move_undone', WORK_STATUS_AWAITING_CLIENT, 'Client Review', reason, {
+            restored_client_review_started_at: reviewStart,
+            auto_move_snoozed_until: payload.auto_move_snoozed_until,
+            saved_full_payload: result.savedFullPayload
+        });
+        if (document.getElementById('globalDetailModal')?.classList.contains('show')) openDetailModal(jobID, true);
+        showNotification('Auto Move Undone', 'Client Review restored');
+    } catch(e) {
+        Object.assign(job, oldSnapshot);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        showAppleAlert('Undo Failed', /column|schema|cache|client_review|auto_move/i.test(e.message || '') ? 'Please run supabase-client-review-aging.sql in Supabase SQL Editor first.' : e.message);
+    }
+}
+
+function recordClientReviewResponse(jobID) {
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    if (!isTaskClientReview(job)) return showAppleAlert('Not In Client Review', 'This task is no longer in Client Review.');
+    if (!canRecordClientReviewResponse(job)) return showAppleAlert('No Access', 'Only admins or assigned creative team members can record a client response.');
+
+    openSettingsDialog({
+        kind: 'client-review-response',
+        mode: 'modal',
+        icon: 'message-circle-check',
+        title: 'Client Response',
+        description: 'This is a structured response. It resets the Client Review timer.',
+        body: `
+            <div class="settings-dialog-form">
+                <label>Response Type
+                    <select id="clientReviewResponseType">
+                        <option value="client_response_recorded">Client replied</option>
+                        <option value="client_approval_recorded">Client approved / confirmed</option>
+                        <option value="client_revision_requested">Client requested revision</option>
+                        <option value="client_assets_received">Client supplied assets</option>
+                    </select>
+                </label>
+                <label>Short Note
+                    <textarea id="clientReviewResponseNote" rows="3" placeholder="Example: Client replied in WhatsApp, waiting for final confirmation."></textarea>
+                </label>
+            </div>
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Cancel</button>
+            <button type="button" id="btnClientReviewResponse" class="settings-primary-btn" onclick="submitClientReviewResponse('${escapeJsString(jobID)}')"><i data-lucide="save"></i><span>Save</span></button>
+        `
+    });
+}
+
+async function submitClientReviewResponse(jobID) {
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const responseType = document.getElementById('clientReviewResponseType')?.value || 'client_response_recorded';
+    const note = document.getElementById('clientReviewResponseNote')?.value.trim() || 'Client response recorded.';
+    const nowISO = new Date().toISOString();
+    const oldSnapshot = { ...job };
+    const oldStart = getClientReviewStartedAt(job);
+    const payload = {
+        review_started_at: nowISO,
+        client_review_started_at: nowISO,
+        client_review_ended_at: null,
+        client_review_meaningful_response_at: nowISO,
+        client_review_auto_moved_at: null,
+        client_review_auto_move_enabled: true,
+        client_review_auto_move_exempt: false,
+        client_review_exemption_reason: null,
+        client_review_audit_required: false,
+        client_review_start_source: 'client_response',
+        auto_move_snoozed_until: null
+    };
+    const fallbackPayload = { review_started_at: nowISO };
+
+    const btn = document.getElementById('btnClientReviewResponse');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Saving...</span>';
+        refreshIcons();
+    }
+
+    try {
+        await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
+        Object.assign(job, payload);
+        await logTaskActivity(jobID, responseType, oldStart || 'No start', nowISO, note, {
+            previous_client_review_started_at: oldStart,
+            new_client_review_started_at: nowISO,
+            resets_client_review_timer: true
+        });
+        closeSettingsDialog();
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        if (document.getElementById('globalDetailModal')?.classList.contains('show')) openDetailModal(jobID, true);
+        showNotification('Client Response Saved', 'Review timer restarted');
+    } catch(e) {
+        Object.assign(job, oldSnapshot);
+        showAppleAlert('Response Save Failed', /column|schema|cache|client_review/i.test(e.message || '') ? 'Please run supabase-client-review-aging.sql in Supabase SQL Editor first.' : e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+function openClientReviewOverrideDialog(jobID) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    if (!isTaskClientReview(job)) return showAppleAlert('Not In Client Review', 'This task is no longer in Client Review.');
+    const age = getClientReviewAge(job);
+    const nextWindow = Math.max(getTaskClientReviewWindowDays(job) + 2, (age.workingDays || 0) + 2);
+    const holdUntil = addWorkingDays(new Date(), 1);
+
+    openSettingsDialog({
+        kind: 'client-review-override',
+        mode: 'modal',
+        icon: 'sliders-horizontal',
+        title: 'Review Control',
+        description: 'Manual override for Client Review aging. A reason is required for reporting.',
+        body: `
+            <div class="settings-dialog-form">
+                <div class="settings-change-list">
+                    <div class="settings-change-row"><span>Current age</span><strong>${age.workingDays ?? '-'} working day(s)</strong></div>
+                    <div class="settings-change-row"><span>Default window</span><strong>${age.windowDays} working day(s)</strong></div>
+                </div>
+                <label>Action
+                    <select id="clientReviewOverrideAction" onchange="updateClientReviewOverrideFields()">
+                        <option value="extend">Extend review window</option>
+                        <option value="hold">Keep in Client Review temporarily</option>
+                        <option value="restart">Restart review timer</option>
+                        <option value="exempt">Exempt from auto-move</option>
+                        <option value="postpone">Mark postponed / paused</option>
+                        <option value="move">Move to Awaiting Client</option>
+                    </select>
+                </label>
+                <label id="clientReviewWindowField">Review Window
+                    <input type="number" id="clientReviewWindowDays" min="1" max="30" value="${nextWindow}">
+                </label>
+                <label id="clientReviewHoldField">Hold Until
+                    <input type="date" id="clientReviewHoldUntil" value="${holdUntil}">
+                </label>
+                <label>Reason
+                    <textarea id="clientReviewOverrideReason" rows="3" placeholder="Why are we overriding the automation?"></textarea>
+                </label>
+            </div>
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Cancel</button>
+            <button type="button" id="btnClientReviewOverride" class="settings-primary-btn" onclick="submitClientReviewOverride('${escapeJsString(jobID)}')"><i data-lucide="save"></i><span>Save</span></button>
+        `
+    });
+    updateClientReviewOverrideFields();
+}
+
+function updateClientReviewOverrideFields() {
+    const action = document.getElementById('clientReviewOverrideAction')?.value || 'extend';
+    const windowField = document.getElementById('clientReviewWindowField');
+    const holdField = document.getElementById('clientReviewHoldField');
+    if (windowField) windowField.style.display = action === 'extend' ? 'grid' : 'none';
+    if (holdField) holdField.style.display = action === 'hold' ? 'grid' : 'none';
+}
+
+async function submitClientReviewOverride(jobID) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    if (!isTaskClientReview(job)) return showAppleAlert('Not In Client Review', 'This task is no longer in Client Review.');
+
+    const action = document.getElementById('clientReviewOverrideAction')?.value || 'extend';
+    const reason = document.getElementById('clientReviewOverrideReason')?.value.trim() || '';
+    if (!reason) return showAppleAlert('Reason Required', 'Please add a short reason for reporting.');
+    if (action === 'move') {
+        closeSettingsDialog();
+        return autoMoveClientReviewToAwaiting(jobID, { source: 'manual_override', note: reason });
+    }
+
+    const nowISO = new Date().toISOString();
+    const oldSnapshot = { ...job };
+    const payload = {
+        client_review_auto_move_enabled: true,
+        client_review_auto_move_exempt: false,
+        client_review_exemption_reason: reason,
+        client_review_audit_required: false
+    };
+
+    if (action === 'extend') {
+        payload.client_review_window_days = Math.max(1, Number(document.getElementById('clientReviewWindowDays')?.value || CLIENT_REVIEW_WINDOW_DAYS));
+        payload.auto_move_snoozed_until = null;
+    } else if (action === 'hold') {
+        const holdDate = document.getElementById('clientReviewHoldUntil')?.value || addWorkingDays(nowISO, 1);
+        payload.auto_move_snoozed_until = localDateTimeInputToISO(`${holdDate}T23:59`);
+    } else if (action === 'restart') {
+        payload.review_started_at = nowISO;
+        payload.client_review_started_at = nowISO;
+        payload.client_review_start_source = 'manual_restart';
+        payload.client_review_meaningful_response_at = null;
+        payload.auto_move_snoozed_until = null;
+    } else if (action === 'exempt' || action === 'postpone') {
+        payload.client_review_auto_move_enabled = false;
+        payload.client_review_auto_move_exempt = true;
+        payload.client_review_exemption_reason = `${action === 'postpone' ? 'Postponed: ' : ''}${reason}`;
+        payload.auto_move_snoozed_until = null;
+    }
+
+    const btn = document.getElementById('btnClientReviewOverride');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Saving...</span>';
+        refreshIcons();
+    }
+
+    try {
+        await saveCreativeRequestStatusPayload(jobID, payload);
+        Object.assign(job, payload);
+        await logTaskActivity(jobID, 'client_review_override', action, job.work_status || 'Client Review', reason, {
+            action,
+            window_days: payload.client_review_window_days || getTaskClientReviewWindowDays(job),
+            auto_move_snoozed_until: payload.auto_move_snoozed_until || '',
+            auto_move_exempt: String(payload.client_review_auto_move_exempt)
+        });
+        closeSettingsDialog();
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        if (document.getElementById('globalDetailModal')?.classList.contains('show')) openDetailModal(jobID, true);
+        showNotification('Review Control Saved', action);
+    } catch(e) {
+        Object.assign(job, oldSnapshot);
+        showAppleAlert('Override Failed', /column|schema|cache|client_review|auto_move/i.test(e.message || '') ? 'Please run supabase-client-review-aging.sql in Supabase SQL Editor first.' : e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+function getClientReviewAuditTasks() {
+    return (globalData || [])
+        .filter(task => String(task.status || '').toLowerCase() === 'approved' && isTaskClientReview(task))
+        .map(task => ({ task, age: getClientReviewAge(task), latestNote: getLatestTaskNote(task) }))
+        .filter(row => row.age.auditRequired || row.age.workingDays === null || row.age.workingDays >= CLIENT_REVIEW_WARNING_DAY)
+        .sort((a, b) => (b.age.workingDays || 0) - (a.age.workingDays || 0));
+}
+
+function openClientReviewAuditDialog() {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const rows = getClientReviewAuditTasks();
+    const visible = rows.slice(0, 16);
+    openSettingsDialog({
+        kind: 'client-review-audit',
+        mode: 'drawer',
+        icon: 'search-check',
+        title: 'Client Review Audit',
+        description: rows.length ? `${rows.length} Client Review task(s) need attention before automation cleanup.` : 'No stale Client Review tasks found.',
+        body: `
+            <div class="client-review-audit-list">
+                ${visible.map(({ task, age, latestNote }) => `
+                    <div class="client-review-audit-row client-review-${age.urgency}">
+                        <div>
+                            <strong>${escapeHtml(task.job_id)} · ${escapeHtml(task.client_name || '')}</strong>
+                            <span>${escapeHtml(task.project_title || '')}</span>
+                            <small>${age.workingDays ?? '-'} working day(s) · ${escapeHtml(task.requester_name || 'No requester')} · ${escapeHtml(getAssigneeDisplay(task.assignee))}</small>
+                            ${latestNote?.note_text ? `<em>${escapeHtml(latestNote.note_text.slice(0, 110))}${latestNote.note_text.length > 110 ? '...' : ''}</em>` : ''}
+                        </div>
+                        <div class="client-review-audit-actions">
+                            <button type="button" class="settings-link-btn" onclick="closeSettingsDialog(); openDetailModal('${escapeJsString(task.job_id)}')">Review</button>
+                            <button type="button" class="settings-link-btn" onclick="openClientReviewOverrideDialog('${escapeJsString(task.job_id)}')">Keep</button>
+                            <button type="button" class="settings-link-btn" onclick="markClientReviewAuditDone('${escapeJsString(task.job_id)}')">Done</button>
+                            <button type="button" class="settings-link-btn danger" onclick="autoMoveClientReviewToAwaiting('${escapeJsString(task.job_id)}', { source: 'manual_audit' })">Move</button>
+                        </div>
+                    </div>
+                `).join('') || '<div class="settings-empty-state"><i data-lucide="check-circle"></i><strong>Clean right now</strong><span>No Client Review tasks are at the warning threshold.</span></div>'}
+            </div>
+            ${rows.length > visible.length ? `<div class="settings-empty-note">${rows.length - visible.length} more task(s) hidden. Use Request Status > Review Aging to filter the full list.</div>` : ''}
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="closeSettingsDialog()">Close</button>
+            <button type="button" class="settings-primary-btn settings-admin-only" onclick="runClientReviewAgingCheck()"><i data-lucide="play"></i><span>Run Check</span></button>
+        `
+    });
+}
+
+async function markClientReviewAuditDone(jobID) {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const confirmed = await showAppleConfirm(
+        'Mark Done?',
+        `${job.client_name || job.job_id} will be closed as Done. Use this only when the work is already completed.`,
+        { icon: 'check-circle', tone: 'default', confirmText: 'Mark Done', cancelText: 'Cancel' }
+    );
+    if (!confirmed) return;
+    closeSettingsDialog();
+    await updateWorkStatusOptimistic(jobID, 'Done', true);
+}
+
+async function runClientReviewAgingCheck() {
+    if (!hasAdminAccess()) return showAppleAlert('Admin Only', 'Please unlock Admin Access first.');
+    if (clientReviewAgingCheckInFlight) return;
+    clientReviewAgingCheckInFlight = true;
+    const btn = document.getElementById('btnRunClientReviewAging') || document.querySelector('.settings-dialog-footer .settings-primary-btn');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Checking...</span>';
+        refreshIcons();
+    }
+
+    try {
+        const { data, error } = await supabaseClient.rpc('run_client_review_aging_check');
+        if (error) throw error;
+        await fetchSupabaseData(true, true);
+        const rows = Array.isArray(data) ? data : [];
+        const moved = rows.filter(row => String(row.action_taken || '').toLowerCase() === 'moved').length;
+        const audited = rows.filter(row => String(row.action_taken || '').toLowerCase().includes('audit')).length;
+        showNotification('Aging Check Complete', `${moved} moved · ${audited} audit`);
+        if (document.getElementById('settingsDialogOverlay')?.classList.contains('show')) openClientReviewAuditDialog();
+    } catch(e) {
+        showAppleAlert('Aging Check Needs SQL', /function|rpc|schema|run_client_review_aging_check/i.test(e.message || '') ? 'Run supabase-client-review-aging.sql in Supabase SQL Editor to enable the backend function and schedule.' : e.message);
+    } finally {
+        clientReviewAgingCheckInFlight = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+function stripDeadlinePayloadFields(payload = {}) {
+    const clean = { ...payload };
+    [
+        'client_deadline',
+        'original_client_deadline',
+        'internal_due_date',
+        'original_internal_due_date',
+        'internal_due_source',
+        'internal_due_manually_adjusted',
+        'latest_deadline_change_reason',
+        'deadline_extension_count',
+        'client_review_started_at',
+        'client_review_ended_at',
+        'client_review_window_days',
+        'client_review_auto_move_enabled',
+        'client_review_auto_move_exempt',
+        'client_review_exemption_reason',
+        'client_review_auto_moved_at',
+        'client_review_meaningful_response_at',
+        'client_review_audit_required',
+        'client_review_start_source',
+        'auto_move_snoozed_until'
+    ].forEach(key => delete clean[key]);
+    return clean;
+}
+
+async function saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload = null) {
+    const { error } = await supabaseClient.from('creative_requests').update(payload).eq('job_id', jobID);
+    if (!error) return { savedFullPayload: true };
+    if (fallbackPayload && /column|schema|cache|client_waiting|client_follow_up|completed_at|client_deadline|internal_due|original_|deadline_change|assigned_pic|assignment_updated/i.test(error.message || '')) {
+        const cleanFallbackPayload = stripPICAssignmentPayloadFields(fallbackPayload);
+        const retry = await supabaseClient.from('creative_requests').update(cleanFallbackPayload).eq('job_id', jobID);
+        if (retry.error && /column|schema|cache|client_deadline|internal_due|original_|deadline_change|assigned_pic|assignment_updated/i.test(retry.error.message || '')) {
+            const minimal = stripDeadlinePayloadFields(cleanFallbackPayload);
+            const secondRetry = await supabaseClient.from('creative_requests').update(minimal).eq('job_id', jobID);
+            if (secondRetry.error) throw secondRetry.error;
+            return { savedFullPayload: false, originalError: error };
+        }
+        if (retry.error) throw retry.error;
+        return { savedFullPayload: false, originalError: error };
+    }
+    throw error;
+}
+
+function openAwaitingClientDialog(jobID, skipModal = false) {
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const preferredOwner = getCurrentUserName() || job.requester_name || '';
+    const defaultFollowUp = addWorkingDays(new Date(), 1);
+    openSettingsDialog({
+        kind: 'awaiting-client',
+        mode: 'modal',
+        icon: 'message-square-clock',
+        title: 'Move to Awaiting Client',
+        description: 'Capture what is blocking the team and who owns the next follow-up.',
+        backdropClose: false,
+        body: `
+            <div class="settings-dialog-form">
+                <label>Reason
+                    <select id="awaitingClientReason">
+                        ${CLIENT_WAITING_REASONS.map(reason => `<option value="${escapeHtml(reason)}">${escapeHtml(reason)}</option>`).join('')}
+                    </select>
+                </label>
+                <label>Waiting Since
+                    <input type="datetime-local" id="awaitingClientSince" value="${formatLocalDateTimeInput(new Date())}">
+                </label>
+                <label>Next Follow-up
+                    <input type="date" id="awaitingClientFollowUp" value="${toDateInputValue(defaultFollowUp)}">
+                </label>
+                <label>Follow-up Owner
+                    <select id="awaitingClientOwner"><option value="">Select owner...</option>${renderTeamMemberOptions(preferredOwner)}</select>
+                </label>
+                <label>Note
+                    <textarea id="awaitingClientNote" rows="3" placeholder="What are we waiting for?"></textarea>
+                </label>
+            </div>
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="cancelWorkflowDialog('${jobID}', ${skipModal})">Cancel</button>
+            <button type="button" id="btnAwaitingClientSave" class="settings-primary-btn" onclick="submitAwaitingClientMove('${jobID}', ${skipModal})"><i data-lucide="save"></i><span>Save</span></button>
+        `
+    });
+}
+
+async function submitAwaitingClientMove(jobID, skipModal = false) {
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const reason = document.getElementById('awaitingClientReason')?.value || 'Awaiting client feedback';
+    const since = localDateTimeInputToISO(document.getElementById('awaitingClientSince')?.value);
+    const followUp = document.getElementById('awaitingClientFollowUp')?.value || '';
+    const owner = document.getElementById('awaitingClientOwner')?.value || '';
+    const note = document.getElementById('awaitingClientNote')?.value.trim() || '';
+    if (!owner) return showAppleAlert('Missing Owner', 'Please select a follow-up owner.');
+
+    const btn = document.getElementById('btnAwaitingClientSave');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Saving...</span>';
+        refreshIcons();
+    }
+
+    const oldSnapshot = { ...job };
+    const oldStatus = job.work_status || 'Not started';
+    const nowISO = new Date().toISOString();
+    const payload = {
+        work_status: WORK_STATUS_AWAITING_CLIENT,
+        last_moved_at: nowISO,
+        client_waiting_since: since,
+        client_waiting_reason: reason,
+        client_follow_up_date: followUp || null,
+        client_follow_up_owner: owner,
+        client_waiting_note: note || null
+    };
+    if (normalizeWorkStatus(oldStatus) === 'client review') {
+        payload.client_review_ended_at = nowISO;
+        payload.client_review_auto_move_enabled = true;
+    }
+    const fallbackPayload = { work_status: WORK_STATUS_AWAITING_CLIENT, last_moved_at: nowISO };
+
+    try {
+        Object.assign(job, payload);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        closeSettingsDialog();
+        if (!skipModal) openDetailModal(jobID, true);
+
+        const result = await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
+        try {
+            await supabaseClient.from('task_client_waiting_periods').insert([{
+                job_id: jobID,
+                waiting_reason: reason,
+                waiting_note: note,
+                waiting_started_at: since,
+                follow_up_date: followUp || null,
+                follow_up_owner: owner,
+                created_by: getCurrentActor()
+            }]);
+        } catch(e) {
+            console.warn('Client waiting period history saved via activity log only:', e.message);
+        }
+        logTaskActivity(jobID, 'entered_awaiting_client', oldStatus, WORK_STATUS_AWAITING_CLIENT, note || reason, {
+            reason,
+            waiting_since: since,
+            follow_up_date: followUp,
+            follow_up_owner: owner,
+            saved_full_payload: result.savedFullPayload
+        });
+        showNotification('Client Blocked', owner);
+    } catch(e) {
+        Object.assign(job, oldSnapshot);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        showAppleAlert('Status Update Error', e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
+    }
+}
+
+function openResolveAwaitingClientDialog(jobID, selectedStatus = 'Client Review', skipModal = false) {
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const safeSelected = AWAITING_CLIENT_EXIT_STATUSES.includes(selectedStatus) ? selectedStatus : 'Client Review';
+    openSettingsDialog({
+        kind: 'resolve-awaiting-client',
+        mode: 'modal',
+        icon: 'circle-check-big',
+        title: 'Client blocker resolved?',
+        description: 'Close the waiting period and choose where this task should continue.',
+        backdropClose: false,
+        body: `
+            <div class="settings-dialog-form">
+                <div class="settings-change-list">
+                    <div class="settings-change-row"><span>Waiting</span><strong>${getClientWaitingDays(job)} day(s)</strong></div>
+                    <div class="settings-change-row"><span>Reason</span><strong>${escapeHtml(getClientWaitingReason(job))}</strong></div>
+                </div>
+                <label>Move To
+                    <select id="resolveAwaitingStatus">
+                        ${AWAITING_CLIENT_EXIT_STATUSES.map(status => `<option value="${status}" ${status === safeSelected ? 'selected' : ''}>${status}</option>`).join('')}
+                    </select>
+                </label>
+                <label>Resolution Note
+                    <textarea id="resolveAwaitingNote" rows="3" placeholder="What did the client/requester provide?"></textarea>
+                </label>
+            </div>
+        `,
+        footer: `
+            <button type="button" class="settings-action-btn" onclick="cancelWorkflowDialog('${jobID}', ${skipModal})">Cancel</button>
+            <button type="button" id="btnResolveAwaitingSave" class="settings-primary-btn" onclick="submitResolveAwaitingClient('${jobID}', ${skipModal})"><i data-lucide="save"></i><span>Resolve</span></button>
+        `
+    });
+}
+
+async function submitResolveAwaitingClient(jobID, skipModal = false) {
+    const job = globalData.find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const destination = document.getElementById('resolveAwaitingStatus')?.value || 'Client Review';
+    const note = document.getElementById('resolveAwaitingNote')?.value.trim() || '';
+    const btn = document.getElementById('btnResolveAwaitingSave');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Saving...</span>';
+        refreshIcons();
+    }
+
+    const oldSnapshot = { ...job };
+    const oldStatus = job.work_status || WORK_STATUS_AWAITING_CLIENT;
+    const nowISO = new Date().toISOString();
+    const waitingDays = getClientWaitingDays(job);
+    const payload = {
+        work_status: destination,
+        last_moved_at: nowISO,
+        client_waiting_since: null,
+        client_waiting_reason: null,
+        client_follow_up_date: null,
+        client_follow_up_owner: null,
+        client_waiting_note: null
+    };
+    if (destination === 'Client Review') {
+        payload.review_started_at = nowISO;
+        payload.client_review_started_at = nowISO;
+        payload.client_review_ended_at = null;
+        payload.client_review_auto_moved_at = null;
+        payload.client_review_meaningful_response_at = null;
+        payload.client_review_auto_move_enabled = true;
+        payload.client_review_auto_move_exempt = false;
+        payload.client_review_exemption_reason = null;
+        payload.client_review_audit_required = false;
+        payload.client_review_start_source = 'manual_status_change';
+        payload.auto_move_snoozed_until = null;
+    }
+    if (destination === 'Done') {
+        payload.done_at = nowISO;
+        payload.completed_at = nowISO;
+    }
+    const fallbackPayload = { work_status: destination, last_moved_at: nowISO };
+    if (destination === 'Client Review') fallbackPayload.review_started_at = nowISO;
+    if (destination === 'Done') fallbackPayload.done_at = nowISO;
+
+    try {
+        Object.assign(job, payload);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        closeSettingsDialog();
+        if (!skipModal) openDetailModal(jobID, true);
+
+        const result = await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
+        try {
+            await supabaseClient
+                .from('task_client_waiting_periods')
+                .update({ waiting_ended_at: nowISO, resolved_by: getCurrentActor(), resolution_status: destination, resolution_note: note })
+                .eq('job_id', jobID)
+                .is('waiting_ended_at', null);
+        } catch(e) {
+            console.warn('Client waiting period close saved via activity log only:', e.message);
+        }
+        logTaskActivity(jobID, 'left_awaiting_client', oldStatus, destination, note || `Client waiting closed after ${waitingDays} day(s)`, {
+            waiting_days: waitingDays,
+            destination,
+            saved_full_payload: result.savedFullPayload
+        });
+        showNotification('Client Blocker Closed', destination);
+        if (destination === 'Done') firePremiumConfetti();
+    } catch(e) {
+        Object.assign(job, oldSnapshot);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        showAppleAlert('Status Update Error', e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            refreshIcons();
+        }
     }
 }
 
@@ -6989,7 +9821,13 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
     const oldStatus = job ? job.work_status : 'Not started';
 
     // Kalau user pilih status yang sama, abaikan je
-    if (oldStatus === newStatus) return;
+    if (normalizeWorkStatus(oldStatus) === normalizeWorkStatus(newStatus)) return;
+    if (newStatus === WORK_STATUS_AWAITING_CLIENT && !isTaskAwaitingClient(job)) {
+        return openAwaitingClientDialog(jobID, skipModal);
+    }
+    if (isTaskAwaitingClient(job) && newStatus !== WORK_STATUS_AWAITING_CLIENT) {
+        return openResolveAwaitingClientDialog(jobID, newStatus, skipModal);
+    }
 
     let updatePayload = { work_status: newStatus };
     const nowISO = new Date().toISOString();
@@ -7038,10 +9876,39 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
 
     if (newStatus === 'Client Review') {
         updatePayload.review_started_at = nowISO;
+        updatePayload.client_review_started_at = nowISO;
+        updatePayload.client_review_ended_at = null;
+        updatePayload.client_review_auto_moved_at = null;
+        updatePayload.client_review_meaningful_response_at = null;
+        updatePayload.client_review_auto_move_enabled = true;
+        updatePayload.client_review_auto_move_exempt = false;
+        updatePayload.client_review_exemption_reason = null;
+        updatePayload.client_review_audit_required = false;
+        updatePayload.client_review_start_source = 'manual_status_change';
+        updatePayload.auto_move_snoozed_until = null;
         if (job) job.review_started_at = nowISO;
+        if (job) {
+            job.client_review_started_at = nowISO;
+            job.client_review_ended_at = null;
+            job.client_review_auto_moved_at = null;
+            job.client_review_meaningful_response_at = null;
+            job.client_review_auto_move_enabled = true;
+            job.client_review_auto_move_exempt = false;
+            job.client_review_exemption_reason = null;
+            job.client_review_audit_required = false;
+            job.client_review_start_source = 'manual_status_change';
+            job.auto_move_snoozed_until = null;
+        }
     } else if (newStatus === 'Done') {
         updatePayload.done_at = nowISO;
+        updatePayload.completed_at = nowISO;
+        if (normalizeWorkStatus(oldStatus) === 'client review') updatePayload.client_review_ended_at = nowISO;
         if (job) job.done_at = nowISO;
+        if (job) job.completed_at = nowISO;
+        if (job && normalizeWorkStatus(oldStatus) === 'client review') job.client_review_ended_at = nowISO;
+    } else if (normalizeWorkStatus(oldStatus) === 'client review') {
+        updatePayload.client_review_ended_at = nowISO;
+        if (job) job.client_review_ended_at = nowISO;
     }
 
     if (job) {
@@ -7055,8 +9922,9 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
     showNotification('Status Updated', newStatus);
 
     try {
-        const { error } = await supabaseClient.from('creative_requests').update(updatePayload).eq('job_id', jobID);
-        if(error) throw error;
+        const fallbackPayload = { ...updatePayload };
+        delete fallbackPayload.completed_at;
+        await saveCreativeRequestStatusPayload(jobID, updatePayload, fallbackPayload);
         logTaskActivity(jobID, 'status_changed', oldStatus, newStatus, revisionReasonText, { update_payload: updatePayload });
     } catch(e) {
         showAppleAlert("Status Update Error", e.message);
@@ -7235,7 +10103,7 @@ async function loadArchivedJobs() {
                 let mapped = {};
                 for (let k in d) mapped[k.toLowerCase().replace(/[^a-z0-9]/g, '')] = d[k];
                 return {
-                    job_id: mapped.jobid || d.job_id || '', requester_name: mapped.requestername || mapped.name || mapped.requester || d.requester_name || '', region: mapped.region || d.region || '', client_name: mapped.clientname || mapped.client || d.client_name || '', project_title: mapped.projecttitle || mapped.title || d.project_title || '', job_type: mapped.jobtype || mapped.type || d.job_type || '', objective: mapped.objective || d.objective || '', brief: mapped.brief || d.brief || '', deadline: mapped.deadline || d.deadline || '', ref_link: mapped.reflink || mapped.reference || d.ref_link || '', remarks: mapped.remarks || mapped.notes || d.remarks || '', status_notes: mapped.statusnotes || d.status_notes || '', status: (mapped.status || d.status || 'pending').toString().toLowerCase().trim(), assignee: mapped.assignee || mapped.pic || d.assignee || 'Unassigned', playbook_link: mapped.playbooklink || mapped.playbook || d.playbook_link || '', work_status: mapped.workstatus || mapped.progress || d.work_status || 'Not started', revision: mapped.revision || mapped.rev || d.revision || 0, approver: mapped.approver || d.approver || ''
+                    job_id: mapped.jobid || d.job_id || '', requester_name: mapped.requestername || mapped.name || mapped.requester || d.requester_name || '', region: mapped.region || d.region || '', client_name: mapped.clientname || mapped.client || d.client_name || '', project_title: mapped.projecttitle || mapped.title || d.project_title || '', job_type: mapped.jobtype || mapped.type || d.job_type || '', objective: mapped.objective || d.objective || '', brief: mapped.brief || d.brief || '', deadline: mapped.deadline || d.deadline || '', client_deadline: mapped.clientdeadline || d.client_deadline || mapped.deadline || d.deadline || '', original_client_deadline: mapped.originalclientdeadline || d.original_client_deadline || '', internal_due_date: mapped.internalduedate || d.internal_due_date || '', original_internal_due_date: mapped.originalinternalduedate || d.original_internal_due_date || '', completed_at: mapped.completedat || d.completed_at || '', ref_link: mapped.reflink || mapped.reference || d.ref_link || '', remarks: mapped.remarks || mapped.notes || d.remarks || '', status_notes: mapped.statusnotes || d.status_notes || '', status: (mapped.status || d.status || 'pending').toString().toLowerCase().trim(), assignee: mapped.assignee || mapped.pic || d.assignee || 'Unassigned', playbook_link: mapped.playbooklink || mapped.playbook || d.playbook_link || '', work_status: mapped.workstatus || mapped.progress || d.work_status || 'Not started', revision: mapped.revision || mapped.rev || d.revision || 0, approver: mapped.approver || d.approver || ''
                 };
             });
             const combinedData = [...globalData, ...archived];
@@ -7251,9 +10119,10 @@ async function loadArchivedJobs() {
                 const groupedDone = {};
                 doneData.forEach(item => {
                     let sortKey = "0000-00"; let displayLabel = "No Date";
-                    if(item.deadline) {
-                        const d = new Date(item.deadline);
-                        if(!isNaN(d)) {
+                    const groupDate = getTaskCompletedAt(item) || getTaskClientDeadline(item);
+                    if(groupDate) {
+                        const d = parseDateOnly(groupDate);
+                        if(d) {
                             sortKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`;
                             const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
                             displayLabel = `${months[d.getMonth()]} ${d.getFullYear()}`;
@@ -7266,7 +10135,7 @@ async function loadArchivedJobs() {
                 let doneHtml = '<h3 style="color:var(--text-muted); font-size:0.85rem; text-align:center; padding:10px; background:var(--bg-box); border-radius:8px; margin-bottom:20px;">✅ Showing Active + Archived Tasks</h3>';
                 sortedKeys.forEach(key => {
                     const group = groupedDone[key];
-                    group.tasks.sort((a, b) => { let dateA = a.deadline ? new Date(a.deadline) : new Date('9999-12-31'); let dateB = b.deadline ? new Date(b.deadline) : new Date('9999-12-31'); return dateA - dateB; });
+                    group.tasks.sort((a, b) => { let dateA = parseDateOnly(getTaskClientDeadline(a)) || new Date(9999, 11, 31); let dateB = parseDateOnly(getTaskClientDeadline(b)) || new Date(9999, 11, 31); return dateA - dateB; });
                     doneHtml += `<h3 class="month-group-header">${group.label} <span class="month-group-badge">${group.tasks.length} Tasks</span></h3>`;
                     doneHtml += `<div class="project-grid">` + group.tasks.map((item, idx) => generateJobCard(item, true, idx)).join('') + `</div>`;
                 });
@@ -7292,13 +10161,14 @@ function exportToCSV() {
 
     if (doneData.length === 0) return showAppleAlert("Export Failed", "No completed tasks available to export for this region.");
 
-    const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Deadline", "Revision", "Revision Reasons", "Assigned Team", "Playbook Link", "Created At", "Review Started At", "Done At"];
+    const headers = ["Job ID", "Client Name", "Project Title", "Requester", "Region", "Job Type", "Objective", "Client Deadline", "Internal Due Date", "Revision", "Revision Reasons", "Assigned Team", "Playbook Link", "Created At", "Review Started At", "Done At", "Completed At"];
 
     const rows = doneData.map(d => [
-        d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(d.deadline), (d.revision || 0), d.revision_reasons, d.assignee, d.playbook_link,
+        d.job_id, d.client_name, d.project_title, d.requester_name, d.region, d.job_type, d.objective, formatDate(getTaskClientDeadline(d)), formatDate(getTaskEffectiveInternalDueDate(d)), (d.revision || 0), d.revision_reasons, d.assignee, d.playbook_link,
         d.created_at ? new Date(d.created_at).toLocaleString('en-GB') : '',
         d.review_started_at ? new Date(d.review_started_at).toLocaleString('en-GB') : '',
-        d.done_at ? new Date(d.done_at).toLocaleString('en-GB') : ''
+        d.done_at ? new Date(d.done_at).toLocaleString('en-GB') : '',
+        getTaskCompletedAt(d) ? new Date(getTaskCompletedAt(d)).toLocaleString('en-GB') : ''
     ].map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(","));
 
     const csvContent = [headers.join(","), ...rows].join("\n");
@@ -7335,20 +10205,21 @@ function getReportingTasks() {
 }
 
 function getTaskCompletionHours(task) {
-    if (!task.created_at || !task.done_at) return '';
+    const completedAt = getTaskCompletedAt(task);
+    if (!task.created_at || !completedAt) return '';
     const start = new Date(task.created_at);
-    const done = new Date(task.done_at);
+    const done = new Date(completedAt);
     if (isNaN(start) || isNaN(done)) return '';
     return Math.round(((done - start) / (1000 * 60 * 60)) * 10) / 10;
 }
 
 function getTaskOverdueDays(task) {
-    if (!task.deadline) return '';
-    const deadline = new Date(task.deadline);
-    const endDate = task.done_at ? new Date(task.done_at) : new Date();
-    if (isNaN(deadline) || isNaN(endDate)) return '';
-    deadline.setHours(23, 59, 59, 999);
-    const diff = Math.ceil((endDate - deadline) / (1000 * 60 * 60 * 24));
+    const due = getTaskEffectiveInternalDueDate(task);
+    if (!due || isTaskAwaitingClient(task) || isTaskClientReview(task)) return '';
+    const deadline = parseDateOnly(due);
+    const endDate = parseDateOnly(getTaskCompletedAt(task) || new Date());
+    if (!deadline || !endDate) return '';
+    const diff = Math.ceil((endDate - deadline) / 86400000);
     return Math.max(0, diff);
 }
 
@@ -7372,6 +10243,99 @@ function getMonthlyReadyForReport(task) {
     return ready === '' ? '' : ready;
 }
 
+function getLatestDeadlineChangeReason(task) {
+    if (task.latest_deadline_change_reason) return task.latest_deadline_change_reason;
+    const log = getTaskLogs(task.job_id).find(row => row.action_type === 'deadline_changed');
+    return log?.note_text || '';
+}
+
+function getStatusPeriodCount(task, statusName) {
+    const key = normalizeWorkStatus(statusName);
+    const statusLogTypes = new Set(['status_changed', 'entered_awaiting_client', 'left_awaiting_client', 'client_review_auto_moved', 'client_review_manual_moved_to_awaiting', 'client_review_auto_move_undone']);
+    const logs = getTaskLogs(task.job_id).filter(log =>
+        statusLogTypes.has(log.action_type) &&
+        normalizeWorkStatus(log.new_value) === key
+    );
+    if (logs.length) return logs.length;
+    return normalizeWorkStatus(task.work_status) === key ? 1 : 0;
+}
+
+function getClientReviewWorkingDaysForReport(task) {
+    if (isTaskClientReview(task)) {
+        const age = getClientReviewAge(task);
+        return age.workingDays ?? '';
+    }
+    const start = getClientReviewStartedAt(task);
+    const end = getClientReviewEndedAt(task);
+    const value = start && end ? calculateWorkingDaysBetween(start, end) : null;
+    return value === null ? '' : value;
+}
+
+function getClientReviewCalendarDaysForReport(task) {
+    const start = getClientReviewStartedAt(task);
+    const end = isTaskClientReview(task) ? new Date().toISOString() : getClientReviewEndedAt(task);
+    const hours = start && end ? getHoursBetween(start, end) : '';
+    return hours === '' ? '' : Math.round((Number(hours) / 24) * 10) / 10;
+}
+
+function getClientReviewAutoMoveEligibility(task) {
+    if (!isTaskClientReview(task)) return '';
+    const age = getClientReviewAge(task);
+    if (age.auditRequired) return 'audit_required';
+    if (age.urgency === 'missing') return 'missing_review_start';
+    if (age.exempt) return 'exempt';
+    if (age.snoozed) return 'snoozed';
+    if (age.responded) return 'client_response_recorded';
+    if (age.eligibleForAutoMove) return 'eligible';
+    if (age.urgency === 'moving-soon') return 'eligible_after_today';
+    return 'not_yet';
+}
+
+function wasClientReviewAutoMoved(task) {
+    return Boolean(task.client_review_auto_moved_at) || getTaskLogs(task.job_id).some(log => log.action_type === 'client_review_auto_moved');
+}
+
+function getFollowUpOverdueDaysForReport(task) {
+    const diff = getDateOnlyDiffDays(getClientFollowUpDate(task));
+    return diff !== null && diff < 0 ? Math.abs(diff) : '';
+}
+
+function getLatestStatusChangeSource(task) {
+    const log = getTaskLogs(task.job_id).find(row => row.action_type === 'client_review_auto_moved' || row.action_type === 'status_changed' || row.action_type === 'entered_awaiting_client');
+    if (!log) return '';
+    if (log.action_type === 'client_review_auto_moved') return 'automated';
+    if (String(log.actor_name || '').toLowerCase().includes('system')) return 'automated';
+    return 'manual';
+}
+
+function getClientWaitingDaysForReport(task) {
+    let totalHours = 0;
+    const logs = getTaskLogs(task.job_id).filter(log => ['entered_awaiting_client', 'left_awaiting_client'].includes(log.action_type)).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    let openStart = null;
+    logs.forEach(log => {
+        if (log.action_type === 'entered_awaiting_client') openStart = new Date(log.created_at);
+        if (log.action_type === 'left_awaiting_client' && openStart) {
+            const end = new Date(log.created_at);
+            if (!isNaN(openStart) && !isNaN(end)) totalHours += (end - openStart) / 36e5;
+            openStart = null;
+        }
+    });
+    if (isTaskAwaitingClient(task) && getClientWaitingSince(task)) {
+        const start = new Date(getClientWaitingSince(task));
+        if (!isNaN(start)) totalHours += (new Date() - start) / 36e5;
+    }
+    return Math.round((totalHours / 24) * 10) / 10;
+}
+
+function getInternalActiveDaysForReport(task) {
+    const start = new Date(task.approved_at || task.created_at || '');
+    const end = new Date(getTaskCompletedAt(task) || new Date());
+    if (isNaN(start) || isNaN(end)) return '';
+    const totalDays = (end - start) / 86400000;
+    const clientSideDays = Number(getClientWaitingDaysForReport(task) || 0) + Number(getClientReviewCalendarDaysForReport(task) || 0);
+    return Math.max(0, Math.round((totalDays - clientSideDays) * 10) / 10);
+}
+
 function getReportingDataGapRows(tasks) {
     return tasks.map(task => {
         const gaps = [];
@@ -7383,11 +10347,16 @@ function getReportingDataGapRows(tasks) {
         if (!task.requester_name) { gaps.push('requester_name'); recommendations.push('Select/requester name is required.'); }
         if (!task.region) { gaps.push('region'); recommendations.push('Set office/region for regional reporting.'); }
         if (!task.job_type) { gaps.push('job_type'); recommendations.push('Use request type consistently: Monthly, Ad-hoc, Pitch.'); }
-        if (!task.deadline) { gaps.push('deadline'); recommendations.push('Deadline is needed for SLA and overdue reporting.'); }
+        if (!getTaskClientDeadline(task)) { gaps.push('client_deadline'); recommendations.push('Client deadline is needed for final delivery and SLA reporting.'); }
+        if (status === 'approved' && !getTaskEffectiveInternalDueDate(task) && !isTaskAwaitingClient(task) && workStatus !== 'done') { gaps.push('internal_due_date'); recommendations.push('Set internal due date for urgency sorting and PIC workload reporting.'); }
         if (!task.brief) { gaps.push('brief'); recommendations.push('Brief quality affects revision and cycle-time analysis.'); }
         if (status === 'approved' && (!task.assignee || task.assignee === 'Unassigned')) { gaps.push('assignee'); recommendations.push('Assign a PIC before work starts.'); }
         if (status === 'approved' && !task.playbook_link) { gaps.push('playbook_link'); recommendations.push('Add playbook/working link for audit and handover.'); }
         if (workStatus === 'done' && !task.done_at) { gaps.push('done_at'); recommendations.push('Capture done_at when closing task.'); }
+        if (workStatus === 'done' && !getTaskCompletedAt(task)) { gaps.push('completed_at'); recommendations.push('Capture completed_at for lifecycle reporting.'); }
+        if (isTaskClientReview(task) && !getClientReviewStartedAt(task)) { gaps.push('client_review_started_at'); recommendations.push('Record when Client Review started before automation can act.'); }
+        if (isTaskAwaitingClient(task) && !getClientFollowUpDate(task)) { gaps.push('client_follow_up_date'); recommendations.push('Set a follow-up date for every client-blocked task.'); }
+        if (isTaskAwaitingClient(task) && !getClientFollowUpOwner(task)) { gaps.push('client_follow_up_owner'); recommendations.push('Assign an owner for client follow-up.'); }
         if (noteCount === 0 && status === 'approved') { gaps.push('notes_history'); recommendations.push('Add at least one task note for monthly reporting context.'); }
         if (Number(task.revision || 0) > 0 && !task.revision_reasons) { gaps.push('revision_reasons'); recommendations.push('Record revision reasons to identify brief/client/workflow issues.'); }
 
@@ -7415,6 +10384,9 @@ function buildTeamSummaryRows(tasks) {
                     active_tasks: 0,
                     completed_tasks: 0,
                     overdue_tasks: 0,
+                    client_blocked_tasks: 0,
+                    client_review_aging_tasks: 0,
+                    missing_internal_due_tasks: 0,
                     total_revisions: 0,
                     avg_completion_hours: '',
                     job_types: {},
@@ -7428,6 +10400,9 @@ function buildTeamSummaryRows(tasks) {
             else if (String(task.status || '').toLowerCase() === 'approved') row.active_tasks += 1;
 
             if (Number(getTaskOverdueDays(task)) > 0) row.overdue_tasks += 1;
+            if (isTaskAwaitingClient(task)) row.client_blocked_tasks += 1;
+            if (isClientReviewAgingTask(task)) row.client_review_aging_tasks = (row.client_review_aging_tasks || 0) + 1;
+            if (String(task.status || '').toLowerCase() === 'approved' && !isDone && !isTaskAwaitingClient(task) && !getTaskEffectiveInternalDueDate(task)) row.missing_internal_due_tasks += 1;
             row.total_revisions += Number(task.revision || 0);
             row.job_types[task.job_type || 'Unknown'] = (row.job_types[task.job_type || 'Unknown'] || 0) + 1;
             row.regions[task.region || 'Unknown'] = (row.regions[task.region || 'Unknown'] || 0) + 1;
@@ -7451,7 +10426,10 @@ function buildTeamSummaryRows(tasks) {
 function buildStatusAgingRows(tasks) {
     const rows = [];
     tasks.forEach(task => {
-        const logs = getTaskLogs(task.job_id).filter(log => log.action_type === 'status_changed').sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        const statusLogTypes = new Set(['status_changed', 'entered_awaiting_client', 'left_awaiting_client', 'client_review_auto_moved', 'client_review_manual_moved_to_awaiting', 'client_review_auto_move_undone']);
+        const logs = getTaskLogs(task.job_id)
+            .filter(log => statusLogTypes.has(log.action_type) && log.new_value)
+            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
         if (!logs.length) {
             rows.push({
                 job_id: task.job_id,
@@ -7459,15 +10437,17 @@ function buildStatusAgingRows(tasks) {
                 project_title: task.project_title,
                 status: task.work_status || task.status || 'Unknown',
                 started_at: getStatusStartedAt(task),
-                ended_at: task.done_at || '',
-                duration_hours: getStatusStartedAt(task) ? Math.round(((new Date(task.done_at || new Date()) - new Date(getStatusStartedAt(task))) / (1000 * 60 * 60)) * 10) / 10 : ''
+                ended_at: getTaskCompletedAt(task) || '',
+                duration_hours: getStatusStartedAt(task) ? Math.round(((new Date(getTaskCompletedAt(task) || new Date()) - new Date(getStatusStartedAt(task))) / (1000 * 60 * 60)) * 10) / 10 : '',
+                duration_working_days: getStatusStartedAt(task) ? calculateWorkingDaysBetween(getStatusStartedAt(task), getTaskCompletedAt(task) || new Date()) : '',
+                source: 'current_or_legacy'
             });
             return;
         }
 
         logs.forEach((log, index) => {
             const next = logs[index + 1];
-            const end = next ? next.created_at : (task.done_at || new Date().toISOString());
+            const end = next ? next.created_at : (getTaskCompletedAt(task) || new Date().toISOString());
             rows.push({
                 job_id: task.job_id,
                 client_name: task.client_name,
@@ -7475,7 +10455,9 @@ function buildStatusAgingRows(tasks) {
                 status: log.new_value || '',
                 started_at: log.created_at,
                 ended_at: next ? next.created_at : '',
-                duration_hours: Math.round(((new Date(end) - new Date(log.created_at)) / (1000 * 60 * 60)) * 10) / 10
+                duration_hours: Math.round(((new Date(end) - new Date(log.created_at)) / (1000 * 60 * 60)) * 10) / 10,
+                duration_working_days: calculateWorkingDaysBetween(log.created_at, end),
+                source: log.action_type || 'status_log'
             });
         });
     });
@@ -7495,14 +10477,14 @@ Total tasks exported: ${tasks.length}
 Upload all CSV files together and ask ChatGPT to analyze capacity, bottlenecks, productivity, and hiring justification.
 
 Suggested prompt:
-"You are a creative operations analyst. Analyze these exported files from our creative request system. Identify workload trends, bottlenecks by status, overdue patterns, revision causes, team capacity issues, and recommendations to improve speed, productivity, and efficiency. Then propose whether team expansion is justified, which roles/regions need support, and what workflow changes would give the highest impact."
+"You are a creative operations analyst. Analyze these exported files from our creative request system. Identify workload trends, bottlenecks by status, internal due date risks, client waiting delays, overdue patterns, revision causes, team capacity issues, and recommendations to improve speed, productivity, and efficiency. Separate creative execution delays from client/requester-blocked delays. Then propose whether team expansion is justified, which roles/regions need support, and what workflow changes would give the highest impact."
 
 ## Files
-- tasks.csv: One row per task with lifecycle, status, deadline, assignee, revision, latest note, note count, monthly progress, and completion metrics.
+- tasks.csv: One row per task with lifecycle, status, client deadline, internal due date, Client Review aging, Awaiting Client follow-up, assignee, revision, latest note, monthly progress, and completion metrics.
 - activity_logs.csv: Admin/system tracking timeline of actions.
 - notes_history.csv: Full public task notes thread with author/status/time.
-- team_summary.csv: Workload and completion summary by PIC.
-- status_aging.csv: Time spent in current or historical statuses.
+- team_summary.csv: Workload, completion, internal overdue, client-blocked, and missing-internal-due summary by PIC.
+- status_aging.csv: Calendar and working-day time spent in current or historical statuses.
 - data_gaps.csv: Missing fields that weaken reporting quality.
 
 ## Reporting Principles
@@ -7526,6 +10508,9 @@ function exportReportPack() {
     const taskRows = tasks.map(task => {
         const latestNote = getLatestTaskNote(task);
         const statusStartedAt = getStatusStartedAt(task);
+        const duePlan = generateSuggestedInternalDueForTask(task);
+        const clientDeadlineDiff = getDateOnlyDiffDays(getTaskClientDeadline(task));
+        const reviewAge = getClientReviewAge(task);
         return {
             job_id: task.job_id,
             client_name: task.client_name,
@@ -7537,12 +10522,53 @@ function exportReportPack() {
             work_status: task.work_status,
             assignee: getAssigneeDisplay(task.assignee),
             deadline: task.deadline,
+            original_client_deadline: getTaskOriginalClientDeadline(task),
+            client_deadline: getTaskClientDeadline(task),
+            original_internal_due_date: getTaskOriginalInternalDueDate(task),
+            internal_due_date: getTaskInternalDueDate(task),
+            effective_internal_due_date: getTaskEffectiveInternalDueDate(task),
+            internal_due_source: getTaskInternalDueSource(task) || (getTaskInternalDueDate(task) ? 'legacy' : (getTaskEffectiveInternalDueDate(task) ? 'derived_pending_backfill' : '')),
+            internal_due_manually_adjusted: String(isInternalDueManuallyAdjusted(task)),
+            suggested_internal_due_date: duePlan.date,
+            internal_due_buffer_days: duePlan.bufferDays || '',
+            internal_due_complexity: duePlan.complexity || '',
+            internal_due_generation_status: duePlan.flag || '',
+            missing_internal_due_date: String(!getTaskEffectiveInternalDueDate(task) && String(task.status || '').toLowerCase() === 'approved' && !isTaskDone(task)),
             created_at: task.created_at,
             approved_by: task.approver,
             review_started_at: task.review_started_at,
+            client_review_started_at: getClientReviewStartedAt(task),
+            client_review_ended_at: getClientReviewEndedAt(task),
+            client_review_calendar_days: getClientReviewCalendarDaysForReport(task),
+            client_review_working_days: getClientReviewWorkingDaysForReport(task),
+            client_review_window_days: getTaskClientReviewWindowDays(task),
+            client_review_urgency: isTaskClientReview(task) ? reviewAge.urgency : '',
+            client_review_auto_move_eligibility: getClientReviewAutoMoveEligibility(task),
+            client_review_auto_move_exempt: String(isTruthyFlag(task.client_review_auto_move_exempt)),
+            client_review_exemption_reason: task.client_review_exemption_reason || '',
+            client_review_auto_moved: String(wasClientReviewAutoMoved(task)),
+            client_review_auto_moved_at: task.client_review_auto_moved_at || '',
+            client_review_meaningful_response_at: getClientReviewMeaningfulResponseAt(task),
+            client_review_periods: getStatusPeriodCount(task, 'Client Review'),
             done_at: task.done_at,
+            completed_at: getTaskCompletedAt(task),
             completion_hours: getTaskCompletionHours(task),
-            overdue_days: getTaskOverdueDays(task),
+            internal_overdue_days: getTaskOverdueDays(task),
+            client_overdue_days: getTaskClientOverdueDays(task),
+            client_deadline_passed: String(clientDeadlineDiff !== null && clientDeadlineDiff < 0 && !isTaskDone(task)),
+            client_blocked: String(isTaskAwaitingClient(task)),
+            client_waiting_since: getClientWaitingSince(task),
+            client_waiting_reason: isTaskAwaitingClient(task) ? getClientWaitingReason(task) : '',
+            client_follow_up_date: getClientFollowUpDate(task),
+            client_follow_up_owner: getClientFollowUpOwner(task),
+            client_follow_up_overdue_days: getFollowUpOverdueDaysForReport(task),
+            client_waiting_days: getClientWaitingDaysForReport(task),
+            awaiting_client_periods: getStatusPeriodCount(task, WORK_STATUS_AWAITING_CLIENT),
+            latest_status_change_source: getLatestStatusChangeSource(task),
+            internal_active_days_ex_client_wait: getInternalActiveDaysForReport(task),
+            internal_active_days_ex_client_review_and_wait: getInternalActiveDaysForReport(task),
+            deadline_extension_count: task.deadline_extension_count || 0,
+            latest_deadline_change_reason: getLatestDeadlineChangeReason(task),
             revision: task.revision || 0,
             revision_reasons: task.revision_reasons || '',
             notes_count: getTaskNoteCount(task),
@@ -7555,7 +10581,9 @@ function exportReportPack() {
             last_update_at: getLastUpdateAt(task),
             current_status_started_at: statusStartedAt,
             current_status_age: formatDurationFrom(statusStartedAt),
-            current_status_age_hours: getHoursBetween(statusStartedAt)
+            current_status_age_hours: getHoursBetween(statusStartedAt),
+            client_review_age_hours: isTaskClientReview(task) ? getHoursBetween(getClientReviewStartedAt(task)) : '',
+            status_when_client_deadline_passed: clientDeadlineDiff !== null && clientDeadlineDiff < 0 ? (task.work_status || task.status || '') : ''
         };
     });
 
@@ -7566,6 +10594,7 @@ function exportReportPack() {
         old_value: log.old_value,
         new_value: log.new_value,
         note_text: log.note_text,
+        meta: typeof log.meta === 'string' ? log.meta : JSON.stringify(log.meta || {}),
         created_at: log.created_at
     }));
 
@@ -7589,10 +10618,10 @@ function exportReportPack() {
     const dataGapRows = getReportingDataGapRows(tasks);
 
     downloadTextFile(`${base}_tasks.csv`, rowsToCSV(Object.keys(taskRows[0]), taskRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_activity_logs.csv`, rowsToCSV(['job_id', 'action_type', 'actor_name', 'old_value', 'new_value', 'note_text', 'created_at'], activityRows), 'text/csv;charset=utf-8;');
+    downloadTextFile(`${base}_activity_logs.csv`, rowsToCSV(['job_id', 'action_type', 'actor_name', 'old_value', 'new_value', 'note_text', 'meta', 'created_at'], activityRows), 'text/csv;charset=utf-8;');
     downloadTextFile(`${base}_notes_history.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'assignee', 'actor_name', 'status_at_time', 'note_text', 'created_at'], noteRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_team_summary.csv`, rowsToCSV(['pic', 'active_tasks', 'completed_tasks', 'overdue_tasks', 'total_revisions', 'avg_completion_hours', 'job_types', 'regions'], teamRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_status_aging.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'started_at', 'ended_at', 'duration_hours'], agingRows), 'text/csv;charset=utf-8;');
+    downloadTextFile(`${base}_team_summary.csv`, rowsToCSV(['pic', 'active_tasks', 'completed_tasks', 'overdue_tasks', 'client_blocked_tasks', 'client_review_aging_tasks', 'missing_internal_due_tasks', 'total_revisions', 'avg_completion_hours', 'job_types', 'regions'], teamRows), 'text/csv;charset=utf-8;');
+    downloadTextFile(`${base}_status_aging.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'started_at', 'ended_at', 'duration_hours', 'duration_working_days', 'source'], agingRows), 'text/csv;charset=utf-8;');
     downloadTextFile(`${base}_data_gaps.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'work_status', 'missing_fields', 'recommendation'], dataGapRows), 'text/csv;charset=utf-8;');
     downloadTextFile(`${base}_report_context.md`, buildReportContext(tasks), 'text/markdown;charset=utf-8;');
 
@@ -8143,19 +11172,9 @@ function toggleKanbanMode() {
 function renderKanbanBoard() {
     const kanbanContainer = document.getElementById('kanbanBoardContainer');
     if (!kanbanContainer) return;
+    const previousScrollLeft = kanbanContainer.scrollLeft || 0;
 
-    let data = globalData || [];
-    const finalRegion = isSuperAdmin ? currentRegionFilter : userRegion;
-    data = filterDataByRegion(data, finalRegion);
-
-    // 🌟 FIX BARU: Tapis tiket Kanban supaya staf biasa nampak tiket sendiri je
-    const currentUser = localStorage.getItem('adtech_user_name');
-    if (!isSuperAdmin && currentUser) {
-        data = data.filter(d =>
-            String(d.requester_name).toLowerCase() === currentUser.toLowerCase() ||
-            String(d.assignee).toLowerCase().includes(currentUser.toLowerCase())
-        );
-    }
+    let data = filterTasksForCurrentAccess(globalData || []);
 
     // 🌟 LOGIK BARU: Masukkan data 'pending' ke dalam Kanban
     let activeData = data.filter(d =>
@@ -8167,20 +11186,8 @@ function renderKanbanBoard() {
     if(qW) {
         activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW) || getTaskNoteValue(d).toLowerCase().includes(qW));
     }
-
-    // 🌟 FIX BARU: Susun ikut masa digerakkan (Terkini atas sekali), kemudian baru ikut deadline
-    activeData.sort((a, b) => {
-        let movedA = a.last_moved_at ? new Date(a.last_moved_at).getTime() : 0;
-        let movedB = b.last_moved_at ? new Date(b.last_moved_at).getTime() : 0;
-
-        if (movedA !== movedB) {
-            return movedB - movedA; // Yang paling baru digerakkan akan duduk atas
-        }
-
-        let dateA = a.deadline ? new Date(a.deadline).getTime() : new Date('9999-12-31').getTime();
-        let dateB = b.deadline ? new Date(b.deadline).getTime() : new Date('9999-12-31').getTime();
-        return dateA - dateB;
-    });
+    renderRequestBoardFilters(activeData);
+    activeData = activeData.filter(taskMatchesRequestBoardFilter);
 
     // 🌟 PETA WARNA KANBAN (Dah ditukar susunan)
     const statusConfig = [
@@ -8191,6 +11198,7 @@ function renderKanbanBoard() {
         { name: 'Revision', isPending: false, color: '#ea580c', bg: 'rgba(234, 88, 12, 0.1)' },
         { name: 'Internal Review', label: 'Internal', isPending: false, color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
         { name: 'Client Review', isPending: false, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' },
+        { name: 'Awaiting Client', label: 'Awaiting Client', isPending: false, color: '#d97706', bg: 'rgba(217, 119, 6, 0.1)' },
         { name: 'Done', isPending: false, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' }
     ];
 
@@ -8204,11 +11212,18 @@ function renderKanbanBoard() {
         } else {
             colTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || 'Not started').toLowerCase() === statusName.toLowerCase());
         }
+        colTasks = sortTasksForStatus(colTasks, statusName);
 
         const isDoneZone = statusName === 'Done';
+        const isAwaitingClientZone = statusName === WORK_STATUS_AWAITING_CLIENT;
         const emptyDoneUI = isDoneZone ? `<div style="text-align:center; padding: 40px 10px; color: var(--green); font-weight: 600; font-size: 0.85rem; border: 2px dashed rgba(16, 185, 129, 0.4); border-radius: 12px; margin-top: 10px;"><i data-lucide="check-circle" style="width:28px; height:28px; margin-bottom:10px; opacity:0.8;"></i><br>Drop here to complete!</div>` : '';
+        const emptyAwaitingUI = isAwaitingClientZone && !colTasks.length ? `<div class="awaiting-client-empty"><i data-lucide="message-square-check"></i><span>No client-blocked tasks</span></div>` : '';
         const statusSlug = statusName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         const columnStateClass = colTasks.length ? 'has-tasks' : 'is-empty';
+        const followUpWarnings = isAwaitingClientZone ? colTasks.filter(t => {
+            const diff = getDateOnlyDiffDays(getClientFollowUpDate(t));
+            return diff !== null && diff <= 0;
+        }).length : 0;
 
         const dragDropEvents = cfg.isPending ? '' : `ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, '${statusName}')"`;
 
@@ -8216,7 +11231,10 @@ function renderKanbanBoard() {
         <div class="kanban-column ${columnStateClass} status-${statusSlug} ${isDoneZone ? 'is-done-zone' : ''}" style="border-top-color: ${cfg.color}; ${isDoneZone ? 'background: rgba(16, 185, 129, 0.03); border: 1px dashed rgba(16, 185, 129, 0.3);' : ''}" ${dragDropEvents}>
             <div class="kanban-column-header">
                 <span style="color: ${cfg.color};">${cfg.label || statusName}</span>
-                <span class="kanban-column-count" style="background: ${cfg.bg}; color: ${cfg.color};">${colTasks.length}</span>
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                    ${followUpWarnings ? `<span class="kanban-column-alert" title="Follow-up due">${followUpWarnings}</span>` : ''}
+                    <span class="kanban-column-count" style="background: ${cfg.bg}; color: ${cfg.color};">${colTasks.length}</span>
+                </span>
             </div>
             ${colTasks.map(t => {
                 const cardDragAttr = cfg.isPending ? 'draggable="false"' : 'draggable="true" ondragstart="drag(event)"';
@@ -8244,6 +11262,7 @@ function renderKanbanBoard() {
                     </div>
                     <div class="kd-title">${t.client_name}: ${t.project_title}</div>
                     ${renderMonthlyProgressChip(t)}
+                    ${renderTaskDeadlineRow(t)}
                     ${renderTaskNotePreview(t)}
                     <div class="kd-footer">
                         <span><i data-lucide="user" style="width:12px; margin-right:4px;"></i>${t.assignee !== 'null' ? t.assignee : 'Unassigned'}</span>
@@ -8252,10 +11271,12 @@ function renderKanbanBoard() {
                 `;
             }).join('')}
             ${emptyDoneUI}
+            ${emptyAwaitingUI}
         </div>`;
     });
 
     kanbanContainer.innerHTML = html;
+    kanbanContainer.scrollLeft = previousScrollLeft;
     refreshIcons();
 }
 

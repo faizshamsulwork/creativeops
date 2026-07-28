@@ -137,7 +137,10 @@
                 </select>
             </div>
             <div class="input-group" style="margin-bottom: 15px;">
-                <label>Deadline</label><input type="date" id="editDeadline">
+                <label>Client Deadline</label><input type="date" id="editDeadline">
+            </div>
+            <div class="input-group" style="margin-bottom: 15px;">
+                <label>Internal Due Date</label><input type="date" id="editInternalDue">
             </div>
             <button class="btn-submit" id="saveEditBtn" onclick="saveEdit()" style="margin-top:20px; width:100%;">Update Request</button>
         </div>
@@ -339,6 +342,8 @@
                         <input type="text" id="searchWorkload" placeholder="Search Client Name, Job ID, or Assignee..." onkeyup="renderBoards()">
                     </div>
                 </div>
+
+                <div id="requestDeadlineFilters" class="request-filter-shell"></div>
 
                 <div id="adminKanbanToggle" style="display: none; margin-bottom: 20px; text-align: right;">
                     <button onclick="toggleKanbanMode()" class="premium-admin-btn" style="background: var(--bg-card); color: var(--link-color); border: 1px solid var(--link-color); width: auto; min-width: auto; padding: 8px 16px;">
@@ -842,7 +847,7 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
 
                         <div class="form-row">
                             <div class="input-group">
-                                <label id="deadlineLabel" for="pDeadline">Deadline (Min. 3 working days)</label>
+                                <label id="deadlineLabel" for="pDeadline">Client deadline</label>
                                 <input type="date" id="pDeadline">
                                 <small id="deadlineHelper" style="display: none; color: var(--orange); margin-top: 5px; font-size: 0.75rem; line-height: 1.4; font-weight: 600;">
                                     *SLA: Minimum 5 working days required for the 1st Batch / First Draft.
