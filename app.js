@@ -33,12 +33,25 @@ let userRegion = '';
 let isSuperAdmin = false;
 let currentRequestType = 'adhoc';
 let requestBoardDeadlineFilter = 'all';
+let requestBoardSortMode = 'smart_priority';
 let pendingDeadlineChangeUpdate = null;
 let pendingBulkInternalDueRows = [];
 let internalDueBackfillInFlight = false;
 let lastInternalDueBackfillSignature = '';
 let clientReviewAgingCheckInFlight = false;
+let clientReviewSetupState = {
+    checked: false,
+    checking: false,
+    ok: null,
+    message: 'Not checked yet',
+    error: null,
+    checkedAt: ''
+};
 let lastAssignedRegionVisibility = { hidden: [], visible: [] };
+let completionModalLastFocus = null;
+const completionModalOpenedKeys = new Set();
+const completionStatusInFlight = new Set();
+let clientReviewJustMovedRefreshTimer = null;
 let calendarViewMode = localStorage.getItem('adtech_calendar_view') || '';
 let calendarShowCompleted = localStorage.getItem('adtech_calendar_show_completed') === 'true';
 let selectedCalendarDateKey = '';
@@ -50,10 +63,11 @@ const SUPER_ADMIN_VERIFIED_DATE_KEY = 'adtech_superadmin_verified_date';
 const ADMIN_ACCESS_STORAGE_KEY = 'adtech_admin_members_override';
 const TEAM_REVIEW_LOCAL_KEY = 'adtech_team_review_store';
 const TEAM_REVIEW_CODE_VAULT_KEY = 'adtech_team_review_code_vault';
-const WORK_STATUS_AWAITING_CLIENT = 'Awaiting Client';
+const WORK_STATUS_AWAITING_CLIENT = 'awaiting_client';
 const CLIENT_REVIEW_WINDOW_DAYS = 5;
 const CLIENT_REVIEW_WARNING_DAY = 4;
 const CLIENT_REVIEW_WATCH_DAY = 3;
+const CLIENT_REVIEW_JUST_MOVED_PIN_MINUTES = 30;
 const CLIENT_REVIEW_DEFAULT_WAITING_REASON = 'Awaiting feedback / approval';
 const REQUEST_BOARD_FILTERS = [
     { id: 'all', label: 'All Tasks' },
@@ -66,6 +80,16 @@ const REQUEST_BOARD_FILTERS = [
     { id: 'followup_due', label: 'Follow-up Due' },
     { id: 'followup_overdue', label: 'Follow-up Overdue' }
 ];
+const REQUEST_BOARD_SORT_STORAGE_KEY = 'creativeOS.requestBoard.sortMode';
+const REQUEST_BOARD_SORT_OPTIONS = [
+    { id: 'smart_priority', label: 'Smart Priority', description: 'Best order for each workflow stage', icon: 'sparkles' },
+    { id: 'deadline_earliest', label: 'Deadline: Earliest', description: 'Nearest due work first', icon: 'calendar-clock' },
+    { id: 'recently_added', label: 'Recently Added', description: 'Newest requests first', icon: 'plus-circle' },
+    { id: 'oldest_added', label: 'Oldest Added', description: 'Oldest requests first', icon: 'history' },
+    { id: 'recently_updated', label: 'Recently Updated', description: 'Latest meaningful updates', icon: 'activity' },
+    { id: 'client_az', label: 'Client A–Z', description: 'Alphabetical by client', icon: 'arrow-down-a-z' }
+];
+requestBoardSortMode = getStoredRequestBoardSortMode();
 const CLIENT_WAITING_REASONS = [
     CLIENT_REVIEW_DEFAULT_WAITING_REASON,
     'Awaiting client feedback',
@@ -669,6 +693,25 @@ function normalizeWorkStatus(status) {
     return String(status || 'Not started').replace(/_/g, ' ').trim().toLowerCase();
 }
 
+function getWorkStatusLabel(status, fallback = 'Not started') {
+    const key = normalizeWorkStatus(status || fallback);
+    const labels = {
+        'not started': 'Not Started',
+        'drafting': 'Drafting',
+        'partial ready': 'Partial Ready',
+        'revision': 'Revision',
+        'internal review': 'Internal Review',
+        'client review': 'Client Review',
+        'awaiting client': 'Awaiting Client',
+        'done': 'Done'
+    };
+    return labels[key] || String(status || fallback).replace(/_/g, ' ');
+}
+
+function getWorkStatusSlug(status, fallback = 'not started') {
+    return normalizeWorkStatus(status || fallback).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'not-started';
+}
+
 function getTaskStatusKey(task = {}) {
     const requestStatus = String(task.status || '').trim().toLowerCase();
     if (requestStatus === 'pending') return 'pending';
@@ -689,6 +732,82 @@ function isTaskAwaitingClient(task = {}) {
 
 function isTaskClientReview(task = {}) {
     return normalizeWorkStatus(task.work_status) === 'client review';
+}
+
+function serializeSupabaseError(error = {}) {
+    if (!error) return 'Unknown Supabase error';
+    if (typeof error === 'string') return error;
+    const parts = [];
+    if (error.code) parts.push(`code=${error.code}`);
+    if (error.message) parts.push(`message=${error.message}`);
+    if (error.details) parts.push(`details=${error.details}`);
+    if (error.hint) parts.push(`hint=${error.hint}`);
+    if (error._creativeOpsQuery) parts.push(`operation=${error._creativeOpsQuery}`);
+    return parts.join(' | ') || String(error);
+}
+
+function annotateSupabaseError(error, operation, context = {}) {
+    if (error && typeof error === 'object') {
+        error._creativeOpsQuery = operation;
+        error._creativeOpsContext = context;
+    }
+    return error;
+}
+
+function isSupabaseSetupError(error) {
+    const raw = serializeSupabaseError(error);
+    return /PGRST202|PGRST204|PGRST205|schema cache|could not find|column|function|rpc|relation|client_waiting|client_follow_up|client_review|task_client_waiting_periods|move_client_review_to_awaiting/i.test(raw);
+}
+
+function isSupabasePermissionError(error) {
+    const raw = serializeSupabaseError(error);
+    return /42501|permission|RLS|row-level|row level|not authorized|unauthori[sz]ed|policy/i.test(raw);
+}
+
+function logSupabaseDiagnostic(operation, error, context = {}) {
+    const payloadKeys = context?.payload ? Object.keys(context.payload) : [];
+    const diagnostic = {
+        operation,
+        error_code: error?.code || '',
+        error_message: error?.message || String(error || ''),
+        error_details: error?.details || '',
+        error_hint: error?.hint || '',
+        job_id: context.jobID || context.job_id || '',
+        actor: getCurrentActor(),
+        current_user: getCurrentUserName(),
+        payload_keys: payloadKeys,
+        context
+    };
+    console.groupCollapsed(`[Creative OS Supabase] ${operation} failed`);
+    console.table(diagnostic);
+    if (context?.payload) console.log('payload', context.payload);
+    console.error(error);
+    console.groupEnd();
+}
+
+function getClientReviewFailureMessage(error) {
+    if (isSupabaseSetupError(error)) {
+        return 'Supabase Client Review setup is incomplete. Run the latest supabase-client-review-aging.sql in Supabase SQL Editor, then refresh this page.';
+    }
+    if (isSupabasePermissionError(error)) {
+        return 'Supabase permission/RLS blocked this move. Check the Client Review RPC and policies in Supabase.';
+    }
+    if (/owner|follow-up|follow up|foreign key|not-null|null value/i.test(serializeSupabaseError(error))) {
+        return 'Follow-up owner is invalid or missing. Choose an active team member and try again.';
+    }
+    if (/failed to fetch|network|timeout|abort/i.test(serializeSupabaseError(error))) {
+        return 'Network connection failed while saving to Supabase. Please try again.';
+    }
+    return error?.message || String(error || 'Unable to save this move.');
+}
+
+function showClientReviewMoveError(error, context = {}) {
+    logSupabaseDiagnostic(context.operation || 'client_review_move', error, context);
+    if (isSupabaseSetupError(error)) refreshClientReviewSetupStatus({ force: true, silent: true });
+    showAppleAlert('Client Review Move Failed', getClientReviewFailureMessage(error), {
+        tone: isSupabasePermissionError(error) || /owner|foreign key|not-null|null value/i.test(serializeSupabaseError(error)) ? 'warning' : 'danger',
+        icon: isSupabaseSetupError(error) ? 'database-zap' : 'alert-triangle'
+    });
 }
 
 function getTaskInternalDueSource(task = {}) {
@@ -819,6 +938,61 @@ function getClientReviewStartedAt(task = {}) {
     if (task.client_review_started_at || task.review_started_at) return task.client_review_started_at || task.review_started_at;
     if (isTaskClientReview(task)) return getStatusStartedAt(task) || task.last_moved_at || task.created_at || '';
     return '';
+}
+
+function getActivityMetaValue(log = {}, keys = []) {
+    const meta = log?.meta && typeof log.meta === 'object' ? log.meta : {};
+    for (const key of keys) {
+        if (meta[key] !== undefined && meta[key] !== null && meta[key] !== '') return meta[key];
+    }
+    return '';
+}
+
+function getClientReviewEntryMoveTimestamp(task = {}) {
+    if (!isTaskClientReview(task)) return 0;
+    const logs = getTaskLogs(task.job_id || '').filter(log => {
+        const nextStatus = normalizeWorkStatus(log.new_value || getActivityMetaValue(log, ['new_status', 'destination', 'status_to']));
+        const previousStatus = normalizeWorkStatus(log.old_value || getActivityMetaValue(log, ['old_status', 'previous_status', 'status_from']));
+        const action = String(log.action_type || '').toLowerCase();
+        const isStatusMove = ['status_changed', 'left_awaiting_client', 'client_review_auto_move_undone'].includes(action) || /status|awaiting|client_review/i.test(action);
+        return isStatusMove && nextStatus === 'client review' && previousStatus !== 'client review';
+    });
+    const moveLogTime = logs.reduce((latest, log) => Math.max(latest, getTimestampValue(log.created_at, 0)), 0);
+    if (moveLogTime) return moveLogTime;
+
+    const startedAt = getTimestampValue(task.client_review_started_at || task.review_started_at, 0);
+    const movedAt = getTimestampValue(task.last_moved_at, 0);
+    if (!startedAt || !movedAt) return 0;
+    return Math.abs(startedAt - movedAt) <= 2 * 60 * 1000 ? Math.max(startedAt, movedAt) : 0;
+}
+
+function getClientReviewJustMovedMeta(task = {}) {
+    const timestamp = getClientReviewEntryMoveTimestamp(task);
+    if (!timestamp) return { active: false, timestamp: 0, remainingMinutes: 0 };
+    const ageMs = Date.now() - timestamp;
+    const windowMs = CLIENT_REVIEW_JUST_MOVED_PIN_MINUTES * 60 * 1000;
+    const active = ageMs >= 0 && ageMs <= windowMs;
+    const remainingMinutes = active ? Math.max(1, Math.ceil((windowMs - ageMs) / 60000)) : 0;
+    return { active, timestamp, remainingMinutes };
+}
+
+function scheduleClientReviewJustMovedExpiryRefresh(tasks = []) {
+    if (clientReviewJustMovedRefreshTimer) {
+        clearTimeout(clientReviewJustMovedRefreshTimer);
+        clientReviewJustMovedRefreshTimer = null;
+    }
+    const windowMs = CLIENT_REVIEW_JUST_MOVED_PIN_MINUTES * 60 * 1000;
+    const nextExpiry = (tasks || [])
+        .map(task => getClientReviewJustMovedMeta(task))
+        .filter(meta => meta.active)
+        .map(meta => meta.timestamp + windowMs)
+        .reduce((soonest, value) => Math.min(soonest, value), Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(nextExpiry)) return;
+    const delay = Math.max(1000, nextExpiry - Date.now() + 250);
+    clientReviewJustMovedRefreshTimer = setTimeout(() => {
+        clientReviewJustMovedRefreshTimer = null;
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+    }, delay);
 }
 
 function getClientReviewEndedAt(task = {}) {
@@ -1147,43 +1321,572 @@ function renderAwaitingClientDetailPanel(task = {}) {
     `;
 }
 
-function getTaskStatusSortKey(task = {}, statusName = '') {
-    const statusKey = normalizeWorkStatus(statusName);
-    const viewMode = shouldUseInternalDeadlineForTask(task) ? 'internal' : 'client';
-    if (viewMode === 'internal' && (statusKey === 'awaiting client' || isTaskAwaitingClient(task))) {
-        const followUpDiff = getDateOnlyDiffDays(getClientFollowUpDate(task));
-        const urgency = followUpDiff === null ? 9999 : followUpDiff;
-        return [urgency < 0 ? -1000 + urgency : urgency, -getClientWaitingDays(task), getCreatedAtTime(task)];
+function isValidRequestBoardSortMode(value) {
+    return REQUEST_BOARD_SORT_OPTIONS.some(option => option.id === value);
+}
+
+function normalizeRequestBoardSortMode(value) {
+    const raw = String(value || '').trim();
+    const legacyMap = {
+        'smart-priority': 'smart_priority',
+        'deadline-earliest': 'deadline_earliest',
+        'recently-added': 'recently_added',
+        'oldest-added': 'oldest_added',
+        'recently-updated': 'recently_updated',
+        'client-az': 'client_az'
+    };
+    const normalized = legacyMap[raw] || raw;
+    return isValidRequestBoardSortMode(normalized) ? normalized : 'smart_priority';
+}
+
+function getStoredRequestBoardSortMode() {
+    try {
+        const saved = localStorage.getItem(REQUEST_BOARD_SORT_STORAGE_KEY);
+        const mode = normalizeRequestBoardSortMode(saved);
+        if (saved && saved !== mode) localStorage.setItem(REQUEST_BOARD_SORT_STORAGE_KEY, mode);
+        return mode;
+    } catch(e) {
+        return 'smart_priority';
     }
-    if (statusKey === 'client review' || isTaskClientReview(task)) {
-        const age = getClientReviewAge(task);
-        const urgencyOrder = { overdue: -5, 'moving-soon': -4, warning: -3, missing: -2, watch: -1, normal: 0, snoozed: 1, exempt: 2, responded: 3 };
-        const clientDiff = getDateOnlyDiffDays(getTaskClientDeadline(task));
-        return [urgencyOrder[age.urgency] ?? 0, -(age.workingDays || 0), clientDiff === null ? 9999 : clientDiff, getCreatedAtTime(task)];
+}
+
+function getBoardSortMode() {
+    requestBoardSortMode = normalizeRequestBoardSortMode(requestBoardSortMode);
+    return requestBoardSortMode;
+}
+
+function getBoardSortOption(mode = getBoardSortMode()) {
+    const normalized = normalizeRequestBoardSortMode(mode);
+    return REQUEST_BOARD_SORT_OPTIONS.find(option => option.id === normalized) || REQUEST_BOARD_SORT_OPTIONS[0];
+}
+
+function isRequestBoardSortMenuOpen() {
+    const popover = document.getElementById('requestBoardSortPopover');
+    return Boolean(popover && !popover.hidden);
+}
+
+function renderRequestBoardSortOptions(mode = getBoardSortMode()) {
+    const currentMode = normalizeRequestBoardSortMode(mode);
+    return REQUEST_BOARD_SORT_OPTIONS.map(option => {
+        const selected = option.id === currentMode;
+        const selectedClass = selected ? ' is-selected' : '';
+        const checkIcon = selected ? '<i data-lucide="check"></i>' : '';
+        return `
+            <button type="button" role="option" class="board-sort-option${selectedClass}" data-sort-mode="${option.id}" aria-selected="${selected ? 'true' : 'false'}" tabindex="${selected ? '0' : '-1'}" onclick="selectRequestBoardSortMode('${option.id}')" onkeydown="handleRequestSortOptionKeydown(event)">
+                <span class="board-sort-option__icon-wrap"><i data-lucide="${option.icon}"></i></span>
+                <span class="board-sort-option__copy">
+                    <strong>${escapeHtml(option.label)}</strong>
+                    <small>${escapeHtml(option.description)}</small>
+                </span>
+                <span class="board-sort-option__check" aria-hidden="true">${checkIcon}</span>
+            </button>
+        `;
+    }).join('');
+}
+
+function getRequestBoardSortOptions() {
+    const popover = document.getElementById('requestBoardSortPopover');
+    return popover ? [...popover.querySelectorAll('.board-sort-option')] : [];
+}
+
+function syncRequestBoardSortControl() {
+    const mode = getBoardSortMode();
+    const option = getBoardSortOption(mode);
+    const trigger = document.getElementById('requestBoardSortTrigger');
+    const label = document.getElementById('requestBoardSortLabel');
+    const summary = document.getElementById('requestBoardSortSummary');
+    const popover = document.getElementById('requestBoardSortPopover');
+
+    if (label) label.textContent = option.label;
+    if (summary) summary.textContent = '';
+    if (trigger) {
+        trigger.setAttribute('aria-label', `Sort Request Status Board: ${option.label}`);
+        trigger.setAttribute('aria-expanded', isRequestBoardSortMenuOpen() ? 'true' : 'false');
     }
-    if (statusKey === 'done' || isTaskDone(task)) {
-        return [-(new Date(getTaskCompletedAt(task) || task.updated_at || task.last_moved_at || task.created_at || 0).getTime() || 0), 0, 0];
+    getRequestBoardSortOptions().forEach(button => {
+        const selected = button.dataset.sortMode === mode;
+        button.classList.toggle('is-selected', selected);
+        button.setAttribute('aria-selected', selected ? 'true' : 'false');
+        button.tabIndex = selected ? 0 : -1;
+        const check = button.querySelector('.board-sort-option__check');
+        if (check) check.innerHTML = selected ? '<i data-lucide="check"></i>' : '';
+    });
+}
+
+function closeRequestBoardSortMenu(options = {}) {
+    const popover = document.getElementById('requestBoardSortPopover');
+    const trigger = document.getElementById('requestBoardSortTrigger');
+    if (popover) {
+        popover.hidden = true;
+        popover.classList.remove('is-open');
+        popover.innerHTML = '';
     }
-    const due = getTaskDeadlineForView(task, isTaskClientReview(task) ? 'client' : viewMode);
-    const diff = getDateOnlyDiffDays(due);
-    return [diff === null ? 9999 : diff, getCreatedAtTime(task), 0];
+    if (trigger) {
+        trigger.setAttribute('aria-expanded', 'false');
+        if (options.focusTrigger) trigger.focus();
+    }
+    syncRequestBoardSortControl();
+}
+
+function openRequestBoardSortMenu(focusSelected = true) {
+    const popover = document.getElementById('requestBoardSortPopover');
+    const trigger = document.getElementById('requestBoardSortTrigger');
+    if (!popover || !trigger) return;
+    popover.innerHTML = renderRequestBoardSortOptions();
+    popover.hidden = false;
+    popover.classList.add('is-open');
+    trigger.setAttribute('aria-expanded', 'true');
+    syncRequestBoardSortControl();
+    if (focusSelected) {
+        const selected = popover.querySelector('.board-sort-option.is-selected') || popover.querySelector('.board-sort-option');
+        if (selected) selected.focus();
+    }
+    refreshIcons();
+}
+
+function toggleRequestBoardSortMenu() {
+    const popover = document.getElementById('requestBoardSortPopover');
+    if (!popover) return;
+    if (popover.hidden) openRequestBoardSortMenu(false);
+    else closeRequestBoardSortMenu({ focusTrigger: true });
+}
+
+function setRequestBoardSortMode(mode, options = {}) {
+    requestBoardSortMode = normalizeRequestBoardSortMode(mode);
+    try { localStorage.setItem(REQUEST_BOARD_SORT_STORAGE_KEY, requestBoardSortMode); } catch(e) {}
+    syncRequestBoardSortControl();
+    renderBoards();
+    if (options.closeMenu !== false) closeRequestBoardSortMenu({ focusTrigger: !!options.focusTrigger });
+}
+
+function selectRequestBoardSortMode(mode) {
+    setRequestBoardSortMode(mode, { focusTrigger: true });
+}
+
+function moveRequestSortFocus(direction = 1) {
+    const options = getRequestBoardSortOptions();
+    if (!options.length) return;
+    const currentIndex = Math.max(0, options.indexOf(document.activeElement));
+    const nextIndex = (currentIndex + direction + options.length) % options.length;
+    options[nextIndex].focus();
+}
+
+function handleRequestSortTriggerKeydown(event) {
+    if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    openRequestBoardSortMenu(true);
+    if (event.key === 'ArrowUp') moveRequestSortFocus(-1);
+}
+
+function handleRequestSortOptionKeydown(event) {
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveRequestSortFocus(1);
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveRequestSortFocus(-1);
+    } else if (event.key === 'Home') {
+        event.preventDefault();
+        const first = getRequestBoardSortOptions()[0];
+        if (first) first.focus();
+    } else if (event.key === 'End') {
+        event.preventDefault();
+        const options = getRequestBoardSortOptions();
+        const last = options[options.length - 1];
+        if (last) last.focus();
+    } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectRequestBoardSortMode(event.currentTarget.dataset.sortMode);
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRequestBoardSortMenu({ focusTrigger: true });
+    }
+}
+
+let requestBoardSortMenuEventsBound = false;
+function bindRequestBoardSortMenuEvents() {
+    if (requestBoardSortMenuEventsBound) return;
+    requestBoardSortMenuEventsBound = true;
+    document.addEventListener('click', (event) => {
+        const menu = document.getElementById('requestSortMenu');
+        const popover = document.getElementById('requestBoardSortPopover');
+        if (!menu || !popover || popover.hidden) return;
+        if (!menu.contains(event.target)) closeRequestBoardSortMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const popover = document.getElementById('requestBoardSortPopover');
+        if (popover && !popover.hidden) {
+            event.preventDefault();
+            closeRequestBoardSortMenu({ focusTrigger: true });
+        }
+    });
 }
 
 function getCreatedAtTime(task = {}) {
     return new Date(task.created_at || task.updated_at || task.last_moved_at || 0).getTime() || 0;
 }
 
-function sortTasksForStatus(tasks = [], statusName = '') {
-    return [...tasks].sort((a, b) => compareTasksForStatus(a, b, statusName));
+function getTaskStableId(task = {}) {
+    return String(task.job_id || task.id || task.task_id || '').trim();
 }
 
-function compareTasksForStatus(a = {}, b = {}, statusName = '') {
-    const aKey = getTaskStatusSortKey(a, statusName);
-    const bKey = getTaskStatusSortKey(b, statusName);
-    for (let i = 0; i < Math.max(aKey.length, bKey.length); i++) {
-        if ((aKey[i] || 0) !== (bKey[i] || 0)) return (aKey[i] || 0) - (bKey[i] || 0);
+function getTaskFreshnessTime(task = {}) {
+    return getTimestampValue(task.updated_at || task.last_moved_at || task.completed_at || task.done_at || task.created_at);
+}
+
+function deduplicateTasks(tasks = []) {
+    const map = new Map();
+    (Array.isArray(tasks) ? tasks : []).forEach((task, index) => {
+        if (!task) return;
+        const stableId = getTaskStableId(task) || `row-${index}`;
+        const existing = map.get(stableId);
+        if (!existing || getTaskFreshnessTime(task) >= getTaskFreshnessTime(existing)) {
+            map.set(stableId, task);
+        }
+    });
+    return [...map.values()];
+}
+
+function getTimestampValue(value, fallback = 0) {
+    if (!value) return fallback;
+    if (value instanceof Date) {
+        const time = value.getTime();
+        return isNaN(time) ? fallback : time;
     }
-    return String(a.job_id || '').localeCompare(String(b.job_id || ''));
+    const raw = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        const dateOnly = parseDateOnly(raw);
+        return dateOnly ? dateOnly.getTime() : fallback;
+    }
+    const parsed = new Date(raw);
+    if (!isNaN(parsed)) return parsed.getTime();
+    const dateOnly = parseDateOnly(raw);
+    return dateOnly ? dateOnly.getTime() : fallback;
+}
+
+function getDateOnlySortTime(value, fallback = Number.POSITIVE_INFINITY) {
+    const date = parseDateOnly(value);
+    return date ? date.getTime() : fallback;
+}
+
+function comparePrimitiveValues(a, b) {
+    const av = a === undefined || a === null || Number.isNaN(a) ? 0 : a;
+    const bv = b === undefined || b === null || Number.isNaN(b) ? 0 : b;
+    if (typeof av === 'string' || typeof bv === 'string') return String(av).localeCompare(String(bv));
+    return av === bv ? 0 : av - bv;
+}
+
+function compareBoardSortKeys(a = [], b = []) {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const result = comparePrimitiveValues(a[i], b[i]);
+        if (result !== 0) return result;
+    }
+    return 0;
+}
+
+function getStableTaskFallbackKey(task = {}) {
+    return [
+        getTimestampValue(task.created_at, Number.POSITIVE_INFINITY),
+        String(task.job_id || task.id || task.task_id || '')
+    ];
+}
+
+function compareStableTaskIdAsc(a = {}, b = {}) {
+    return String(a.job_id || a.id || a.task_id || '').localeCompare(String(b.job_id || b.id || b.task_id || ''));
+}
+
+function compareStableTaskIdDesc(a = {}, b = {}) {
+    return String(b.job_id || b.id || b.task_id || '').localeCompare(String(a.job_id || a.id || a.task_id || ''));
+}
+
+function getBoardColumnStatusKey(columnStatus = '', task = {}) {
+    const raw = String(columnStatus || '').trim();
+    if (!raw) return getTaskStatusKey(task);
+    if (/inbox/i.test(raw) || normalizeWorkStatus(raw) === 'pending') return 'pending';
+    return normalizeWorkStatus(raw);
+}
+
+function getDeadlineSortMeta(dateValue) {
+    const diff = getDateOnlyDiffDays(dateValue);
+    const dateTime = getDateOnlySortTime(dateValue);
+    if (diff === null) {
+        return { rank: 4, diff: Number.POSITIVE_INFINITY, dateTime: Number.POSITIVE_INFINITY };
+    }
+    if (diff < 0) return { rank: 0, diff, dateTime };
+    if (diff === 0) return { rank: 1, diff, dateTime };
+    if (diff === 1) return { rank: 2, diff, dateTime };
+    return { rank: 3, diff, dateTime };
+}
+
+function getSmartPriorityDeadlineForTask(task = {}, columnStatus = '') {
+    const statusKey = getBoardColumnStatusKey(columnStatus, task);
+    if (INTERNAL_PRODUCTION_STATUS_KEYS.includes(statusKey)) {
+        return shouldUseInternalDeadlineForTask(task) ? getTaskEffectiveInternalDueDate(task) : getTaskClientDeadline(task);
+    }
+    return getTaskDeadlineForView(task);
+}
+
+function getRelevantDeadlineForViewer(task = {}, columnStatus = '') {
+    return getSmartPriorityDeadlineForTask(task, columnStatus);
+}
+
+function getActiveProductionSortKey(task = {}, columnStatus = '') {
+    const deadline = getRelevantDeadlineForViewer(task, columnStatus);
+    const due = getDeadlineSortMeta(deadline);
+    return [
+        due.rank,
+        due.dateTime,
+        getTimestampValue(task.created_at, Number.POSITIVE_INFINITY),
+        String(task.job_id || task.id || '')
+    ];
+}
+
+function getInboxSortKey(task = {}) {
+    const deadline = getRelevantDeadlineForViewer(task, 'pending');
+    const due = getDeadlineSortMeta(deadline);
+    return [
+        due.rank,
+        due.dateTime,
+        getTimestampValue(task.created_at, Number.POSITIVE_INFINITY),
+        String(task.job_id || task.id || '')
+    ];
+}
+
+function getClientReviewSortKey(task = {}) {
+    const justMoved = getClientReviewJustMovedMeta(task);
+    if (justMoved.active) {
+        return [
+            -1,
+            -justMoved.timestamp,
+            getDateOnlySortTime(getTaskClientDeadline(task)),
+            getTimestampValue(task.created_at, Number.POSITIVE_INFINITY),
+            String(task.job_id || task.id || '')
+        ];
+    }
+
+    const age = getClientReviewAge(task);
+    const workingDays = Number(age.workingDays ?? -1);
+    const ageRankMap = { 4: 2, 3: 3, 2: 4, 1: 5, 0: 6 };
+    let rank = 7;
+
+    if (age.urgency === 'overdue') rank = 0;
+    else if (age.urgency === 'moving-soon') rank = 1;
+    else if (workingDays >= 0) rank = ageRankMap[Math.min(workingDays, 4)] ?? 7;
+    if (age.urgency === 'missing' || !age.startAt) rank = 8;
+
+    return [
+        rank,
+        rank === 0 ? -workingDays : 0,
+        getTimestampValue(age.startAt, Number.POSITIVE_INFINITY),
+        getDateOnlySortTime(getTaskClientDeadline(task)),
+        getTimestampValue(task.created_at, Number.POSITIVE_INFINITY),
+        String(task.job_id || task.id || '')
+    ];
+}
+
+function getAwaitingClientSortKey(task = {}) {
+    const followUp = getClientFollowUpDate(task);
+    const followMeta = getDeadlineSortMeta(followUp);
+    const hasFollowUp = Boolean(parseDateOnly(followUp));
+    const waitingSince = getTimestampValue(getClientWaitingSince(task), Number.POSITIVE_INFINITY);
+    const waitingDays = getClientWaitingDays(task);
+
+    return [
+        hasFollowUp ? followMeta.rank : 4,
+        hasFollowUp ? followMeta.dateTime : 0,
+        hasFollowUp ? waitingSince : -waitingDays,
+        waitingSince,
+        getTimestampValue(task.created_at, Number.POSITIVE_INFINITY),
+        String(task.job_id || task.id || '')
+    ];
+}
+
+function getDoneSortKey(task = {}) {
+    return [
+        -getTimestampValue(getTaskCompletedAt(task), 0),
+        -getTimestampValue(task.last_moved_at, 0),
+        -getTimestampValue(task.updated_at, 0),
+        -getTimestampValue(task.created_at, 0),
+        String(task.job_id || task.id || '')
+    ];
+}
+
+function getEarliestDeadlineForSort(task = {}, columnStatus = '') {
+    const statusKey = getBoardColumnStatusKey(columnStatus, task);
+    const clientDeadline = getTaskClientDeadline(task);
+    const internalDeadline = getTaskEffectiveInternalDueDate(task);
+    const usesInternalView = shouldUseInternalDeadlineForTask(task);
+
+    if (statusKey === 'client review') return clientDeadline;
+    if (statusKey === 'awaiting client') return getClientFollowUpDate(task) || clientDeadline;
+    if (statusKey === 'done') return usesInternalView ? (internalDeadline || clientDeadline) : clientDeadline;
+    return usesInternalView ? (internalDeadline || clientDeadline) : clientDeadline;
+}
+
+function getEarliestDeadlineSortKey(task = {}, columnStatus = '') {
+    const deadline = getEarliestDeadlineForSort(task, columnStatus);
+    return [
+        getDateOnlySortTime(deadline, Number.POSITIVE_INFINITY),
+        getTimestampValue(task.created_at, Number.POSITIVE_INFINITY),
+        String(task.job_id || task.id || '')
+    ];
+}
+
+function compareRecentlyAddedTasks(a = {}, b = {}) {
+    const timeResult = getTimestampValue(b.created_at, 0) - getTimestampValue(a.created_at, 0);
+    if (timeResult !== 0) return timeResult;
+    return compareStableTaskIdDesc(a, b);
+}
+
+function compareOldestAddedTasks(a = {}, b = {}) {
+    const timeResult = getTimestampValue(a.created_at, Number.POSITIVE_INFINITY) - getTimestampValue(b.created_at, Number.POSITIVE_INFINITY);
+    if (timeResult !== 0) return timeResult;
+    return compareStableTaskIdAsc(a, b);
+}
+
+function isMeaningfulActivityLog(log = {}) {
+    const action = String(log.action_type || '').toLowerCase();
+    return /submitted|approved|status|pic|assign|deadline|due_date|request_updated|edited|revision|note|client|follow|awaiting|done|deleted|progress|deliverable/i.test(action);
+}
+
+function getLatestMeaningfulActivityTimestamp(task = {}) {
+    const logs = [
+        ...getTaskLogs(task.job_id).filter(isMeaningfulActivityLog),
+        ...getTaskNoteLogs(task.job_id).map(note => ({ ...note, action_type: 'note_added' }))
+    ];
+    return logs.reduce((latest, log) => Math.max(latest, getTimestampValue(log.created_at, 0)), 0);
+}
+
+function getMeaningfulUpdateTimestamp(task = {}) {
+    const explicitMeaningful = getTimestampValue(task.meaningful_updated_at, 0);
+    if (explicitMeaningful) return explicitMeaningful;
+    const candidates = [
+        task.updated_at,
+        task.last_moved_at
+    ].map(value => getTimestampValue(value, 0)).filter(Boolean);
+    candidates.push(getLatestMeaningfulActivityTimestamp(task));
+    candidates.push(getTimestampValue(task.created_at, 0));
+    return Math.max(...candidates, 0);
+}
+
+function compareRecentlyUpdatedTasks(a = {}, b = {}) {
+    const updateResult = getMeaningfulUpdateTimestamp(b) - getMeaningfulUpdateTimestamp(a);
+    if (updateResult !== 0) return updateResult;
+    const createdResult = getTimestampValue(b.created_at, 0) - getTimestampValue(a.created_at, 0);
+    if (createdResult !== 0) return createdResult;
+    return compareStableTaskIdDesc(a, b);
+}
+
+function normalizeSortText(value = '') {
+    return String(value || '')
+        .trim()
+        .replace(/^[^a-z0-9]+/i, '')
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+}
+
+function getTaskClientSortName(task = {}) {
+    const client = [task.client_name, task.client, task.company_name, task.project_client]
+        .map(value => String(value || '').trim())
+        .find(Boolean);
+    return normalizeSortText(client);
+}
+
+function getTaskTitleSortName(task = {}) {
+    return normalizeSortText(task.project_title || task.title || task.objective || '');
+}
+
+function getClientNameSortKey(task = {}, columnStatus = '') {
+    const clientName = getTaskClientSortName(task);
+    return [
+        clientName ? 0 : 1,
+        clientName || '',
+        getDateOnlySortTime(getEarliestDeadlineForSort(task, columnStatus), Number.POSITIVE_INFINITY),
+        getTaskTitleSortName(task),
+        getTimestampValue(task.created_at, Number.POSITIVE_INFINITY),
+        String(task.job_id || task.id || '')
+    ];
+}
+
+const BOARD_SORTERS = {
+    smart_priority: (a, b, columnStatus) => {
+        const keyResult = compareBoardSortKeys(getTaskStatusSortKey(a, columnStatus), getTaskStatusSortKey(b, columnStatus));
+        if (keyResult !== 0) return keyResult;
+        return compareBoardSortKeys(getStableTaskFallbackKey(a), getStableTaskFallbackKey(b));
+    },
+    deadline_earliest: (a, b, columnStatus) => {
+        const keyResult = compareBoardSortKeys(getEarliestDeadlineSortKey(a, columnStatus), getEarliestDeadlineSortKey(b, columnStatus));
+        if (keyResult !== 0) return keyResult;
+        return compareBoardSortKeys(getStableTaskFallbackKey(a), getStableTaskFallbackKey(b));
+    },
+    recently_added: (a, b) => compareRecentlyAddedTasks(a, b),
+    oldest_added: (a, b) => compareOldestAddedTasks(a, b),
+    recently_updated: (a, b) => compareRecentlyUpdatedTasks(a, b),
+    client_az: (a, b, columnStatus) => {
+        const keyResult = compareBoardSortKeys(getClientNameSortKey(a, columnStatus), getClientNameSortKey(b, columnStatus));
+        if (keyResult !== 0) return keyResult;
+        return compareBoardSortKeys(getStableTaskFallbackKey(a), getStableTaskFallbackKey(b));
+    }
+};
+
+function getTaskStatusSortKey(task = {}, statusName = '') {
+    const statusKey = normalizeWorkStatus(statusName || task.work_status || 'not started');
+    if (statusKey === 'pending' || /inbox/i.test(String(statusName || ''))) return getInboxSortKey(task);
+    if (statusKey === 'client review') return getClientReviewSortKey(task);
+    if (statusKey === 'awaiting client') return getAwaitingClientSortKey(task);
+    if (statusKey === 'done') return getDoneSortKey(task);
+    return getActiveProductionSortKey(task, statusName);
+}
+
+function getBoardSortKey(task = {}, columnStatus = '', sortMode = getBoardSortMode()) {
+    switch (sortMode) {
+        case 'deadline_earliest':
+            return getEarliestDeadlineSortKey(task, columnStatus);
+        case 'client_az':
+            return getClientNameSortKey(task, columnStatus);
+        case 'smart_priority':
+        default:
+            return getTaskStatusSortKey(task, columnStatus);
+    }
+}
+
+function compareTasksForBoardColumn(a = {}, b = {}, columnStatus = '', sortMode = getBoardSortMode()) {
+    const mode = normalizeRequestBoardSortMode(sortMode);
+    return (BOARD_SORTERS[mode] || BOARD_SORTERS.smart_priority)(a, b, columnStatus);
+}
+
+function sortTasksForBoardColumn(tasks = [], columnStatus = '', sortMode = getBoardSortMode(), viewerContext = {}) {
+    const mode = normalizeRequestBoardSortMode(sortMode);
+    return [...deduplicateTasks(tasks)].sort((a, b) => compareTasksForBoardColumn(a, b, columnStatus, mode, viewerContext));
+}
+
+function sortActiveProductionTasks(tasks = [], columnStatus = '', sortMode = 'smart_priority') {
+    return sortTasksForBoardColumn(tasks, columnStatus || 'drafting', sortMode);
+}
+
+function sortClientReviewTasks(tasks = [], sortMode = 'smart_priority') {
+    return sortTasksForBoardColumn(tasks, 'client review', sortMode);
+}
+
+function sortAwaitingClientTasks(tasks = [], sortMode = 'smart_priority') {
+    return sortTasksForBoardColumn(tasks, WORK_STATUS_AWAITING_CLIENT, sortMode);
+}
+
+function sortDoneTasks(tasks = [], sortMode = 'smart_priority') {
+    return sortTasksForBoardColumn(tasks, 'done', sortMode);
+}
+
+function sortInboxTasks(tasks = [], sortMode = 'smart_priority') {
+    return sortTasksForBoardColumn(tasks, 'pending', sortMode);
+}
+
+function sortTasksForStatus(tasks = [], statusName = '', sortMode = 'smart_priority') {
+    return sortTasksForBoardColumn(tasks, statusName, sortMode);
+}
+
+function compareTasksForStatus(a = {}, b = {}, statusName = '', sortMode = 'smart_priority') {
+    return compareTasksForBoardColumn(a, b, statusName, sortMode);
 }
 
 function getRequestBoardFilterCounts(tasks = []) {
@@ -2513,9 +3216,12 @@ async function fetchSupabaseData(force = false, silent = false) {
         if (error) throw error;
 
         const oldDataString = JSON.stringify(globalData);
-        globalData = filterTasksForCurrentAccess(data || [], { regionFilter: 'all' });
+        globalData = deduplicateTasks(filterTasksForCurrentAccess(data || [], { regionFilter: 'all' }));
         await maybeAutoBackfillInternalDueDates({ silent });
         await fetchTaskRelatedLogsForCurrentAccess();
+        if ((hasAdminAccess() || isSuperAdmin) && !clientReviewSetupState.checking) {
+            refreshClientReviewSetupStatus({ silent: true });
+        }
         closeDetailModalIfCurrentTaskRestricted();
         const newDataString = JSON.stringify(globalData);
 
@@ -2676,7 +3382,7 @@ async function maybeAutoBackfillInternalDueDates({ silent = true, force = false 
 // 🌟 7. RENDER FUNCTIONS (DASHBOARD & BOARDS)
 // ========================================================
 function updateGlobalBadge() {
-    let data = filterTasksForCurrentAccess(globalData || []);
+    let data = deduplicateTasks(filterTasksForCurrentAccess(globalData || []));
 
     const pendingData = data.filter(d => String(d.status || '').toLowerCase() === 'pending');
     const pendingCount = pendingData.length;
@@ -2709,7 +3415,7 @@ function renderDashboard() {
     updateGlobalBadge();
 
     const finalRegion = currentRegionFilter || 'all';
-    let data = filterTasksForCurrentAccess(globalData || []);
+    let data = deduplicateTasks(filterTasksForCurrentAccess(globalData || []));
 
     // 🌟 FIX BARU: BUANG TERUS DATA 'DELETED' DARI DASHBOARD
     data = data.filter(d => String(d.status || '').toLowerCase() !== 'deleted');
@@ -2856,6 +3562,7 @@ function renderAdminHealthDashboard(data) {
         return urgency === 'moving-soon' || urgency === 'overdue';
     });
     const clientReviewMissingOwner = clientBlocked.filter(d => !getClientFollowUpOwner(d));
+    const setupIssueActive = clientReviewSetupState.checked && clientReviewSetupState.ok === false;
     const stuckDrafting = approvedActive.filter(d => String(d.work_status || '').toLowerCase() === 'drafting' && hoursSince(getStatusStartedAt(d)) >= 72);
     const oldPending = pending.filter(d => hoursSince(d.created_at) >= 24);
     const highRevision = active.filter(d => Number(d.revision || 0) >= 2);
@@ -2864,16 +3571,17 @@ function renderAdminHealthDashboard(data) {
     const counts = {};
     approvedActive.forEach(d => (getAssignedPICNames(d.assignee).length ? getAssignedPICNames(d.assignee) : ['Unassigned']).forEach(n => counts[n] = (counts[n] || 0) + 1));
     const overloaded = Object.entries(counts).filter(([name, count]) => name !== 'Unassigned' && count >= 6).sort((a, b) => b[1] - a[1]);
-    const score = Math.max(0, 100 - (overdue.length * 9 + followUpOverdue.length * 7 + missingInternalDue.length * 5 + clientReviewAging.length * 5 + stuckDrafting.length * 5 + overloaded.length * 8 + highRevision.length * 4 + oldPending.length * 3 + staleUpdate.length * 2 + clientReviewMissingOwner.length * 4));
+    const score = Math.max(0, 100 - (overdue.length * 9 + followUpOverdue.length * 7 + missingInternalDue.length * 5 + clientReviewAging.length * 5 + stuckDrafting.length * 5 + overloaded.length * 8 + highRevision.length * 4 + oldPending.length * 3 + staleUpdate.length * 2 + clientReviewMissingOwner.length * 4 + (setupIssueActive ? 25 : 0)));
     const tone = score >= 80 ? 'good' : score >= 60 ? 'warn' : 'danger';
     if (badge) { badge.className = `health-score-badge ${tone}`; badge.innerText = `${score}% Health`; }
 
     const completedHours = completed.map(getTaskCompletionHours).filter(v => v !== '').map(Number);
     const avg = completedHours.length ? Math.round((completedHours.reduce((a, b) => a + b, 0) / completedHours.length) * 10) / 10 : '';
-    const criticalCount = overdue.length + overloaded.length + followUpOverdue.length;
+    const criticalCount = overdue.length + overloaded.length + followUpOverdue.length + (setupIssueActive ? 1 : 0);
     const watchCount = clientReviewAging.length + stuckDrafting.length + oldPending.length + highRevision.length + staleUpdate.length + missingInternalDue.length + clientBlocked.length + followUpToday.length + clientReviewMissingOwner.length;
     const headline = score >= 80 ? 'Team flow looks steady today.' : score >= 60 ? 'A few items need admin attention.' : 'Critical blockers need action today.';
     const issues = [
+        ...(setupIssueActive ? [{ tone: 'danger', title: 'Client Review SQL setup issue', meta: clientReviewSetupState.message, jobID: '' }] : []),
         ...overdue.map(d => ({ tone: 'danger', title: 'Overdue task', meta: `${d.job_id} · ${d.client_name}`, jobID: d.job_id })),
         ...followUpOverdue.map(d => ({ tone: 'danger', title: 'Client follow-up overdue', meta: `${d.job_id} · ${getClientFollowUpOwner(d) || 'No owner'}`, jobID: d.job_id })),
         ...overloaded.map(([name, count]) => ({ tone: 'danger', title: 'PIC overloaded', meta: `${name} has ${count} active jobs`, jobID: '' })),
@@ -2911,7 +3619,7 @@ function renderAdminHealthDashboard(data) {
             <div class="health-signal ${watchCount ? 'warn' : 'good'}"><span>Watch</span><strong>${watchCount}</strong></div>
             <div class="health-signal"><span>Pace</span><strong>${avg ? `${avg}h` : `${completed.length} done`}</strong></div>
         </div>
-        <div class="health-subline"><span>${internalActive.length} internal active</span><span>${clientReviewAging.length} review aging</span><span>${clientBlocked.length} client blocked</span><span>${avgClientWaiting || 0}d avg wait</span></div>
+        <div class="health-subline"><span>${internalActive.length} internal active</span><span>${clientReviewAging.length} review aging</span><span>${clientBlocked.length} client blocked</span><span>${avgClientWaiting || 0}d avg wait</span><span>${clientReviewSetupState.ok === false ? 'setup needs SQL' : clientReviewSetupState.ok === true ? 'SQL ready' : 'SQL unchecked'}</span></div>
         <div class="health-section-title">Focus Now</div>
         <div class="health-issue-list">${primaryIssues.length ? primaryIssues.map(renderIssue).join('') : `<div class="health-clear-state"><i data-lucide="check-circle"></i><div><strong>Healthy right now</strong><span>No urgent admin risks detected.</span></div></div>`}</div>
         ${hiddenIssues.length ? `<details class="health-more"><summary>Show ${hiddenIssues.length} more signals</summary><div class="health-issue-list">${hiddenIssues.map(renderIssue).join('')}</div></details>` : ''}
@@ -2925,7 +3633,9 @@ function renderBoards() {
 
     if (!isWorkloadTab && !isDoneTab) return;
 
-    let data = filterTasksForCurrentAccess(globalData || []);
+    syncRequestBoardSortControl();
+    const sortMode = getBoardSortMode();
+    let data = deduplicateTasks(filterTasksForCurrentAccess(globalData || []));
 
     // ==========================================
     // RENDER WORKLOAD (REQUEST STATUS BOARD)
@@ -2941,22 +3651,7 @@ function renderBoards() {
             activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW) || getTaskNoteValue(d).toLowerCase().includes(qW));
         }
         renderRequestBoardFilters(activeData);
-        activeData = activeData.filter(taskMatchesRequestBoardFilter);
-
-        const statusOrder = {
-            'pending': 0, 'not started': 1, 'drafting': 2, 'partial ready': 3, 'revision': 4, 'internal review': 5, 'client review': 6, 'awaiting client': 7
-        };
-
-        activeData.sort((a, b) => {
-            let statusA = String(a.status || '').toLowerCase() === 'pending' ? 'pending' : String(a.work_status || 'not started').toLowerCase();
-            let statusB = String(b.status || '').toLowerCase() === 'pending' ? 'pending' : String(b.work_status || 'not started').toLowerCase();
-
-            let orderA = statusOrder[statusA] !== undefined ? statusOrder[statusA] : 99;
-            let orderB = statusOrder[statusB] !== undefined ? statusOrder[statusB] : 99;
-
-            if (orderA !== orderB) return orderA - orderB;
-            return compareTasksForStatus(a, b, statusA);
-        });
+        activeData = deduplicateTasks(activeData.filter(taskMatchesRequestBoardFilter));
 
         if (typeof isKanbanMode !== 'undefined' && isKanbanMode) {
             if (typeof renderKanbanBoard === 'function') renderKanbanBoard();
@@ -2979,8 +3674,8 @@ function renderBoards() {
                 statusGroups.forEach(cfg => {
                     let groupTasks = [];
                     if (cfg.id === 'pending') groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'pending');
-                    else groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || 'not started').toLowerCase() === cfg.id);
-                    groupTasks = sortTasksForStatus(groupTasks, cfg.id);
+                    else groupTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && normalizeWorkStatus(d.work_status || 'not started') === cfg.id);
+                    groupTasks = sortTasksForStatus(groupTasks, cfg.id, sortMode);
 
                     if (groupTasks.length > 0) {
                         listHtml += `<h3 class="month-group-header" style="border-bottom-color: ${cfg.color}; color: ${cfg.color}; margin-top: 30px;"><span style="display:flex; align-items:center; gap:10px;"><span style="display:inline-block; width:12px; height:12px; border-radius:50%; background:${cfg.color};"></span>${cfg.label.toUpperCase()}</span><span class="month-group-badge" style="background: ${cfg.bg}; color: ${cfg.color};">${groupTasks.length} Tasks</span></h3>`;
@@ -2996,10 +3691,10 @@ function renderBoards() {
     // RENDER DONE TASKS
     // ==========================================
     if (isDoneTab) {
-        let doneData = data.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() === 'done');
+        let doneData = sortDoneTasks(data.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() === 'done'), sortMode);
 
         const qD = document.getElementById('searchDone') ? document.getElementById('searchDone').value.toLowerCase() : '';
-        if(qD) doneData = doneData.filter(d => String(d.job_id || '').toLowerCase().includes(qD) || String(d.client_name || '').toLowerCase().includes(qD) || String(d.requester_name || '').toLowerCase().includes(qD) || String(d.assignee || '').toLowerCase().includes(qD) || getTaskNoteValue(d).toLowerCase().includes(qD));
+        if(qD) doneData = sortDoneTasks(doneData.filter(d => String(d.job_id || '').toLowerCase().includes(qD) || String(d.client_name || '').toLowerCase().includes(qD) || String(d.requester_name || '').toLowerCase().includes(qD) || String(d.assignee || '').toLowerCase().includes(qD) || getTaskNoteValue(d).toLowerCase().includes(qD)), sortMode);
 
         if (doneData.length === 0) {
             document.getElementById('doneList').innerHTML = '<div class="empty-state"><i data-lucide="search-x"></i><p>No matching tasks found.</p></div>';
@@ -3027,7 +3722,7 @@ function renderBoards() {
                 doneHtml += '<div class="kanban-board-wrapper">';
                 sortedKeys.forEach(key => {
                     const group = groupedDone[key];
-                    group.tasks.sort((a, b) => { let dateA = new Date(getTaskCompletedAt(a) || a.updated_at || '1970-01-01'); let dateB = new Date(getTaskCompletedAt(b) || b.updated_at || '1970-01-01'); return dateB - dateA; });
+                    group.tasks = sortDoneTasks(group.tasks, sortMode);
 
                     doneHtml += `
                     <div class="kanban-column" style="border-top-color: var(--green);">
@@ -3068,7 +3763,7 @@ function renderBoards() {
             } else {
                 sortedKeys.forEach(key => {
                     const group = groupedDone[key];
-                    group.tasks.sort((a, b) => { let dateA = new Date(getTaskCompletedAt(a) || a.updated_at || '1970-01-01'); let dateB = new Date(getTaskCompletedAt(b) || b.updated_at || '1970-01-01'); return dateB - dateA; });
+                    group.tasks = sortDoneTasks(group.tasks, sortMode);
                     doneHtml += `<h3 class="month-group-header">${group.label} <span class="month-group-badge">${group.tasks.length} Tasks</span></h3>`;
                     doneHtml += `<div class="project-grid">` + group.tasks.map((item, idx) => generateJobCard(item, true, idx)).join('') + `</div>`;
                 });
@@ -3095,9 +3790,9 @@ function viewMyRequests() {
 
 function generateJobCard(item, isDoneTab = false, index = 0) {
     const isPending = String(item.status || '').toLowerCase() === 'pending';
-    const ws = isPending ? 'Inbox (Pending)' : (item.work_status || 'Not started');
+    const ws = isPending ? 'Inbox (Pending)' : getWorkStatusLabel(item.work_status || 'Not started');
 
-    const wsClass = isPending ? 'ws-pending' : `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
+    const wsClass = isPending ? 'ws-pending' : `ws-${getWorkStatusSlug(item.work_status || 'Not started')}`;
     const borderColors = { 'Inbox (Pending)': '#ef4444', 'Not started': '#94a3b8', 'Drafting': '#f59e0b', 'Partial Ready': '#14b8a6', 'Internal Review': '#0ea5e9', 'Revision': '#ea580c', 'Client Review': '#8b5cf6', 'Awaiting Client': '#d97706', 'Done': '#10b981' };
     const borderColor = borderColors[ws] || '#cbd5e1';
 
@@ -3251,7 +3946,7 @@ function getCalendarEventTitle(task = {}) {
 function renderCalendarEvent(event, compact = false) {
     const task = event.task;
     const title = getCalendarEventTitle(task);
-    const status = String(task.work_status || 'Not started');
+    const status = getWorkStatusLabel(task.work_status || 'Not started');
     const assignee = getAssigneeDisplay(task.assignee);
     const aria = `${title}, ${status}, ${event.dateType} ${formatDate(event.dateKey)}, assigned to ${assignee}`;
     return `
@@ -3342,7 +4037,7 @@ function renderCalendarAgenda(events = []) {
                             <span class="calendar-urgency-light" aria-hidden="true"></span>
                             <span>
                                 <strong>${escapeHtml(getCalendarEventTitle(task))}</strong>
-                                <small>${escapeHtml(String(task.work_status || 'Not started'))} · ${escapeHtml(event.dateType)} · ${escapeHtml(getAssigneeDisplay(task.assignee))}</small>
+                                <small>${escapeHtml(getWorkStatusLabel(task.work_status || 'Not started'))} · ${escapeHtml(event.dateType)} · ${escapeHtml(getAssigneeDisplay(task.assignee))}</small>
                             </span>
                         </button>
                     `;
@@ -3411,7 +4106,7 @@ function openCalendarDayDrawer(dateKey) {
                         <span class="calendar-urgency-light" aria-hidden="true"></span>
                         <span>
                             <strong>${escapeHtml(getCalendarEventTitle(task))}</strong>
-                            <small>${escapeHtml(String(task.work_status || 'Not started'))} · ${escapeHtml(event.dateType)} ${escapeHtml(formatDate(event.dateKey))}</small>
+                            <small>${escapeHtml(getWorkStatusLabel(task.work_status || 'Not started'))} · ${escapeHtml(event.dateType)} ${escapeHtml(formatDate(event.dateKey))}</small>
                             <em>${escapeHtml(getAssigneeDisplay(task.assignee))} · ${getFlag(task.region)} ${escapeHtml(task.region || 'No region')}</em>
                         </span>
                         <i data-lucide="chevron-right"></i>
@@ -3464,6 +4159,191 @@ function closeEditModal() {
     if(!modal) return;
     modal.style.display = 'none';
     document.body.classList.remove('no-scroll');
+}
+
+function getMonthlyCompletionWarning(task = {}) {
+    const summary = getMonthlyDeliverableSummary(task);
+    if (!summary?.total) return null;
+    const progress = getMonthlyProgressState(task, summary);
+    const ready = clampMonthlyReady(progress.readyTotal, summary.total);
+    return ready < summary.total ? { ready, total: summary.total } : null;
+}
+
+async function confirmMonthlyCompletionIfNeeded(task = {}) {
+    const warning = getMonthlyCompletionWarning(task);
+    if (!warning) return true;
+    return showAppleConfirm(
+        'Not all deliverables are marked ready',
+        `${warning.ready} of ${warning.total} deliverables are currently ready.\n\nMove this monthly task to Done anyway?`,
+        { icon: 'alert-triangle', tone: 'danger', confirmText: 'Move to Done', cancelText: 'Keep Active' }
+    );
+}
+
+function getTaskTitleForCompletion(task = {}) {
+    return String(task.project_title || task.title || task.objective || 'Untitled task').trim();
+}
+
+function getTaskClientForCompletion(task = {}) {
+    return String(task.client_name || task.client || task.company_name || '').trim();
+}
+
+function getTaskPICLine(task = {}) {
+    const names = getAssignedPICNames(task.assignee);
+    return names.length ? names.join(', ') : 'Not assigned';
+}
+
+function buildCompletionMessage(task = {}) {
+    const jobID = String(task.job_id || task.id || '').trim();
+    const title = getTaskTitleForCompletion(task);
+    const client = getTaskClientForCompletion(task);
+    const lines = [
+        'Done ✅',
+        '',
+        `${jobID ? `${jobID} — ` : ''}${title}`,
+        ''
+    ];
+    if (client) lines.push(`Client: ${client}`);
+    lines.push(`Creative PIC: ${getTaskPICLine(task)}`);
+    lines.push('', 'The task has been completed and moved to Done.', '', 'Thank you, team.');
+    return lines.filter(line => !/\b(undefined|null)\b/i.test(line)).join('\n');
+}
+
+function getCompletionSummaryRows(task = {}, completedAt = '') {
+    const rows = [];
+    const completionTime = completedAt || getTaskCompletedAt(task);
+    if (completionTime) rows.push(['Completed', formatDateTime(completionTime)]);
+    rows.push(['PIC', getTaskPICLine(task)]);
+    const revisions = Number(task.revision || 0);
+    if (Number.isFinite(revisions)) rows.push(['Revisions', String(revisions)]);
+    const startAt = getStatusStartedAt(task);
+    if (startAt && completionTime) {
+        const durationDays = calculateWorkingDaysBetween(startAt, completionTime);
+        if (durationDays !== null) rows.push(['Duration', `${durationDays} working day${durationDays === 1 ? '' : 's'}`]);
+    }
+    return rows;
+}
+
+function autosizeCompletionMessage() {
+    const textarea = document.getElementById('completionMessageText');
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 180), 330)}px`;
+}
+
+function getCompletionModalFocusable() {
+    const modal = document.getElementById('taskCompletionModal');
+    if (!modal) return [];
+    return Array.from(modal.querySelectorAll('button, textarea, [href], input, select, [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.disabled && el.offsetParent !== null);
+}
+
+function openTaskCompletionModal(jobID, options = {}) {
+    const task = globalData.find(d => d.job_id === jobID);
+    if (!task) return;
+    const modal = document.getElementById('taskCompletionModal');
+    if (!modal) return;
+
+    completionModalLastFocus = document.activeElement;
+    modal.dataset.jobId = jobID;
+    document.getElementById('completionJobId').textContent = task.job_id || '-';
+    document.getElementById('completionTitleText').textContent = getTaskTitleForCompletion(task);
+    document.getElementById('completionClientText').textContent = getTaskClientForCompletion(task) || 'No client saved';
+    document.getElementById('completionPicText').textContent = getTaskPICLine(task);
+    document.getElementById('completionDateText').textContent = formatDateTime(options.completedAt || getTaskCompletedAt(task) || new Date().toISOString());
+    document.getElementById('completionSummaryGrid').innerHTML = getCompletionSummaryRows(task, options.completedAt)
+        .map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
+        .join('');
+    const textarea = document.getElementById('completionMessageText');
+    textarea.value = buildCompletionMessage(task);
+    document.getElementById('completionCopyStatus').textContent = '';
+
+    document.body.classList.add('no-scroll');
+    modal.style.display = 'flex';
+    modal.offsetHeight;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    autosizeCompletionMessage();
+    refreshIcons();
+    setTimeout(() => (textarea || getCompletionModalFocusable()[0])?.focus(), 80);
+}
+
+function closeTaskCompletionModal() {
+    const modal = document.getElementById('taskCompletionModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+        modal.style.display = 'none';
+        delete modal.dataset.jobId;
+        document.body.classList.remove('no-scroll');
+        if (completionModalLastFocus && typeof completionModalLastFocus.focus === 'function') completionModalLastFocus.focus();
+        completionModalLastFocus = null;
+    }, 220);
+}
+
+function handleCompletionModalBackdrop(event) {
+    if (event.target === event.currentTarget) closeTaskCompletionModal();
+}
+
+function handleCompletionModalKeydown(event) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeTaskCompletionModal();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = getCompletionModalFocusable();
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+async function copyCompletionMessage(closeAfter = false) {
+    const textarea = document.getElementById('completionMessageText');
+    const status = document.getElementById('completionCopyStatus');
+    if (!textarea) return;
+    try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+        await navigator.clipboard.writeText(textarea.value);
+        if (status) status.textContent = 'Message copied';
+        if (closeAfter) setTimeout(closeTaskCompletionModal, 450);
+    } catch(e) {
+        textarea.focus();
+        textarea.select();
+        if (status) status.textContent = 'Press Ctrl+C or Command+C to copy.';
+    }
+}
+
+function openCompletedTaskFromModal() {
+    const modal = document.getElementById('taskCompletionModal');
+    const jobID = modal?.dataset.jobId || '';
+    closeTaskCompletionModal();
+    if (jobID) setTimeout(() => openDetailModal(jobID, false), 260);
+}
+
+function handleSuccessfulDoneTransition(jobID, context = {}) {
+    const task = globalData.find(d => d.job_id === jobID);
+    if (!task) return;
+    const completedAt = context.completedAt || getTaskCompletedAt(task) || new Date().toISOString();
+    const transitionAt = context.moveAt || task.last_moved_at || completedAt;
+    const key = `${jobID}:${transitionAt}:${completedAt}`;
+    if (completionModalOpenedKeys.has(key)) return;
+    completionModalOpenedKeys.add(key);
+    firePremiumConfetti();
+    const detailModal = document.getElementById('globalDetailModal');
+    if (detailModal?.classList.contains('show')) {
+        closeDetailModal();
+        setTimeout(() => openTaskCompletionModal(jobID, { completedAt }), 440);
+        return;
+    }
+    openTaskCompletionModal(jobID, { completedAt });
 }
 
 function openEditModal(jobID, client, title, deadlineStr, assignee) {
@@ -4923,12 +5803,15 @@ function renderSettingsStatusList() {
     const currentTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'Dark' : 'Light';
     const accessLabel = hasSuperAdminAccess() ? 'Superadmin' : hasAdminAccess() ? 'Admin' : 'View only';
     const activeRegions = `${metrics.coveredCountries} active`;
+    const clientReviewSQL = clientReviewSetupState.ok === true ? 'Ready' : clientReviewSetupState.ok === false ? 'Needs SQL' : 'Unchecked';
     return `
         <div class="settings-status-list">
             ${renderSettingsStatusRow('Daily auto sign-out', 'Active', 'shield-check')}
+            ${renderSettingsStatusRow('Client review setup', clientReviewSQL, clientReviewSetupState.ok === false ? 'database-zap' : 'database')}
             ${renderSettingsStatusRow('Current theme', currentTheme, 'sun')}
             ${renderSettingsStatusRow('Active regions', activeRegions, 'map-pin')}
             ${renderSettingsStatusRow('Workspace access', accessLabel, 'lock')}
+            ${hasAdminAccess() ? `<button type="button" class="settings-action-btn compact" onclick="refreshClientReviewSetupStatus({ force: true, silent: false })"><i data-lucide="refresh-cw"></i><span>Check SQL Setup</span></button>` : ''}
         </div>
     `;
 }
@@ -7440,9 +8323,9 @@ function formatDurationFrom(startStr, endStr = new Date().toISOString()) {
 }
 
 function getStatusStartedAt(item) {
-    const status = String(item.work_status || 'Not started').toLowerCase();
+    const status = normalizeWorkStatus(item.work_status || 'Not started');
     const statusLog = getTaskLogs(item.job_id).find(log =>
-        log.action_type === 'status_changed' && String(log.new_value || '').toLowerCase() === status
+        log.action_type === 'status_changed' && normalizeWorkStatus(log.new_value || '') === status
     );
 
     return statusLog?.created_at || item.last_moved_at || item.review_started_at || item.created_at || '';
@@ -7460,7 +8343,7 @@ function renderAdminTrackingPanel(item) {
     const noteLogs = getTaskNoteLogs(item.job_id);
     const statusStartedAt = getStatusStartedAt(item);
     const lastUpdateAt = getLastUpdateAt(item);
-    const currentStatus = String(item.status || '').toLowerCase() === 'pending' ? 'Pending Approval' : (item.work_status || 'Not started');
+    const currentStatus = String(item.status || '').toLowerCase() === 'pending' ? 'Pending Approval' : getWorkStatusLabel(item.work_status || 'Not started');
 
     const timelineRows = logs.length ? logs.slice(0, 12).map(log => `
         <div class="tracking-row">
@@ -8097,9 +8980,11 @@ function openDetailModal(jobID, isUpdate = false) {
         const safeAssignee = String(actualAssignee).replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const safeRequester = String(actualRequester).replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const safeDeadline = String(getTaskClientDeadline(item) || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        const ws = String(item.work_status || 'Not started');
-        const wsClass = `ws-${ws.replace(/\s+/g, '-').toLowerCase()}`;
-        const isDoneTab = String(item.status).toLowerCase() === 'approved' && String(item.work_status).toLowerCase() === 'done';
+        const wsRaw = String(item.work_status || 'Not started');
+        const wsKey = normalizeWorkStatus(wsRaw);
+        const ws = getWorkStatusLabel(wsRaw);
+        const wsClass = `ws-${getWorkStatusSlug(wsRaw)}`;
+        const isDoneTab = String(item.status).toLowerCase() === 'approved' && wsKey === 'done';
         const securePin = localStorage.getItem('adtech_lead_pin');
         const canEditPIC = securePin && String(item.status || '').toLowerCase() === 'approved';
         const canViewInternalDeadline = shouldUseInternalDeadlineForTask(item);
@@ -8155,7 +9040,7 @@ function openDetailModal(jobID, isUpdate = false) {
                 <div class="detail-item"><span>Client Deadline</span><strong style="color:var(--red);">${formatDate(getTaskClientDeadline(item))}</strong></div>
                 ${canViewInternalDeadline ? `<div class="detail-item"><span>Internal Due</span><strong>${getTaskEffectiveInternalDueDate(item) ? formatDate(getTaskEffectiveInternalDueDate(item)) : 'No internal due'}</strong></div>` : ''}
                 <div class="detail-item pic-detail"><span>Creative PIC</span>${canEditPIC ? renderPicEditor(item.job_id, actualAssignee) : `<strong>${actualAssignee}</strong>`}</div>
-                <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${ws === 'Not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${ws === 'Drafting' ? 'selected' : ''}>Drafting</option><option value="Partial Ready" ${ws === 'Partial Ready' ? 'selected' : ''}>Partial Ready</option><option value="Revision" ${ws === 'Revision' ? 'selected' : ''}>Revision</option><option value="Internal Review" ${ws === 'Internal Review' ? 'selected' : ''}>Internal Review</option><option value="Client Review" ${ws === 'Client Review' ? 'selected' : ''}>Client Review</option><option value="Awaiting Client" ${ws === 'Awaiting Client' ? 'selected' : ''}>Awaiting Client</option><option value="Done" ${ws === 'Done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>
+                <div class="detail-item"><span>Work Status</span>${String(item.status).toLowerCase() === 'pending' ? '<strong>-</strong>' : `${securePin && !isDoneTab ? `<select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select ${wsClass}"><option value="Not started" ${wsKey === 'not started' ? 'selected' : ''}>Not started</option><option value="Drafting" ${wsKey === 'drafting' ? 'selected' : ''}>Drafting</option><option value="Partial Ready" ${wsKey === 'partial ready' ? 'selected' : ''}>Partial Ready</option><option value="Revision" ${wsKey === 'revision' ? 'selected' : ''}>Revision</option><option value="Internal Review" ${wsKey === 'internal review' ? 'selected' : ''}>Internal Review</option><option value="Client Review" ${wsKey === 'client review' ? 'selected' : ''}>Client Review</option><option value="${WORK_STATUS_AWAITING_CLIENT}" ${wsKey === 'awaiting client' ? 'selected' : ''}>Awaiting Client</option><option value="Done" ${wsKey === 'done' ? 'selected' : ''}>Done</option></select>` : `<strong class="ws-badge ${wsClass}">${ws}</strong>`}`}</div>
                 <div class="detail-item"><span>Revision Count</span>${securePin && !isDoneTab ? `<div style="display:flex; align-items:center; gap:8px; margin-top:2px;"><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, -1)">-</button><strong style="min-width:15px; text-align:center;">${item.revision || 0}</strong><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, 1)">+</button></div>` : `<strong>${item.revision || 0}</strong>`}</div>
                 ${(item.approver) ? `<div class="detail-item"><span>Approved By</span><strong>${item.approver}</strong></div>` : ''}
             </div>
@@ -8185,7 +9070,7 @@ function openDetailModal(jobID, isUpdate = false) {
             }
         } else {
             if (securePin && !isDoneTab) {
-                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('requester', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Requester</button><button onclick="copyText('team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Team</button>${String(item.work_status).toLowerCase() === 'client review' ? `<button onclick="copyText('review', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}${String(item.work_status).toLowerCase() === 'client review' ? `<button onclick="copyText('chase_client', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #0ea5e9; color: white; border: none;"><i data-lucide="message-circle"></i> Chase Requester</button>` : ''}${String(item.work_status).toLowerCase() === 'revision' ? `<button onclick="copyText('revision_alert', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action" style="background: #ea580c; color: white; border: none;"><i data-lucide="alert-circle"></i> Msg: Revision</button>` : ''}<button onclick="copyText('chase', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action" style="background: var(--orange); color: white; border: none;"><i data-lucide="bell-ring"></i> Chase Status</button><button onclick="openEditModal('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeDeadline}', '${safeAssignee}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
+                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('requester', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Requester</button><button onclick="copyText('team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Team</button>${wsKey === 'client review' ? `<button onclick="copyText('review', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}${wsKey === 'client review' ? `<button onclick="copyText('chase_client', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #0ea5e9; color: white; border: none;"><i data-lucide="message-circle"></i> Chase Requester</button>` : ''}${wsKey === 'revision' ? `<button onclick="copyText('revision_alert', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action" style="background: #ea580c; color: white; border: none;"><i data-lucide="alert-circle"></i> Msg: Revision</button>` : ''}<button onclick="copyText('chase', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action" style="background: var(--orange); color: white; border: none;"><i data-lucide="bell-ring"></i> Chase Status</button><button onclick="openEditModal('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeDeadline}', '${safeAssignee}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
             } else if (securePin && isDoneTab) {
                 footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('done_team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy" style="flex:1; background: var(--green); color: white; border: none;"><i data-lucide="check-circle"></i> Msg: Team (Done)</button><select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select" style="background: var(--text-muted); flex: 1;"><option value="">Undo Status...</option><option value="Client Review">Move back to Review</option></select><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="flex: 1;"><i data-lucide="trash-2"></i> Delete Record</button></div>`;
             }
@@ -9002,6 +9887,50 @@ function renderTeamMemberOptions(preferredName = '') {
     `).join('');
 }
 
+function findActiveTeamMemberByName(name) {
+    const key = normalizeNameKey(name);
+    if (!key) return null;
+    return getActiveTeamMembers().find(member => normalizeNameKey(member.name) === key) || null;
+}
+
+function getTeamMemberStableIdentifier(member = {}) {
+    const direct = [
+        member.auth_user_id,
+        member.user_id,
+        member.supabase_user_id,
+        member.uuid,
+        member.member_id,
+        member.team_member_id,
+        member.id,
+        member.member_key
+    ].map(value => String(value || '').trim()).find(Boolean);
+    if (direct) return direct;
+    return normalizeNameKey(member.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function resolveFollowUpOwnerSelection(ownerName) {
+    const member = findActiveTeamMemberByName(ownerName);
+    if (!member) {
+        return {
+            ok: false,
+            message: 'Please choose an active team member as follow-up owner.'
+        };
+    }
+    const ownerId = getTeamMemberStableIdentifier(member);
+    if (!ownerId) {
+        return {
+            ok: false,
+            message: 'This team member has no stable owner ID/key. Update the roster in Settings first.'
+        };
+    }
+    return {
+        ok: true,
+        name: member.name,
+        id: ownerId,
+        member
+    };
+}
+
 function cancelWorkflowDialog(jobID, skipModal = false) {
     closeSettingsDialog();
     renderBoards();
@@ -9024,12 +9953,40 @@ function resolveClientReviewFollowUpOwner(task = {}) {
         const activeMatch = activeMembers.find(member => normalizeNameKey(member.name) === normalizeNameKey(candidate));
         if (activeMatch) return activeMatch.name;
     }
+    const superAdmin = activeMembers.find(member => SUPER_ADMIN_NAMES.some(name => normalizeNameKey(name) === normalizeNameKey(member.name)));
+    if (superAdmin) return superAdmin.name;
     return candidates[0] || 'Admin';
 }
 
 function getClientReviewAutomationKey(task = {}, startedAt = '') {
     const source = startedAt || getClientReviewStartedAt(task) || task.last_moved_at || task.created_at || '';
     return `client-review-auto:${task.job_id || 'unknown'}:${String(source).replace(/[^0-9a-z]/gi, '').slice(0, 24)}`;
+}
+
+async function moveClientReviewToAwaitingInSupabase(jobID, payload = {}, meta = {}) {
+    const args = {
+        p_job_id: jobID,
+        p_waiting_reason: payload.client_waiting_reason || CLIENT_REVIEW_DEFAULT_WAITING_REASON,
+        p_waiting_since: payload.client_waiting_since || new Date().toISOString(),
+        p_follow_up_date: payload.client_follow_up_date || null,
+        p_follow_up_owner: payload.client_follow_up_owner || '',
+        p_follow_up_owner_id: payload.client_follow_up_owner_id || null,
+        p_waiting_note: payload.client_waiting_note || null,
+        p_actor_name: getCurrentActor(),
+        p_source: meta.source || 'manual_app',
+        p_idempotency_key: meta.automation_key || `manual-client-review:${jobID}:${payload.client_waiting_since || Date.now()}`
+    };
+
+    const operation = 'rpc.move_client_review_to_awaiting(p_job_id,p_waiting_reason,p_waiting_since,p_follow_up_date,p_follow_up_owner,p_follow_up_owner_id,p_waiting_note,p_actor_name,p_source,p_idempotency_key)';
+    const { data, error } = await supabaseClient.rpc('move_client_review_to_awaiting', args);
+    if (error) throw annotateSupabaseError(error, operation, { jobID, payload, rpc_args: args, meta });
+
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+        savedFullPayload: true,
+        row: row || null,
+        source: 'rpc'
+    };
 }
 
 async function autoMoveClientReviewToAwaiting(jobID, options = {}) {
@@ -9052,6 +10009,10 @@ async function autoMoveClientReviewToAwaiting(jobID, options = {}) {
     const nowISO = new Date().toISOString();
     const followUp = addWorkingDays(nowISO, 1);
     const owner = resolveClientReviewFollowUpOwner(job);
+    const ownerInfo = resolveFollowUpOwnerSelection(owner);
+    if (!ownerInfo.ok) {
+        return showAppleAlert('Follow-up Owner Needed', ownerInfo.message, { tone: 'warning', icon: 'user-round-x' });
+    }
     const note = options.note || `No client response after ${age.workingDays ?? 0} working day(s).`;
     const automationKey = getClientReviewAutomationKey(job, age.startAt);
     const oldSnapshot = { ...job };
@@ -9062,79 +10023,37 @@ async function autoMoveClientReviewToAwaiting(jobID, options = {}) {
         client_waiting_since: nowISO,
         client_waiting_reason: CLIENT_REVIEW_DEFAULT_WAITING_REASON,
         client_follow_up_date: followUp,
-        client_follow_up_owner: owner,
+        client_follow_up_owner: ownerInfo.name,
+        client_follow_up_owner_id: ownerInfo.id,
         client_waiting_note: note,
         client_review_ended_at: nowISO,
         client_review_auto_move_enabled: true
     };
     if (automated) payload.client_review_auto_moved_at = nowISO;
-    const fallbackPayload = {
-        work_status: WORK_STATUS_AWAITING_CLIENT,
-        last_moved_at: nowISO,
-        client_waiting_since: nowISO,
-        client_waiting_reason: CLIENT_REVIEW_DEFAULT_WAITING_REASON,
-        client_follow_up_date: followUp,
-        client_follow_up_owner: owner,
-        client_waiting_note: note
-    };
 
     try {
-        Object.assign(job, payload);
+        const result = await moveClientReviewToAwaitingInSupabase(jobID, payload, {
+            automation_key: automationKey,
+            automation_rule: `${CLIENT_REVIEW_WINDOW_DAYS}_working_day_client_review`,
+            review_started_at: age.startAt,
+            review_working_days: age.workingDays,
+            source: options.source || 'manual_admin'
+        });
+
+        Object.assign(job, result.row || payload);
         renderBoards();
         if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
         renderDashboard();
         closeSettingsDialog();
-
-        const result = await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
-        try {
-            const { data: existingPeriods } = await supabaseClient
-                .from('task_client_waiting_periods')
-                .select('id')
-                .eq('job_id', jobID)
-                .is('waiting_ended_at', null)
-                .limit(1);
-            if (!existingPeriods?.length) {
-                await supabaseClient.from('task_client_waiting_periods').insert([{
-                    job_id: jobID,
-                    waiting_reason: CLIENT_REVIEW_DEFAULT_WAITING_REASON,
-                    waiting_note: note,
-                    waiting_started_at: nowISO,
-                    follow_up_date: followUp,
-                    follow_up_owner: owner,
-                    created_by: automated ? 'System automation' : getCurrentActor()
-                }]);
-            }
-        } catch(e) {
-            console.warn('Client waiting period history saved via activity log only:', e.message);
-        }
-
-        await logTaskActivity(
-            jobID,
-            automated ? 'client_review_auto_moved' : 'client_review_manual_moved_to_awaiting',
-            oldStatus,
-            WORK_STATUS_AWAITING_CLIENT,
-            automated ? 'Automatically moved from Client Review to Awaiting Client.' : note,
-            {
-                automation_key: automationKey,
-                automation_rule: `${CLIENT_REVIEW_WINDOW_DAYS}_working_day_client_review`,
-                review_started_at: age.startAt,
-                review_working_days: age.workingDays,
-                waiting_reason: CLIENT_REVIEW_DEFAULT_WAITING_REASON,
-                follow_up_owner: owner,
-                follow_up_date: followUp,
-                executed_at: nowISO,
-                saved_full_payload: result.savedFullPayload,
-                source: options.source || 'manual_admin'
-            }
-        );
-        showNotification('Moved To Awaiting Client', owner);
+        await fetchSupabaseData(true, true);
+        showNotification('Moved To Awaiting Client', ownerInfo.name);
         if (document.getElementById('globalDetailModal')?.classList.contains('show')) openDetailModal(jobID, true);
     } catch(e) {
         Object.assign(job, oldSnapshot);
         renderBoards();
         if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
         renderDashboard();
-        showAppleAlert('Client Review Move Failed', /column|schema|cache|client_review|client_waiting/i.test(e.message || '') ? 'Please run supabase-client-review-aging.sql in Supabase SQL Editor first.' : e.message);
+        showClientReviewMoveError(e, { operation: 'manual/auto Client Review -> Awaiting Client', jobID, payload, old_status: oldStatus });
     }
 }
 
@@ -9169,6 +10088,7 @@ async function undoClientReviewAutoMove(jobID) {
         client_waiting_reason: null,
         client_follow_up_date: null,
         client_follow_up_owner: null,
+        client_follow_up_owner_id: null,
         client_waiting_note: null
     };
     const fallbackPayload = { work_status: 'Client Review', last_moved_at: nowISO, review_started_at: reviewStart };
@@ -9519,6 +10439,8 @@ async function runClientReviewAgingCheck() {
         showNotification('Aging Check Complete', `${moved} moved · ${audited} audit`);
         if (document.getElementById('settingsDialogOverlay')?.classList.contains('show')) openClientReviewAuditDialog();
     } catch(e) {
+        logSupabaseDiagnostic('rpc.run_client_review_aging_check()', e, { source: 'admin_manual_aging_check' });
+        refreshClientReviewSetupStatus({ force: true, silent: true });
         showAppleAlert('Aging Check Needs SQL', /function|rpc|schema|run_client_review_aging_check/i.test(e.message || '') ? 'Run supabase-client-review-aging.sql in Supabase SQL Editor to enable the backend function and schedule.' : e.message);
     } finally {
         clientReviewAgingCheckInFlight = false;
@@ -9528,6 +10450,75 @@ async function runClientReviewAgingCheck() {
             refreshIcons();
         }
     }
+}
+
+async function refreshClientReviewSetupStatus(options = {}) {
+    if (!(hasAdminAccess() || isSuperAdmin)) return clientReviewSetupState;
+    if (clientReviewSetupState.checking && !options.force) return clientReviewSetupState;
+    const lastCheckedAt = clientReviewSetupState.checkedAt ? new Date(clientReviewSetupState.checkedAt).getTime() : 0;
+    const recentlyChecked = lastCheckedAt && (Date.now() - lastCheckedAt) < 10 * 60 * 1000;
+    if (clientReviewSetupState.checked && !options.force && (clientReviewSetupState.ok === true || recentlyChecked)) return clientReviewSetupState;
+
+    clientReviewSetupState = {
+        ...clientReviewSetupState,
+        checking: true,
+        message: clientReviewSetupState.checked ? clientReviewSetupState.message : 'Checking setup...',
+        error: null
+    };
+
+    const markFailed = (label, error, operation) => {
+        annotateSupabaseError(error, operation);
+        clientReviewSetupState = {
+            checked: true,
+            checking: false,
+            ok: false,
+            message: `${label}: ${error?.message || error || 'Failed'}`,
+            error,
+            checkedAt: new Date().toISOString()
+        };
+        logSupabaseDiagnostic(operation, error, { setup_check: label });
+        return clientReviewSetupState;
+    };
+
+    try {
+        const columnsProbe = await supabaseClient
+            .from('creative_requests')
+            .select('job_id,work_status,client_waiting_since,client_waiting_reason,client_follow_up_date,client_follow_up_owner,client_follow_up_owner_id,client_waiting_note,client_review_started_at,client_review_ended_at,client_review_auto_moved_at')
+            .limit(1);
+        if (columnsProbe.error) return markFailed('Missing creative_requests fields', columnsProbe.error, 'creative_requests.select(client_review/client_waiting columns)');
+
+        const periodsProbe = await supabaseClient
+            .from('task_client_waiting_periods')
+            .select('id,job_id,waiting_started_at,waiting_ended_at,follow_up_date,follow_up_owner,follow_up_owner_id')
+            .limit(1);
+        if (periodsProbe.error) return markFailed('Missing waiting-period table', periodsProbe.error, 'task_client_waiting_periods.select(required columns)');
+
+        const rpcProbe = await supabaseClient.rpc('run_client_review_aging_check', { p_dry_run: true });
+        if (rpcProbe.error) return markFailed('Missing aging RPC', rpcProbe.error, 'rpc.run_client_review_aging_check(p_dry_run=true)');
+
+        clientReviewSetupState = {
+            checked: true,
+            checking: false,
+            ok: true,
+            message: 'Client Review SQL ready',
+            error: null,
+            checkedAt: new Date().toISOString()
+        };
+    } catch(e) {
+        return markFailed('Setup check failed', e, 'client_review_setup_health_check');
+    } finally {
+        if (!options.silent) {
+            showAppleAlert(
+                clientReviewSetupState.ok ? 'Client Review Ready' : 'Client Review Setup Issue',
+                clientReviewSetupState.message,
+                { tone: clientReviewSetupState.ok ? 'success' : 'warning', icon: clientReviewSetupState.ok ? 'check-circle' : 'database-zap' }
+            );
+        }
+        if (document.getElementById('dashboard')?.classList.contains('active')) renderDashboard();
+        if (document.getElementById('settings')?.classList.contains('active')) renderSettingsPage();
+    }
+
+    return clientReviewSetupState;
 }
 
 function stripDeadlinePayloadFields(payload = {}) {
@@ -9557,15 +10548,20 @@ function stripDeadlinePayloadFields(payload = {}) {
 }
 
 async function saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload = null) {
+    const operation = `creative_requests.update(${Object.keys(payload).join(',')}).eq(job_id, ${jobID})`;
     const { error } = await supabaseClient.from('creative_requests').update(payload).eq('job_id', jobID);
     if (!error) return { savedFullPayload: true };
+    annotateSupabaseError(error, operation, { jobID, payload });
     if (fallbackPayload && /column|schema|cache|client_waiting|client_follow_up|completed_at|client_deadline|internal_due|original_|deadline_change|assigned_pic|assignment_updated/i.test(error.message || '')) {
         const cleanFallbackPayload = stripPICAssignmentPayloadFields(fallbackPayload);
+        const retryOperation = `creative_requests.update_fallback(${Object.keys(cleanFallbackPayload).join(',')}).eq(job_id, ${jobID})`;
         const retry = await supabaseClient.from('creative_requests').update(cleanFallbackPayload).eq('job_id', jobID);
+        if (retry.error) annotateSupabaseError(retry.error, retryOperation, { jobID, payload: cleanFallbackPayload, originalError: error });
         if (retry.error && /column|schema|cache|client_deadline|internal_due|original_|deadline_change|assigned_pic|assignment_updated/i.test(retry.error.message || '')) {
             const minimal = stripDeadlinePayloadFields(cleanFallbackPayload);
+            const secondRetryOperation = `creative_requests.update_minimal(${Object.keys(minimal).join(',')}).eq(job_id, ${jobID})`;
             const secondRetry = await supabaseClient.from('creative_requests').update(minimal).eq('job_id', jobID);
-            if (secondRetry.error) throw secondRetry.error;
+            if (secondRetry.error) throw annotateSupabaseError(secondRetry.error, secondRetryOperation, { jobID, payload: minimal, originalError: error });
             return { savedFullPayload: false, originalError: error };
         }
         if (retry.error) throw retry.error;
@@ -9623,6 +10619,8 @@ async function submitAwaitingClientMove(jobID, skipModal = false) {
     const owner = document.getElementById('awaitingClientOwner')?.value || '';
     const note = document.getElementById('awaitingClientNote')?.value.trim() || '';
     if (!owner) return showAppleAlert('Missing Owner', 'Please select a follow-up owner.');
+    const ownerInfo = resolveFollowUpOwnerSelection(owner);
+    if (!ownerInfo.ok) return showAppleAlert('Follow-up Owner Needed', ownerInfo.message, { tone: 'warning', icon: 'user-round-x' });
 
     const btn = document.getElementById('btnAwaitingClientSave');
     const originalHtml = btn ? btn.innerHTML : '';
@@ -9641,51 +10639,60 @@ async function submitAwaitingClientMove(jobID, skipModal = false) {
         client_waiting_since: since,
         client_waiting_reason: reason,
         client_follow_up_date: followUp || null,
-        client_follow_up_owner: owner,
+        client_follow_up_owner: ownerInfo.name,
+        client_follow_up_owner_id: ownerInfo.id,
         client_waiting_note: note || null
     };
     if (normalizeWorkStatus(oldStatus) === 'client review') {
         payload.client_review_ended_at = nowISO;
         payload.client_review_auto_move_enabled = true;
     }
-    const fallbackPayload = { work_status: WORK_STATUS_AWAITING_CLIENT, last_moved_at: nowISO };
 
     try {
-        Object.assign(job, payload);
-        renderBoards();
-        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
-        renderDashboard();
-        closeSettingsDialog();
-        if (!skipModal) openDetailModal(jobID, true);
-
-        const result = await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
-        try {
-            await supabaseClient.from('task_client_waiting_periods').insert([{
+        let result = { savedFullPayload: true, row: null, source: 'direct' };
+        if (normalizeWorkStatus(oldStatus) === 'client review') {
+            result = await moveClientReviewToAwaitingInSupabase(jobID, payload, {
+                source: 'manual_dialog',
+                review_started_at: getClientReviewStartedAt(job)
+            });
+        } else {
+            await saveCreativeRequestStatusPayload(jobID, payload);
+            const periodInsert = await supabaseClient.from('task_client_waiting_periods').insert([{
                 job_id: jobID,
                 waiting_reason: reason,
                 waiting_note: note,
                 waiting_started_at: since,
                 follow_up_date: followUp || null,
-                follow_up_owner: owner,
+                follow_up_owner: ownerInfo.name,
+                follow_up_owner_id: ownerInfo.id,
                 created_by: getCurrentActor()
             }]);
-        } catch(e) {
-            console.warn('Client waiting period history saved via activity log only:', e.message);
+            if (periodInsert.error) {
+                throw annotateSupabaseError(periodInsert.error, 'task_client_waiting_periods.insert(active waiting period)', { jobID, payload });
+            }
+            await logTaskActivity(jobID, 'entered_awaiting_client', oldStatus, WORK_STATUS_AWAITING_CLIENT, note || reason, {
+                reason,
+                waiting_since: since,
+                follow_up_date: followUp,
+                follow_up_owner: ownerInfo.name,
+                follow_up_owner_id: ownerInfo.id,
+                saved_full_payload: true
+            });
         }
-        logTaskActivity(jobID, 'entered_awaiting_client', oldStatus, WORK_STATUS_AWAITING_CLIENT, note || reason, {
-            reason,
-            waiting_since: since,
-            follow_up_date: followUp,
-            follow_up_owner: owner,
-            saved_full_payload: result.savedFullPayload
-        });
-        showNotification('Client Blocked', owner);
+        Object.assign(job, result.row || payload);
+        closeSettingsDialog();
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        await fetchSupabaseData(true, true);
+        if (!skipModal) openDetailModal(jobID, true);
+        showNotification('Client Blocked', ownerInfo.name);
     } catch(e) {
         Object.assign(job, oldSnapshot);
         renderBoards();
         if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
         renderDashboard();
-        showAppleAlert('Status Update Error', e.message);
+        showClientReviewMoveError(e, { operation: 'manual Awaiting Client save', jobID, payload, old_status: oldStatus });
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -9736,6 +10743,8 @@ async function submitResolveAwaitingClient(jobID, skipModal = false) {
     const note = document.getElementById('resolveAwaitingNote')?.value.trim() || '';
     const btn = document.getElementById('btnResolveAwaitingSave');
     const originalHtml = btn ? btn.innerHTML : '';
+    const isDestinationDone = normalizeWorkStatus(destination) === 'done';
+    if (isDestinationDone && !(await confirmMonthlyCompletionIfNeeded(job))) return;
     if (btn) {
         btn.disabled = true;
         btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i><span>Saving...</span>';
@@ -9753,6 +10762,7 @@ async function submitResolveAwaitingClient(jobID, skipModal = false) {
         client_waiting_reason: null,
         client_follow_up_date: null,
         client_follow_up_owner: null,
+        client_follow_up_owner_id: null,
         client_waiting_note: null
     };
     if (destination === 'Client Review') {
@@ -9768,22 +10778,15 @@ async function submitResolveAwaitingClient(jobID, skipModal = false) {
         payload.client_review_start_source = 'manual_status_change';
         payload.auto_move_snoozed_until = null;
     }
-    if (destination === 'Done') {
+    if (isDestinationDone) {
         payload.done_at = nowISO;
-        payload.completed_at = nowISO;
+        payload.completed_at = getTaskCompletedAt(job) || nowISO;
     }
     const fallbackPayload = { work_status: destination, last_moved_at: nowISO };
     if (destination === 'Client Review') fallbackPayload.review_started_at = nowISO;
-    if (destination === 'Done') fallbackPayload.done_at = nowISO;
+    if (isDestinationDone) fallbackPayload.done_at = payload.done_at;
 
     try {
-        Object.assign(job, payload);
-        renderBoards();
-        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
-        renderDashboard();
-        closeSettingsDialog();
-        if (!skipModal) openDetailModal(jobID, true);
-
         const result = await saveCreativeRequestStatusPayload(jobID, payload, fallbackPayload);
         try {
             await supabaseClient
@@ -9794,13 +10797,21 @@ async function submitResolveAwaitingClient(jobID, skipModal = false) {
         } catch(e) {
             console.warn('Client waiting period close saved via activity log only:', e.message);
         }
-        logTaskActivity(jobID, 'left_awaiting_client', oldStatus, destination, note || `Client waiting closed after ${waitingDays} day(s)`, {
+        await logTaskActivity(jobID, 'left_awaiting_client', oldStatus, destination, note || `Client waiting closed after ${waitingDays} day(s)`, {
             waiting_days: waitingDays,
             destination,
-            saved_full_payload: result.savedFullPayload
+            saved_full_payload: result.savedFullPayload,
+            completed_at: isDestinationDone ? payload.completed_at : '',
+            client_review_started_at: destination === 'Client Review' ? nowISO : ''
         });
+        Object.assign(job, payload);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        closeSettingsDialog();
+        if (!skipModal && !isDestinationDone) openDetailModal(jobID, true);
         showNotification('Client Blocker Closed', destination);
-        if (destination === 'Done') firePremiumConfetti();
+        if (isDestinationDone) handleSuccessfulDoneTransition(jobID, { completedAt: payload.completed_at, moveAt: nowISO, oldStatus, source: 'awaiting_client_resolution' });
     } catch(e) {
         Object.assign(job, oldSnapshot);
         renderBoards();
@@ -9818,23 +10829,35 @@ async function submitResolveAwaitingClient(jobID, skipModal = false) {
 
 async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
     const job = globalData.find(d => d.job_id === jobID);
-    const oldStatus = job ? job.work_status : 'Not started';
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.');
+    const oldSnapshot = { ...job };
+    const oldStatus = job.work_status || 'Not started';
+    const oldStatusKey = normalizeWorkStatus(oldStatus);
+    const newStatusKey = normalizeWorkStatus(newStatus);
 
     // Kalau user pilih status yang sama, abaikan je
-    if (normalizeWorkStatus(oldStatus) === normalizeWorkStatus(newStatus)) return;
-    if (newStatus === WORK_STATUS_AWAITING_CLIENT && !isTaskAwaitingClient(job)) {
+    if (oldStatusKey === newStatusKey) return;
+    if (newStatusKey === 'done' && completionStatusInFlight.has(jobID)) return;
+    if (newStatusKey === 'awaiting client' && !isTaskAwaitingClient(job)) {
         return openAwaitingClientDialog(jobID, skipModal);
     }
-    if (isTaskAwaitingClient(job) && newStatus !== WORK_STATUS_AWAITING_CLIENT) {
+    if (isTaskAwaitingClient(job) && newStatusKey !== 'awaiting client') {
         return openResolveAwaitingClientDialog(jobID, newStatus, skipModal);
     }
+    if (newStatusKey === 'done' && !(await confirmMonthlyCompletionIfNeeded(job))) {
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        if (!skipModal) openDetailModal(jobID, true);
+        return;
+    }
+    if (newStatusKey === 'done') completionStatusInFlight.add(jobID);
 
     let updatePayload = { work_status: newStatus };
     const nowISO = new Date().toISOString();
     let revisionReasonText = "";
 
     // 🌟 LOGIK BARU: Tanya sebab kalau status ditarik/ditukar ke Revision
-    if (newStatus === 'Revision') {
+    if (newStatusKey === 'revision') {
         const reasonCode = await showApplePrompt(
             "Revision Category",
             "Type 1, 2, or 3:\n1 = Client Change of Mind\n2 = Internal Error (Team)\n3 = Minor Tweak",
@@ -9855,26 +10878,20 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
         else revisionReasonText = "Others (" + reasonCode + ")";
 
         // Tambah count revision automatik
-        let newRev = parseInt(job ? job.revision || 0 : 0) + 1;
-        const oldReasons = job ? job.revision_reasons || "" : "";
+        let newRev = parseInt(job.revision || 0) + 1;
+        const oldReasons = job.revision_reasons || "";
         const todayStr = nowISO.split('T')[0];
         const newEntry = `[${todayStr}] ${revisionReasonText}`;
         let updatedReasons = oldReasons ? oldReasons + " | " + newEntry : newEntry;
 
         updatePayload.revision = newRev;
         updatePayload.revision_reasons = updatedReasons;
-
-        if (job) {
-            job.revision = newRev;
-            job.revision_reasons = updatedReasons;
-        }
     }
 
     // Rekod masa tepat bila status ditukar / di-drag
     updatePayload.last_moved_at = nowISO;
-    if (job) job.last_moved_at = nowISO;
 
-    if (newStatus === 'Client Review') {
+    if (newStatusKey === 'client review') {
         updatePayload.review_started_at = nowISO;
         updatePayload.client_review_started_at = nowISO;
         updatePayload.client_review_ended_at = null;
@@ -9886,55 +10903,55 @@ async function updateWorkStatusOptimistic(jobID, newStatus, skipModal = false) {
         updatePayload.client_review_audit_required = false;
         updatePayload.client_review_start_source = 'manual_status_change';
         updatePayload.auto_move_snoozed_until = null;
-        if (job) job.review_started_at = nowISO;
-        if (job) {
-            job.client_review_started_at = nowISO;
-            job.client_review_ended_at = null;
-            job.client_review_auto_moved_at = null;
-            job.client_review_meaningful_response_at = null;
-            job.client_review_auto_move_enabled = true;
-            job.client_review_auto_move_exempt = false;
-            job.client_review_exemption_reason = null;
-            job.client_review_audit_required = false;
-            job.client_review_start_source = 'manual_status_change';
-            job.auto_move_snoozed_until = null;
+    } else if (newStatusKey === 'done') {
+        updatePayload.done_at = job.done_at || nowISO;
+        updatePayload.completed_at = getTaskCompletedAt(job) || nowISO;
+        if (oldStatusKey === 'client review') updatePayload.client_review_ended_at = nowISO;
+        if (oldStatusKey === 'awaiting client') {
+            updatePayload.client_waiting_since = null;
+            updatePayload.client_waiting_reason = null;
+            updatePayload.client_follow_up_date = null;
+            updatePayload.client_follow_up_owner = null;
+            updatePayload.client_follow_up_owner_id = null;
+            updatePayload.client_waiting_note = null;
         }
-    } else if (newStatus === 'Done') {
-        updatePayload.done_at = nowISO;
-        updatePayload.completed_at = nowISO;
-        if (normalizeWorkStatus(oldStatus) === 'client review') updatePayload.client_review_ended_at = nowISO;
-        if (job) job.done_at = nowISO;
-        if (job) job.completed_at = nowISO;
-        if (job && normalizeWorkStatus(oldStatus) === 'client review') job.client_review_ended_at = nowISO;
-    } else if (normalizeWorkStatus(oldStatus) === 'client review') {
+    } else if (oldStatusKey === 'client review') {
         updatePayload.client_review_ended_at = nowISO;
-        if (job) job.client_review_ended_at = nowISO;
     }
-
-    if (job) {
-        job.work_status = newStatus;
-        renderBoards();
-        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
-        renderDashboard();
-        // Hanya buka modal jika bukan dipanggil dari Drag & Drop
-        if (!skipModal) openDetailModal(jobID, true);
-    }
-    showNotification('Status Updated', newStatus);
 
     try {
         const fallbackPayload = { ...updatePayload };
         delete fallbackPayload.completed_at;
-        await saveCreativeRequestStatusPayload(jobID, updatePayload, fallbackPayload);
-        logTaskActivity(jobID, 'status_changed', oldStatus, newStatus, revisionReasonText, { update_payload: updatePayload });
+        const result = await saveCreativeRequestStatusPayload(jobID, updatePayload, fallbackPayload);
+        await logTaskActivity(jobID, 'status_changed', oldStatus, newStatus, revisionReasonText, {
+            update_payload: updatePayload,
+            saved_full_payload: result.savedFullPayload,
+            completed_at: newStatusKey === 'done' ? updatePayload.completed_at : '',
+            client_review_started_at: newStatusKey === 'client review' ? nowISO : '',
+            previous_status: oldStatus,
+            new_status: newStatus
+        });
+        Object.assign(job, updatePayload);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        // Hanya buka modal jika bukan dipanggil dari Drag & Drop
+        if (!skipModal && newStatusKey !== 'done') openDetailModal(jobID, true);
+        showNotification('Status Updated', getWorkStatusLabel(newStatus));
+        if (newStatusKey === 'done') handleSuccessfulDoneTransition(jobID, { completedAt: updatePayload.completed_at, moveAt: nowISO, oldStatus, source: skipModal ? 'drag_drop' : 'status_control' });
     } catch(e) {
-        showAppleAlert("Status Update Error", e.message);
-        if(job) {
-            job.work_status = oldStatus;
-            renderBoards();
-            if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
-            renderDashboard();
-            if(!skipModal) openDetailModal(jobID, true);
+        Object.assign(job, oldSnapshot);
+        renderBoards();
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+        renderDashboard();
+        if (newStatusKey === 'client review') {
+            showClientReviewMoveError(e, { operation: 'manual_client_review_status_update', jobID, payload: updatePayload });
+        } else {
+            showAppleAlert("Status Update Error", e.message);
         }
+        if(!skipModal) openDetailModal(jobID, true);
+    } finally {
+        if (newStatusKey === 'done') completionStatusInFlight.delete(jobID);
     }
 }
 
@@ -10106,12 +11123,12 @@ async function loadArchivedJobs() {
                     job_id: mapped.jobid || d.job_id || '', requester_name: mapped.requestername || mapped.name || mapped.requester || d.requester_name || '', region: mapped.region || d.region || '', client_name: mapped.clientname || mapped.client || d.client_name || '', project_title: mapped.projecttitle || mapped.title || d.project_title || '', job_type: mapped.jobtype || mapped.type || d.job_type || '', objective: mapped.objective || d.objective || '', brief: mapped.brief || d.brief || '', deadline: mapped.deadline || d.deadline || '', client_deadline: mapped.clientdeadline || d.client_deadline || mapped.deadline || d.deadline || '', original_client_deadline: mapped.originalclientdeadline || d.original_client_deadline || '', internal_due_date: mapped.internalduedate || d.internal_due_date || '', original_internal_due_date: mapped.originalinternalduedate || d.original_internal_due_date || '', completed_at: mapped.completedat || d.completed_at || '', ref_link: mapped.reflink || mapped.reference || d.ref_link || '', remarks: mapped.remarks || mapped.notes || d.remarks || '', status_notes: mapped.statusnotes || d.status_notes || '', status: (mapped.status || d.status || 'pending').toString().toLowerCase().trim(), assignee: mapped.assignee || mapped.pic || d.assignee || 'Unassigned', playbook_link: mapped.playbooklink || mapped.playbook || d.playbook_link || '', work_status: mapped.workstatus || mapped.progress || d.work_status || 'Not started', revision: mapped.revision || mapped.rev || d.revision || 0, approver: mapped.approver || d.approver || ''
                 };
             });
-            const combinedData = [...globalData, ...archived];
+            const combinedData = deduplicateTasks([...globalData, ...archived]);
             let doneData = combinedData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() === 'done');
-            doneData = filterDataByRegion(doneData, isSuperAdmin ? currentRegionFilter : userRegion);
+            doneData = sortDoneTasks(filterDataByRegion(doneData, isSuperAdmin ? currentRegionFilter : userRegion));
             const qD = document.getElementById('searchDone') ? document.getElementById('searchDone').value.toLowerCase() : '';
             if(qD) {
-                doneData = doneData.filter(d => String(d.job_id || '').toLowerCase().includes(qD) || String(d.client_name || '').toLowerCase().includes(qD) || String(d.requester_name || '').toLowerCase().includes(qD) || String(d.assignee || '').toLowerCase().includes(qD) || getTaskNoteValue(d).toLowerCase().includes(qD));
+                doneData = sortDoneTasks(doneData.filter(d => String(d.job_id || '').toLowerCase().includes(qD) || String(d.client_name || '').toLowerCase().includes(qD) || String(d.requester_name || '').toLowerCase().includes(qD) || String(d.assignee || '').toLowerCase().includes(qD) || getTaskNoteValue(d).toLowerCase().includes(qD)));
             }
             if (doneData.length === 0) {
                 document.getElementById('doneList').innerHTML = '<div class="empty-state"><i data-lucide="search-x"></i><p>No matching tasks found.</p></div>';
@@ -10135,7 +11152,7 @@ async function loadArchivedJobs() {
                 let doneHtml = '<h3 style="color:var(--text-muted); font-size:0.85rem; text-align:center; padding:10px; background:var(--bg-box); border-radius:8px; margin-bottom:20px;">✅ Showing Active + Archived Tasks</h3>';
                 sortedKeys.forEach(key => {
                     const group = groupedDone[key];
-                    group.tasks.sort((a, b) => { let dateA = parseDateOnly(getTaskClientDeadline(a)) || new Date(9999, 11, 31); let dateB = parseDateOnly(getTaskClientDeadline(b)) || new Date(9999, 11, 31); return dateA - dateB; });
+                    group.tasks = sortDoneTasks(group.tasks);
                     doneHtml += `<h3 class="month-group-header">${group.label} <span class="month-group-badge">${group.tasks.length} Tasks</span></h3>`;
                     doneHtml += `<div class="project-grid">` + group.tasks.map((item, idx) => generateJobCard(item, true, idx)).join('') + `</div>`;
                 });
@@ -10365,7 +11382,7 @@ function getReportingDataGapRows(tasks) {
             client_name: task.client_name,
             project_title: task.project_title,
             status: task.status,
-            work_status: task.work_status,
+            work_status: getWorkStatusLabel(task.work_status || 'Not started'),
             missing_fields: gaps.join(' | '),
             recommendation: recommendations.join(' | ')
         };
@@ -10435,7 +11452,7 @@ function buildStatusAgingRows(tasks) {
                 job_id: task.job_id,
                 client_name: task.client_name,
                 project_title: task.project_title,
-                status: task.work_status || task.status || 'Unknown',
+                status: getWorkStatusLabel(task.work_status || task.status || 'Unknown'),
                 started_at: getStatusStartedAt(task),
                 ended_at: getTaskCompletedAt(task) || '',
                 duration_hours: getStatusStartedAt(task) ? Math.round(((new Date(getTaskCompletedAt(task) || new Date()) - new Date(getStatusStartedAt(task))) / (1000 * 60 * 60)) * 10) / 10 : '',
@@ -10452,7 +11469,7 @@ function buildStatusAgingRows(tasks) {
                 job_id: task.job_id,
                 client_name: task.client_name,
                 project_title: task.project_title,
-                status: log.new_value || '',
+                status: getWorkStatusLabel(log.new_value || ''),
                 started_at: log.created_at,
                 ended_at: next ? next.created_at : '',
                 duration_hours: Math.round(((new Date(end) - new Date(log.created_at)) / (1000 * 60 * 60)) * 10) / 10,
@@ -10519,7 +11536,8 @@ function exportReportPack() {
             region: task.region,
             job_type: task.job_type,
             status: task.status,
-            work_status: task.work_status,
+            work_status: getWorkStatusLabel(task.work_status || 'Not started'),
+            work_status_key: normalizeWorkStatus(task.work_status || 'Not started').replace(/\s+/g, '_'),
             assignee: getAssigneeDisplay(task.assignee),
             deadline: task.deadline,
             original_client_deadline: getTaskOriginalClientDeadline(task),
@@ -10930,6 +11948,8 @@ function copyText(type, jobID, client, title, assignee, deadlineStr, playbookLin
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         initTheme();
+        bindRequestBoardSortMenuEvents();
+        syncRequestBoardSortControl();
         populateWorkspaceCountrySelects();
         checkAdminUI();
         setPresetDate();
@@ -11157,12 +12177,12 @@ function toggleKanbanMode() {
     const kanbanView = document.getElementById('kanbanBoardContainer');
 
     if (isKanbanMode) {
-        btnText.innerText = "Switch to Normal View";
+        btnText.innerText = "Normal View";
         normalView.style.display = 'none';
         kanbanView.style.display = 'flex';
         renderKanbanBoard();
     } else {
-        btnText.innerText = "Kanban/Board View";
+        btnText.innerText = "Board View";
         normalView.style.display = 'block';
         kanbanView.style.display = 'none';
         renderBoards();
@@ -11173,8 +12193,13 @@ function renderKanbanBoard() {
     const kanbanContainer = document.getElementById('kanbanBoardContainer');
     if (!kanbanContainer) return;
     const previousScrollLeft = kanbanContainer.scrollLeft || 0;
+    const previousColumnScroll = {};
+    kanbanContainer.querySelectorAll('.kanban-column[data-status-key]').forEach(column => {
+        previousColumnScroll[column.dataset.statusKey] = column.scrollTop || 0;
+    });
 
-    let data = filterTasksForCurrentAccess(globalData || []);
+    let data = deduplicateTasks(filterTasksForCurrentAccess(globalData || []));
+    const sortMode = getBoardSortMode();
 
     // 🌟 LOGIK BARU: Masukkan data 'pending' ke dalam Kanban
     let activeData = data.filter(d =>
@@ -11187,7 +12212,7 @@ function renderKanbanBoard() {
         activeData = activeData.filter(d => String(d.job_id || '').toLowerCase().includes(qW) || String(d.client_name || '').toLowerCase().includes(qW) || String(d.requester_name || '').toLowerCase().includes(qW) || String(d.assignee || '').toLowerCase().includes(qW) || getTaskNoteValue(d).toLowerCase().includes(qW));
     }
     renderRequestBoardFilters(activeData);
-    activeData = activeData.filter(taskMatchesRequestBoardFilter);
+    activeData = deduplicateTasks(activeData.filter(taskMatchesRequestBoardFilter));
 
     // 🌟 PETA WARNA KANBAN (Dah ditukar susunan)
     const statusConfig = [
@@ -11198,7 +12223,7 @@ function renderKanbanBoard() {
         { name: 'Revision', isPending: false, color: '#ea580c', bg: 'rgba(234, 88, 12, 0.1)' },
         { name: 'Internal Review', label: 'Internal', isPending: false, color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.1)' },
         { name: 'Client Review', isPending: false, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.1)' },
-        { name: 'Awaiting Client', label: 'Awaiting Client', isPending: false, color: '#d97706', bg: 'rgba(217, 119, 6, 0.1)' },
+        { name: WORK_STATUS_AWAITING_CLIENT, label: 'Awaiting Client', isPending: false, color: '#d97706', bg: 'rgba(217, 119, 6, 0.1)' },
         { name: 'Done', isPending: false, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' }
     ];
 
@@ -11210,15 +12235,15 @@ function renderKanbanBoard() {
         if (cfg.isPending) {
             colTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'pending');
         } else {
-            colTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || 'Not started').toLowerCase() === statusName.toLowerCase());
+            colTasks = activeData.filter(d => String(d.status || '').toLowerCase() === 'approved' && normalizeWorkStatus(d.work_status || 'Not started') === normalizeWorkStatus(statusName));
         }
-        colTasks = sortTasksForStatus(colTasks, statusName);
+        colTasks = sortTasksForStatus(colTasks, statusName, sortMode);
 
         const isDoneZone = statusName === 'Done';
         const isAwaitingClientZone = statusName === WORK_STATUS_AWAITING_CLIENT;
         const emptyDoneUI = isDoneZone ? `<div style="text-align:center; padding: 40px 10px; color: var(--green); font-weight: 600; font-size: 0.85rem; border: 2px dashed rgba(16, 185, 129, 0.4); border-radius: 12px; margin-top: 10px;"><i data-lucide="check-circle" style="width:28px; height:28px; margin-bottom:10px; opacity:0.8;"></i><br>Drop here to complete!</div>` : '';
         const emptyAwaitingUI = isAwaitingClientZone && !colTasks.length ? `<div class="awaiting-client-empty"><i data-lucide="message-square-check"></i><span>No client-blocked tasks</span></div>` : '';
-        const statusSlug = statusName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const statusSlug = getWorkStatusSlug(statusName);
         const columnStateClass = colTasks.length ? 'has-tasks' : 'is-empty';
         const followUpWarnings = isAwaitingClientZone ? colTasks.filter(t => {
             const diff = getDateOnlyDiffDays(getClientFollowUpDate(t));
@@ -11228,7 +12253,7 @@ function renderKanbanBoard() {
         const dragDropEvents = cfg.isPending ? '' : `ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, '${statusName}')"`;
 
         html += `
-        <div class="kanban-column ${columnStateClass} status-${statusSlug} ${isDoneZone ? 'is-done-zone' : ''}" style="border-top-color: ${cfg.color}; ${isDoneZone ? 'background: rgba(16, 185, 129, 0.03); border: 1px dashed rgba(16, 185, 129, 0.3);' : ''}" ${dragDropEvents}>
+        <div class="kanban-column ${columnStateClass} status-${statusSlug} ${isDoneZone ? 'is-done-zone' : ''}" data-status-key="${statusSlug}" style="border-top-color: ${cfg.color}; ${isDoneZone ? 'background: rgba(16, 185, 129, 0.03); border: 1px dashed rgba(16, 185, 129, 0.3);' : ''}" ${dragDropEvents}>
             <div class="kanban-column-header">
                 <span style="color: ${cfg.color};">${cfg.label || statusName}</span>
                 <span style="display:inline-flex; align-items:center; gap:6px;">
@@ -11241,20 +12266,13 @@ function renderKanbanBoard() {
                 const cursorStyle = cfg.isPending ? 'cursor: pointer;' : 'cursor: grab;';
                 const typeMeta = getRequestTypeMeta(t);
 
-                // 🌟 LOGIK LENCANA & CAHAYA (JUST MOVED)
-                let isJustMoved = false;
-                if (t.last_moved_at) {
-                    const diffHours = (new Date() - new Date(t.last_moved_at)) / (1000 * 60 * 60);
-                    // Kad akan menyala selama 2 jam selepas kau drop
-                    if (diffHours <= 2) isJustMoved = true;
-                }
-
-                // Warna lencana akan ikut warna kolum supaya nampak sangat seragam dan premium
+                const justMovedMeta = getClientReviewJustMovedMeta(t);
+                const isJustMoved = justMovedMeta.active;
                 const glow = isJustMoved ? `border-left-color: ${cfg.color}; background: linear-gradient(90deg, ${cfg.bg} 0%, transparent 80%); box-shadow: 0 4px 15px ${cfg.bg.replace('0.1', '0.2')};` : `border-left-color: ${cfg.color};`;
-                const badge = isJustMoved ? `<span style="background: ${cfg.color}; color: #ffffff; border: none; font-size: 0.55rem; font-weight: 800; padding: 2px 6px; border-radius: 10px; letter-spacing: 0.5px; box-shadow: 0 2px 6px ${cfg.bg.replace('0.1', '0.3')}; white-space: nowrap; margin-left:6px;">✨ JUST MOVED</span>` : '';
+                const badge = isJustMoved ? `<span class="just-moved-badge" style="--badge-accent:${cfg.color}; --badge-glow:${cfg.bg.replace('0.1', '0.3')};" title="Pinned for ${justMovedMeta.remainingMinutes} min">Just Moved</span>` : '';
 
                 return `
-                <div class="kanban-drag-card request-type-card type-${typeMeta.key}" id="${t.job_id}" ${cardDragAttr} onclick="openDetailModal('${t.job_id}')" title="Click to view full details" style="${glow} ${cursorStyle}">
+                <div class="kanban-drag-card request-type-card type-${typeMeta.key} ${isJustMoved ? 'is-just-moved' : ''}" id="${t.job_id}" ${cardDragAttr} onclick="openDetailModal('${t.job_id}')" title="Click to view full details" style="${glow} ${cursorStyle}">
                     <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
                         <span class="kd-id" style="margin:0; white-space:nowrap;">[${t.job_id}] ${getFlag(t.region)}</span>
                         ${renderRequestTypePill(t, true)}
@@ -11277,6 +12295,11 @@ function renderKanbanBoard() {
 
     kanbanContainer.innerHTML = html;
     kanbanContainer.scrollLeft = previousScrollLeft;
+    Object.entries(previousColumnScroll).forEach(([statusKey, scrollTop]) => {
+        const column = kanbanContainer.querySelector(`.kanban-column[data-status-key="${statusKey}"]`);
+        if (column) column.scrollTop = scrollTop;
+    });
+    scheduleClientReviewJustMovedExpiryRefresh(activeData);
     refreshIcons();
 }
 
@@ -11314,16 +12337,6 @@ function drop(event, newStatus) {
     if(jobID) {
         // Panggil fungsi update, dan tambah "true" untuk skip buka Modal
         updateWorkStatusOptimistic(jobID, newStatus, true);
-
-        // 🌟 LOGIK BARU: Letupkan Confetti bila masuk zon Done!
-        if (newStatus === 'Done') {
-            firePremiumConfetti();
-        }
-
-        // Refresh paparan Kanban
-        setTimeout(() => {
-            if (isKanbanMode) renderKanbanBoard();
-        }, 100);
     }
 }
 

@@ -98,6 +98,35 @@
         </div>
     </div>
 
+    <div id="taskCompletionModal" class="completion-modal-overlay" aria-hidden="true" role="presentation" onclick="handleCompletionModalBackdrop(event)" onkeydown="handleCompletionModalKeydown(event)">
+        <div class="completion-modal" role="dialog" aria-modal="true" aria-labelledby="completionModalTitle" aria-describedby="completionModalDesc" onclick="event.stopPropagation()">
+            <div class="completion-modal-head">
+                <div class="completion-modal-icon" aria-hidden="true"><i data-lucide="circle-check-big"></i></div>
+                <div>
+                    <span>Completed</span>
+                    <h3 id="completionModalTitle">Task completed</h3>
+                    <p id="completionModalDesc">The task has been moved to Done. Copy the update below to share with the team.</p>
+                </div>
+            </div>
+            <div class="completion-task-strip">
+                <div><span>Job ID</span><strong id="completionJobId">-</strong></div>
+                <div><span>Task</span><strong id="completionTitleText">-</strong></div>
+                <div><span>Client</span><strong id="completionClientText">-</strong></div>
+                <div><span>Creative PIC</span><strong id="completionPicText">-</strong></div>
+                <div><span>Completion</span><strong id="completionDateText">-</strong></div>
+            </div>
+            <div id="completionSummaryGrid" class="completion-summary-grid" aria-label="Completion summary"></div>
+            <label class="completion-message-label" for="completionMessageText">Team update</label>
+            <textarea id="completionMessageText" class="completion-message-textarea" oninput="autosizeCompletionMessage()" spellcheck="true"></textarea>
+            <div id="completionCopyStatus" class="completion-copy-status" aria-live="polite"></div>
+            <div class="completion-modal-actions">
+                <button type="button" class="completion-btn secondary" onclick="openCompletedTaskFromModal()"><i data-lucide="panel-top-open"></i><span>Open Done Task</span></button>
+                <button type="button" class="completion-btn quiet" onclick="closeTaskCompletionModal()">Close</button>
+                <button type="button" class="completion-btn primary" onclick="copyCompletionMessage(false)"><i data-lucide="copy"></i><span>Copy Message</span></button>
+            </div>
+        </div>
+    </div>
+
     <div id="archiveModal" class="detail-modal-overlay">
         <div class="detail-modal" style="max-width:400px; padding:30px; margin: auto;">
             <h3 style="margin-top:0; color:var(--text-strong);">Archive Done Tasks</h3>
@@ -345,10 +374,25 @@
 
                 <div id="requestDeadlineFilters" class="request-filter-shell"></div>
 
-                <div id="adminKanbanToggle" style="display: none; margin-bottom: 20px; text-align: right;">
-                    <button onclick="toggleKanbanMode()" class="premium-admin-btn" style="background: var(--bg-card); color: var(--link-color); border: 1px solid var(--link-color); width: auto; min-width: auto; padding: 8px 16px;">
-                        <i data-lucide="kanban-square"></i> <span id="kanbanBtnText">Kanban / Board View</span>
-                    </button>
+                <div class="request-board-actions">
+                    <div id="requestBoardSortSummary" class="request-board-actions__summary"></div>
+                    <div class="request-board-actions__controls">
+                        <div class="board-sort" id="requestSortMenu">
+                            <button type="button" id="requestBoardSortTrigger" class="board-sort-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="requestBoardSortPopover" onclick="toggleRequestBoardSortMenu()" onkeydown="handleRequestSortTriggerKeydown(event)">
+                                <i data-lucide="arrow-up-down" class="board-sort-trigger__icon"></i>
+                                <span class="board-sort-trigger__eyebrow">Sort</span>
+                                <strong id="requestBoardSortLabel" class="board-sort-trigger__label">Smart Priority</strong>
+                                <i data-lucide="chevron-down" class="board-sort-trigger__chevron"></i>
+                            </button>
+                            <div id="requestBoardSortPopover" class="board-sort-popover" role="listbox" aria-label="Sort Request Status Board" hidden></div>
+                        </div>
+
+                        <div id="adminKanbanToggle" style="display: none;">
+                            <button onclick="toggleKanbanMode()" class="board-view-toggle">
+                            <i data-lucide="kanban-square"></i> <span id="kanbanBtnText">Board View</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="projectList">
