@@ -55,6 +55,8 @@ let clientReviewJustMovedRefreshTimer = null;
 let calendarViewMode = localStorage.getItem('adtech_calendar_view') || '';
 let calendarShowCompleted = localStorage.getItem('adtech_calendar_show_completed') === 'true';
 let selectedCalendarDateKey = '';
+let activeEditTaskState = null;
+let editModalLastFocus = null;
 const CORE_CREATIVE_NAMES = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
 const SUPER_ADMIN_NAMES = ["Faiz Shamsul"];
 const SUPER_ADMIN_LOGIN_PASSCODE = 'Act3030300!';
@@ -119,6 +121,12 @@ const DEADLINE_ADJUSTMENT_REASONS = [
     'Urgent request',
     'Other'
 ];
+const TASK_EDIT_REQUEST_TYPES = [
+    { value: 'adhoc', label: 'Ad-hoc / One-off', icon: 'zap' },
+    { value: 'monthly', label: 'Monthly Content Plan', icon: 'calendar-days' },
+    { value: 'pitch', label: 'Pitch Deck Proposal', icon: 'presentation' }
+];
+const TASK_EDIT_ADHOC_JOB_TYPES = ['Poster/Graphic', 'Video Production', 'Copywriting/Article', 'Presentation Deck'];
 const AWAITING_CLIENT_EXIT_STATUSES = ['Drafting', 'Partial Ready', 'Revision', 'Internal Review', 'Client Review', 'Done'];
 const INTERNAL_PRODUCTION_STATUS_KEYS = ['pending', 'inbox', 'not started', 'drafting', 'partial ready', 'revision', 'internal review'];
 const INTERNAL_DUE_BACKFILL_BATCH_LIMIT = 75;
@@ -4154,11 +4162,21 @@ function closeCalModal() {
     }, 400);
 }
 
-function closeEditModal() {
+function closeEditModal(options = {}) {
     const modal = document.getElementById('editModal');
     if(!modal) return;
-    modal.style.display = 'none';
-    document.body.classList.remove('no-scroll');
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+        modal.style.display = 'none';
+        const detailOpen = document.getElementById('globalDetailModal')?.classList.contains('show');
+        if (!options.keepBodyLock && !detailOpen) document.body.classList.remove('no-scroll');
+        if (editModalLastFocus && typeof editModalLastFocus.focus === 'function') {
+            try { editModalLastFocus.focus({ preventScroll: true }); } catch(e) {}
+        }
+        editModalLastFocus = null;
+        if (!options.keepState) activeEditTaskState = null;
+    }, 220);
 }
 
 function getMonthlyCompletionWarning(task = {}) {
@@ -4346,34 +4364,336 @@ function handleSuccessfulDoneTransition(jobID, context = {}) {
     openTaskCompletionModal(jobID, { completedAt });
 }
 
-function openEditModal(jobID, client, title, deadlineStr, assignee) {
-    closeDetailModal();
-    const task = (globalData || []).find(d => d.job_id === jobID) || {};
-    document.getElementById('editJobId').value = jobID;
-    document.getElementById('editClient').value = client;
-    document.getElementById('editTitle').value = title;
+function canCurrentUserEditTask(task = {}) {
+    if (hasAdminAccess()) return { canEdit: true, scope: 'full' };
+    if (isCurrentUserAssignedPIC(task)) return { canEdit: false, scope: 'pic_notes' };
+    if (isTaskRequesterForUser(task)) return { canEdit: false, scope: 'requester_notes' };
+    return { canEdit: false, scope: 'readonly' };
+}
 
-    const editAssignee = document.getElementById('editAssignee');
-    if (editAssignee) {
-        Array.from(editAssignee.querySelectorAll('option[data-temp-assignee="true"]')).forEach(opt => opt.remove());
-        const currentAssignee = assignee || 'Unassigned';
-        editAssignee.dataset.originalAssignee = currentAssignee;
-        editAssignee.value = currentAssignee;
+function getTaskSafeHttpUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        const url = new URL(raw);
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+    } catch(e) {
+        return '';
+    }
+}
 
-        if (editAssignee.value !== currentAssignee) {
-            const tempOption = document.createElement('option');
-            tempOption.value = currentAssignee;
-            tempOption.textContent = `${currentAssignee} (Current)`;
-            tempOption.dataset.tempAssignee = 'true';
-            editAssignee.insertBefore(tempOption, editAssignee.options[1] || null);
-            editAssignee.value = currentAssignee;
-        }
+function normalizeTaskUrlForSave(value, label) {
+    const raw = String(value || '').trim();
+    if (!raw) return { ok: true, value: '' };
+    const safeUrl = getTaskSafeHttpUrl(raw);
+    if (safeUrl) return { ok: true, value: safeUrl };
+    return { ok: false, value: raw, message: `${label} must be a valid http(s) URL.` };
+}
+
+function renderTaskPlaybookAction(item = {}, canEdit = false) {
+    const href = getTaskSafeHttpUrl(item.playbook_link);
+    if (href) {
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="premium-playbook-btn"><i data-lucide="layout-template"></i> Open Playbook</a>`;
+    }
+    if (canEdit) {
+        const label = item.playbook_link ? 'Fix playbook link' : '+ Add playbook';
+        return `<button type="button" class="premium-playbook-btn is-empty" onclick="openEditModal('${escapeJsString(item.job_id)}')"><i data-lucide="plus"></i> ${label}</button>`;
+    }
+    return '';
+}
+
+function getTaskEditRequestType(task = {}) {
+    const requestType = String(task.request_type || '').toLowerCase();
+    const jobType = String(task.job_type || '').toLowerCase();
+    if (requestType.includes('monthly') || jobType.includes('monthly')) return 'monthly';
+    if (requestType.includes('pitch') || jobType.includes('pitch')) return 'pitch';
+    return 'adhoc';
+}
+
+function getTaskEditRequestLabel(requestType) {
+    return TASK_EDIT_REQUEST_TYPES.find(type => type.value === requestType)?.label || TASK_EDIT_REQUEST_TYPES[0].label;
+}
+
+function getTaskEditDefaultJobType(requestType) {
+    if (requestType === 'monthly') return 'Monthly Content Plan';
+    if (requestType === 'pitch') return 'Pitch Deck Proposal';
+    return '';
+}
+
+function normalizeTaskEditText(value) {
+    return String(value || '').trim();
+}
+
+function buildTaskEditSnapshot(task = {}) {
+    const requestType = getTaskEditRequestType(task);
+    return {
+        job_id: task.job_id || '',
+        client_name: normalizeTaskEditText(task.client_name),
+        project_title: normalizeTaskEditText(task.project_title),
+        region: normalizeTaskEditText(task.region || userRegion || 'Malaysia'),
+        requester_name: normalizeTaskEditText(task.requester_name),
+        request_type: requestType,
+        job_type: normalizeTaskEditText(task.job_type || getTaskEditDefaultJobType(requestType)),
+        objective: normalizeTaskEditText(task.objective),
+        brief: String(task.brief || '').trim(),
+        playbook_link: getTaskSafeHttpUrl(task.playbook_link) || normalizeTaskEditText(task.playbook_link),
+        ref_link: getTaskSafeHttpUrl(task.ref_link) || normalizeTaskEditText(task.ref_link),
+        client_deadline: toDateInputValue(getTaskClientDeadline(task)),
+        internal_due_date: toDateInputValue(getTaskEffectiveInternalDueDate(task)),
+        assignee: getAssigneeDisplay(task.assignee),
+        updated_at: task.updated_at || task.modified_at || task.last_updated_at || '',
+        internal_due_manual: isInternalDueManuallyAdjusted(task),
+        status: task.status || '',
+        work_status: task.work_status || ''
+    };
+}
+
+function renderTaskEditRequesterOptions(currentName = '') {
+    const activeMembers = getActiveTeamMembers();
+    const hasCurrent = activeMembers.some(member => normalizeNameKey(member.name) === normalizeNameKey(currentName));
+    const currentOption = currentName && !hasCurrent
+        ? `<optgroup label="Current"><option value="${escapeHtml(currentName)}" selected>${escapeHtml(currentName)}</option></optgroup>`
+        : '';
+    return `<option value="">Select requester...</option>${currentOption}${renderTeamMemberOptionGroups(activeMembers, currentName)}`;
+}
+
+function renderTaskEditRegionOptions(currentRegion = '') {
+    const current = normalizeTaskEditText(currentRegion);
+    const isKnown = WORKSPACE_COUNTRIES.some(country => normalizeNameKey(country.name) === normalizeNameKey(current));
+    const currentOption = current && !isKnown ? `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>` : '';
+    return currentOption + getWorkspaceCountryOptions(current || 'Malaysia');
+}
+
+function renderTaskEditPICOptions(currentAssignee = '') {
+    const selectedNames = getAssignedPICNames(currentAssignee);
+    const selectedKeys = selectedNames.map(normalizeNameKey);
+    const rows = getActiveTeamMembers().filter(isCreativeTeamMember);
+    const fallbackRows = rows.length
+        ? rows
+        : [...new Set([...(PIC_LIST || []), ...(дизайнериMY || []), ...(дизайнериID || [])])]
+            .filter(Boolean)
+            .map(name => ({ name, region: isIndonesiaCreativeName(name) ? 'Indonesia' : 'Malaysia' }));
+    const missingSelected = selectedNames
+        .filter(name => !fallbackRows.some(member => normalizeNameKey(member.name) === normalizeNameKey(name)))
+        .map(name => ({ name, region: 'Current PIC' }));
+    const groups = groupTeamMembersByCountry([...fallbackRows, ...missingSelected]);
+
+    return groups.map(group => {
+        const members = group.members.map(member => {
+            const name = String(member.name || '').trim();
+            const checked = selectedKeys.includes(normalizeNameKey(name)) ? 'checked' : '';
+            return `
+                <label class="task-edit-pic-option">
+                    <input type="checkbox" class="edit-task-pic-checkbox" value="${escapeHtml(name)}" ${checked} onchange="handleTaskEditInput(event)">
+                    <span>${escapeHtml(name)}</span>
+                </label>
+            `;
+        }).join('');
+        return `
+            <div class="task-edit-pic-group">
+                <div class="task-edit-pic-title">${group.country.flag || ''} ${escapeHtml(group.country.name)}</div>
+                <div class="task-edit-pic-grid">${members}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderTaskEditJobTypeControl(snapshot = {}) {
+    const requestType = snapshot.request_type || 'adhoc';
+    if (requestType !== 'adhoc') {
+        const meta = TASK_EDIT_REQUEST_TYPES.find(type => type.value === requestType) || TASK_EDIT_REQUEST_TYPES[0];
+        return `
+            <div class="task-edit-fixed-type type-${escapeHtml(requestType)}">
+                <i data-lucide="${meta.icon}"></i>
+                <div>
+                    <strong>${escapeHtml(getTaskEditDefaultJobType(requestType))}</strong>
+                    <small>Controlled by request type</small>
+                </div>
+            </div>
+        `;
     }
 
-    document.getElementById('editDeadline').value = toDateInputValue(getTaskClientDeadline(task) || deadlineStr);
-    const internalDueInput = document.getElementById('editInternalDue');
-    if (internalDueInput) internalDueInput.value = toDateInputValue(getTaskEffectiveInternalDueDate(task));
-    document.getElementById('editModal').style.display = 'flex';
+    const parts = String(snapshot.job_type || '')
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean);
+    const knownKeys = TASK_EDIT_ADHOC_JOB_TYPES.map(normalizeNameKey);
+    const customParts = parts.filter(part => !knownKeys.includes(normalizeNameKey(part)) && !/monthly|pitch/i.test(part));
+    const options = TASK_EDIT_ADHOC_JOB_TYPES.map(type => {
+        const checked = parts.some(part => normalizeNameKey(part) === normalizeNameKey(type)) ? 'checked' : '';
+        return `
+            <label class="task-edit-choice">
+                <input type="checkbox" class="edit-task-job-type-checkbox" value="${escapeHtml(type)}" ${checked} onchange="handleTaskEditInput(event)">
+                <span>${escapeHtml(type)}</span>
+            </label>
+        `;
+    }).join('');
+
+    return `
+        <div class="task-edit-choice-grid">${options}</div>
+        <label class="task-edit-field task-edit-field-full task-edit-subfield">
+            <span>Other deliverable type</span>
+            <input type="text" id="editJobTypeCustom" value="${escapeHtml(customParts.join(', '))}" placeholder="e.g. Key visual, animation, landing page" oninput="handleTaskEditInput(event)">
+        </label>
+    `;
+}
+
+function renderTaskEditForm(snapshot) {
+    const requestOptions = TASK_EDIT_REQUEST_TYPES.map(type => `
+        <option value="${type.value}" ${snapshot.request_type === type.value ? 'selected' : ''}>${type.label}</option>
+    `).join('');
+
+    return `
+        <section class="task-edit-section">
+            <div class="task-edit-section-head">
+                <span>01</span>
+                <div>
+                    <h4>Core Details</h4>
+                    <p>Client, title, requester and country.</p>
+                </div>
+            </div>
+            <div class="task-edit-grid">
+                <label class="task-edit-field">
+                    <span>Client / Brand</span>
+                    <input type="text" id="editClient" value="${escapeHtml(snapshot.client_name)}" autocomplete="off" oninput="handleTaskEditInput(event)">
+                </label>
+                <label class="task-edit-field">
+                    <span>Project / Task Title</span>
+                    <input type="text" id="editTitle" value="${escapeHtml(snapshot.project_title)}" oninput="handleTaskEditInput(event)">
+                </label>
+                <label class="task-edit-field">
+                    <span>Region / Country</span>
+                    <select id="editRegion" onchange="handleTaskEditInput(event)">${renderTaskEditRegionOptions(snapshot.region)}</select>
+                </label>
+                <label class="task-edit-field">
+                    <span>Requester</span>
+                    <select id="editRequester" onchange="handleTaskEditInput(event)">${renderTaskEditRequesterOptions(snapshot.requester_name)}</select>
+                </label>
+            </div>
+        </section>
+
+        <section class="task-edit-section">
+            <div class="task-edit-section-head">
+                <span>02</span>
+                <div>
+                    <h4>Type & Links</h4>
+                    <p>Keep reporting categories and working links clean.</p>
+                </div>
+            </div>
+            <div class="task-edit-grid">
+                <label class="task-edit-field">
+                    <span>Request Type</span>
+                    <select id="editRequestType" onchange="handleTaskEditRequestTypeChange(event)">${requestOptions}</select>
+                </label>
+                <div class="task-edit-field task-edit-field-full">
+                    <span>Job Type / Deliverable Type</span>
+                    <div id="editJobTypeControl">${renderTaskEditJobTypeControl(snapshot)}</div>
+                </div>
+                <label class="task-edit-field">
+                    <span>Playbook URL</span>
+                    <input type="url" id="editPlaybookUrl" value="${escapeHtml(snapshot.playbook_link)}" placeholder="https://..." oninput="handleTaskEditInput(event)">
+                    <small>Add, replace, or clear the current playbook link.</small>
+                </label>
+                <label class="task-edit-field">
+                    <span>Reference URL</span>
+                    <input type="url" id="editReferenceUrl" value="${escapeHtml(snapshot.ref_link)}" placeholder="https://..." oninput="handleTaskEditInput(event)">
+                    <small>Drive, Figma, Canva, docs, or other reference link.</small>
+                </label>
+            </div>
+        </section>
+
+        <section class="task-edit-section">
+            <div class="task-edit-section-head">
+                <span>03</span>
+                <div>
+                    <h4>Brief</h4>
+                    <p>Use this for small corrections, not version history.</p>
+                </div>
+            </div>
+            <div class="task-edit-grid">
+                <label class="task-edit-field task-edit-field-full">
+                    <span>Objective</span>
+                    <input type="text" id="editObjective" value="${escapeHtml(snapshot.objective)}" placeholder="Traffic, Awareness, Sales..." oninput="handleTaskEditInput(event)">
+                </label>
+                <label class="task-edit-field task-edit-field-full">
+                    <span>Description / Brief</span>
+                    <textarea id="editBrief" rows="7" oninput="handleTaskEditInput(event)">${escapeHtml(snapshot.brief)}</textarea>
+                </label>
+            </div>
+        </section>
+
+        <section class="task-edit-section">
+            <div class="task-edit-section-head">
+                <span>04</span>
+                <div>
+                    <h4>Deadline</h4>
+                    <p>Deadline changes are logged for monthly reporting.</p>
+                </div>
+            </div>
+            <div class="task-edit-grid">
+                <label class="task-edit-field">
+                    <span>Client Deadline</span>
+                    <input type="date" id="editDeadline" value="${escapeHtml(snapshot.client_deadline)}" onchange="handleTaskEditClientDeadlineChange(event)">
+                </label>
+                <label class="task-edit-field">
+                    <span>Internal Due</span>
+                    <input type="date" id="editInternalDue" value="${escapeHtml(snapshot.internal_due_date)}" onchange="handleTaskEditInternalDueInput(event)">
+                </label>
+            </div>
+            <div id="editDeadlineSuggestion" class="task-edit-suggestion" hidden></div>
+        </section>
+
+        <section class="task-edit-section">
+            <div class="task-edit-section-head">
+                <span>05</span>
+                <div>
+                    <h4>Creative PICs</h4>
+                    <p>Multiple PICs are supported across countries.</p>
+                </div>
+            </div>
+            <div class="task-edit-pic-wrap">${renderTaskEditPICOptions(snapshot.assignee)}</div>
+        </section>
+    `;
+}
+
+function openEditModal(jobID) {
+    const task = (globalData || []).find(d => d.job_id === jobID);
+    if (!task) return showAppleAlert('Missing Task', 'This task could not be found.', { tone: 'warning', icon: 'search-x' });
+
+    const permission = canCurrentUserEditTask(task);
+    if (!permission.canEdit) {
+        return showAppleAlert('Admin Only', 'Only admins can edit request details. Team notes remain available inside the task.', { tone: 'warning', icon: 'lock' });
+    }
+
+    const snapshot = buildTaskEditSnapshot(task);
+    activeEditTaskState = {
+        jobID,
+        original: snapshot,
+        internalDueTouched: false,
+        keepCurrentInternalDue: false,
+        lastSuggestedForClientDeadline: '',
+        isSaving: false,
+        conflictOverride: false
+    };
+
+    editModalLastFocus = document.activeElement;
+    const modal = document.getElementById('editModal');
+    const body = document.getElementById('editTaskFormBody');
+    const jobIdInput = document.getElementById('editJobId');
+    if (!modal || !body || !jobIdInput) return showAppleAlert('Edit Unavailable', 'The edit modal is missing from the page.', { tone: 'danger', icon: 'alert-triangle' });
+
+    jobIdInput.value = snapshot.job_id;
+    body.innerHTML = renderTaskEditForm(snapshot);
+    setTaskEditStatus('', '');
+    modal.style.display = 'flex';
+    document.body.classList.add('no-scroll');
+    modal.offsetHeight;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    syncTaskEditDirtyState();
+    syncTaskEditDeadlineSuggestion();
+    refreshIcons();
+    setTimeout(() => document.getElementById('editClient')?.focus({ preventScroll: true }), 80);
 }
 
 function getAssigneeDisplay(assignee) {
@@ -8932,6 +9252,444 @@ async function updateTaskPIC(event, jobID) {
     }
 }
 
+function setTaskEditStatus(message = '', tone = '') {
+    const el = document.getElementById('editTaskStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = `task-edit-status ${tone ? `is-${tone}` : ''}`;
+    el.hidden = !message;
+}
+
+function getTaskEditFocusableElements() {
+    const modal = document.querySelector('#editModal .task-edit-modal');
+    if (!modal) return [];
+    return Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'))
+        .filter(el => el.offsetParent !== null);
+}
+
+async function requestCloseEditTaskModal() {
+    if (activeEditTaskState?.isSaving) return;
+    if (isTaskEditDirty()) {
+        const confirmed = await showAppleConfirm('Discard changes?', 'Your unsaved edits will be lost.', {
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            tone: 'danger',
+            icon: 'rotate-ccw'
+        });
+        if (!confirmed) return;
+    }
+    closeEditModal();
+}
+
+function handleEditTaskBackdrop(event) {
+    if (event.target?.id === 'editModal') requestCloseEditTaskModal();
+}
+
+function handleEditTaskKeydown(event) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        requestCloseEditTaskModal();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = getTaskEditFocusableElements();
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function handleTaskEditInput() {
+    syncTaskEditDirtyState();
+}
+
+function handleTaskEditRequestTypeChange() {
+    if (!activeEditTaskState) return;
+    const requestType = document.getElementById('editRequestType')?.value || activeEditTaskState.original.request_type || 'adhoc';
+    const jobTypeControl = document.getElementById('editJobTypeControl');
+    if (jobTypeControl) {
+        const baseJobType = requestType === activeEditTaskState.original.request_type
+            ? activeEditTaskState.original.job_type
+            : getTaskEditDefaultJobType(requestType);
+        jobTypeControl.innerHTML = renderTaskEditJobTypeControl({
+            ...activeEditTaskState.original,
+            request_type: requestType,
+            job_type: baseJobType
+        });
+    }
+    activeEditTaskState.keepCurrentInternalDue = false;
+    syncTaskEditDeadlineSuggestion();
+    syncTaskEditDirtyState();
+    refreshIcons();
+}
+
+function handleTaskEditClientDeadlineChange() {
+    if (!activeEditTaskState) return;
+    if (!activeEditTaskState.original.internal_due_manual && !activeEditTaskState.internalDueTouched) {
+        activeEditTaskState.keepCurrentInternalDue = false;
+    }
+    syncTaskEditDeadlineSuggestion();
+    syncTaskEditDirtyState();
+}
+
+function handleTaskEditInternalDueInput() {
+    if (!activeEditTaskState) return;
+    activeEditTaskState.internalDueTouched = true;
+    activeEditTaskState.keepCurrentInternalDue = false;
+    syncTaskEditDeadlineSuggestion();
+    syncTaskEditDirtyState();
+}
+
+function applyTaskEditSuggestedInternalDue() {
+    if (!activeEditTaskState?.suggestedInternalDue) return;
+    const input = document.getElementById('editInternalDue');
+    if (input) input.value = activeEditTaskState.suggestedInternalDue;
+    activeEditTaskState.internalDueTouched = false;
+    activeEditTaskState.keepCurrentInternalDue = false;
+    syncTaskEditDeadlineSuggestion();
+    syncTaskEditDirtyState();
+}
+
+function keepTaskEditCurrentInternalDue() {
+    if (!activeEditTaskState) return;
+    const input = document.getElementById('editInternalDue');
+    if (input) input.value = activeEditTaskState.original.internal_due_date || '';
+    activeEditTaskState.internalDueTouched = true;
+    activeEditTaskState.keepCurrentInternalDue = true;
+    syncTaskEditDeadlineSuggestion();
+    syncTaskEditDirtyState();
+}
+
+function getTaskEditJobTypeValue(requestType) {
+    if (requestType === 'monthly') return 'Monthly Content Plan';
+    if (requestType === 'pitch') return 'Pitch Deck Proposal';
+
+    const selected = Array.from(document.querySelectorAll('.edit-task-job-type-checkbox:checked'))
+        .map(cb => cb.value.trim())
+        .filter(Boolean);
+    const custom = String(document.getElementById('editJobTypeCustom')?.value || '')
+        .split(',')
+        .map(part => part.trim())
+        .filter(Boolean);
+    return uniqueIdentityValues([...selected, ...custom]).join(', ');
+}
+
+function getTaskEditAssigneeValue() {
+    const selected = Array.from(document.querySelectorAll('.edit-task-pic-checkbox:checked'))
+        .map(cb => cb.value.trim())
+        .filter(Boolean);
+    return selected.length ? uniqueIdentityValues(selected).join(', ') : 'Unassigned';
+}
+
+function getTaskEditFormValues() {
+    const requestType = document.getElementById('editRequestType')?.value || activeEditTaskState?.original?.request_type || 'adhoc';
+    return {
+        client_name: normalizeTaskEditText(document.getElementById('editClient')?.value),
+        project_title: normalizeTaskEditText(document.getElementById('editTitle')?.value),
+        region: normalizeTaskEditText(document.getElementById('editRegion')?.value),
+        requester_name: normalizeTaskEditText(document.getElementById('editRequester')?.value),
+        request_type: requestType,
+        job_type: normalizeTaskEditText(getTaskEditJobTypeValue(requestType)),
+        objective: normalizeTaskEditText(document.getElementById('editObjective')?.value),
+        brief: String(document.getElementById('editBrief')?.value || '').trim(),
+        playbook_link: normalizeTaskEditText(document.getElementById('editPlaybookUrl')?.value),
+        ref_link: normalizeTaskEditText(document.getElementById('editReferenceUrl')?.value),
+        client_deadline: toDateInputValue(document.getElementById('editDeadline')?.value),
+        internal_due_date: toDateInputValue(document.getElementById('editInternalDue')?.value),
+        assignee: getTaskEditAssigneeValue()
+    };
+}
+
+function validateTaskEditValues(values) {
+    const errors = [];
+    const playbook = normalizeTaskUrlForSave(values.playbook_link, 'Playbook URL');
+    const reference = normalizeTaskUrlForSave(values.ref_link, 'Reference URL');
+
+    if (!values.client_name) errors.push('Client / Brand is required.');
+    if (!values.project_title) errors.push('Project / Task Title is required.');
+    if (!values.region) errors.push('Region / Country is required.');
+    if (!values.requester_name) errors.push('Requester is required.');
+    if (!values.job_type) errors.push('Job Type / Deliverable Type is required.');
+    if (!values.client_deadline) errors.push('Client Deadline is required.');
+    if (!values.internal_due_date) errors.push('Internal Due is required for reporting.');
+    if (!playbook.ok) errors.push(playbook.message);
+    if (!reference.ok) errors.push(reference.message);
+
+    let deadlineWarning = '';
+    if (values.internal_due_date) {
+        const validation = validateInternalDueDate(values.internal_due_date, values.client_deadline);
+        if (!validation.valid) errors.push(validation.warning);
+        else deadlineWarning = validation.warning;
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors,
+        warning: deadlineWarning,
+        normalized: {
+            playbook_link: playbook.value,
+            ref_link: reference.value
+        }
+    };
+}
+
+function getTaskEditComparable(field, value) {
+    if (['client_deadline', 'internal_due_date'].includes(field)) return toDateInputValue(value);
+    if (field === 'assignee') return getAssigneeDisplay(value);
+    if (['playbook_link', 'ref_link'].includes(field)) return getTaskSafeHttpUrl(value) || normalizeTaskEditText(value);
+    return normalizeTaskEditText(value);
+}
+
+function getTaskEditChanges(original, values, normalizedUrls = {}) {
+    const comparableValues = {
+        ...values,
+        playbook_link: normalizedUrls.playbook_link ?? values.playbook_link,
+        ref_link: normalizedUrls.ref_link ?? values.ref_link
+    };
+    const fields = [
+        'client_name',
+        'project_title',
+        'region',
+        'requester_name',
+        'request_type',
+        'job_type',
+        'objective',
+        'brief',
+        'playbook_link',
+        'ref_link',
+        'client_deadline',
+        'internal_due_date',
+        'assignee'
+    ];
+
+    return fields.reduce((changes, field) => {
+        const oldValue = getTaskEditComparable(field, original[field]);
+        const newValue = getTaskEditComparable(field, comparableValues[field]);
+        if (oldValue !== newValue) changes[field] = { from: oldValue, to: newValue };
+        return changes;
+    }, {});
+}
+
+function isTaskEditDirty() {
+    if (!activeEditTaskState) return false;
+    const values = getTaskEditFormValues();
+    const validation = validateTaskEditValues(values);
+    const changes = getTaskEditChanges(activeEditTaskState.original, values, validation.normalized);
+    return Object.keys(changes).length > 0;
+}
+
+function syncTaskEditDirtyState() {
+    if (!activeEditTaskState) return;
+    const btn = document.getElementById('saveEditBtn');
+    const values = getTaskEditFormValues();
+    const validation = validateTaskEditValues(values);
+    const changes = getTaskEditChanges(activeEditTaskState.original, values, validation.normalized);
+    const changeCount = Object.keys(changes).length;
+    activeEditTaskState.pendingValues = values;
+    activeEditTaskState.pendingValidation = validation;
+    activeEditTaskState.pendingChanges = changes;
+
+    if (btn) {
+        btn.disabled = activeEditTaskState.isSaving || changeCount === 0;
+        const label = btn.querySelector('span');
+        if (label) label.textContent = changeCount ? `Save ${changeCount} Change${changeCount === 1 ? '' : 's'}` : 'Save Changes';
+    }
+
+    if (!changeCount) {
+        setTaskEditStatus('No unsaved changes.', 'muted');
+    } else if (!validation.valid) {
+        setTaskEditStatus(`${changeCount} change${changeCount === 1 ? '' : 's'} pending. Some fields need review before saving.`, 'warning');
+    } else if (validation.warning) {
+        setTaskEditStatus(validation.warning, 'warning');
+    } else {
+        setTaskEditStatus(`${changeCount} unsaved change${changeCount === 1 ? '' : 's'}.`, 'info');
+    }
+}
+
+function syncTaskEditDeadlineSuggestion() {
+    if (!activeEditTaskState) return;
+    const box = document.getElementById('editDeadlineSuggestion');
+    const internalInput = document.getElementById('editInternalDue');
+    if (!box || !internalInput) return;
+
+    const values = getTaskEditFormValues();
+    const original = activeEditTaskState.original;
+    const clientChanged = (values.client_deadline || '') !== (original.client_deadline || '');
+    if (!clientChanged || original.internal_due_manual || activeEditTaskState.keepCurrentInternalDue) {
+        box.hidden = true;
+        box.innerHTML = '';
+        return;
+    }
+
+    const suggestion = generateSuggestedInternalDueForTask({
+        ...original,
+        ...values,
+        deadline: values.client_deadline,
+        client_deadline: values.client_deadline
+    });
+    if (!suggestion.date) {
+        box.hidden = true;
+        box.innerHTML = '';
+        return;
+    }
+
+    activeEditTaskState.suggestedInternalDue = suggestion.date;
+    if (!activeEditTaskState.internalDueTouched && activeEditTaskState.lastSuggestedForClientDeadline !== values.client_deadline) {
+        internalInput.value = suggestion.date;
+        activeEditTaskState.lastSuggestedForClientDeadline = values.client_deadline;
+    }
+
+    box.hidden = false;
+    box.innerHTML = `
+        <div>
+            <strong>Suggested internal due: ${escapeHtml(formatDate(suggestion.date))}</strong>
+            <small>${suggestion.bufferDays || 2} working day buffer based on this request.</small>
+        </div>
+        <div>
+            <button type="button" onclick="applyTaskEditSuggestedInternalDue()">Use Suggested</button>
+            <button type="button" onclick="keepTaskEditCurrentInternalDue()">Keep Current</button>
+        </div>
+    `;
+}
+
+function buildTaskEditPayload(jobID, values, changes, normalizedUrls = {}) {
+    const payload = {};
+    const job = (globalData || []).find(d => d.job_id === jobID);
+    const simpleFields = ['client_name', 'project_title', 'region', 'requester_name', 'request_type', 'job_type', 'objective', 'brief'];
+    simpleFields.forEach(field => {
+        if (changes[field]) payload[field] = values[field] || '';
+    });
+    if (changes.playbook_link) payload.playbook_link = normalizedUrls.playbook_link || '';
+    if (changes.ref_link) payload.ref_link = normalizedUrls.ref_link || '';
+
+    if (changes.client_deadline) {
+        payload.deadline = values.client_deadline || null;
+        payload.client_deadline = values.client_deadline || null;
+        if (job && !job.original_client_deadline) payload.original_client_deadline = getTaskOriginalClientDeadline(job) || activeEditTaskState?.original?.client_deadline || values.client_deadline || null;
+    }
+
+    if (changes.internal_due_date || changes.client_deadline) {
+        payload.internal_due_date = values.internal_due_date || null;
+        if (values.internal_due_date && job && !job.original_internal_due_date) {
+            payload.original_internal_due_date = getTaskOriginalInternalDueDate(job) || activeEditTaskState?.original?.internal_due_date || values.internal_due_date || null;
+        }
+        const shouldTreatInternalDueAsManual = Boolean(values.internal_due_date && (activeEditTaskState?.internalDueTouched || activeEditTaskState?.original?.internal_due_manual));
+        payload.internal_due_source = shouldTreatInternalDueAsManual ? 'manual' : (values.internal_due_date ? 'system_generated' : null);
+        payload.internal_due_manually_adjusted = shouldTreatInternalDueAsManual;
+    }
+
+    if (changes.assignee) Object.assign(payload, buildPICAssignmentPayload(values.assignee));
+    if (job && Object.prototype.hasOwnProperty.call(job, 'updated_at')) payload.updated_at = new Date().toISOString();
+    return payload;
+}
+
+function getTaskEditSummary(snapshot = {}) {
+    return [
+        snapshot.client_name || '',
+        snapshot.project_title || '',
+        snapshot.requester_name || '',
+        snapshot.region || '',
+        snapshot.job_type || '',
+        snapshot.client_deadline || '',
+        snapshot.internal_due_date || '',
+        snapshot.assignee || 'Unassigned',
+        snapshot.playbook_link || ''
+    ].join(' | ');
+}
+
+function getTaskEditDeadlineChanges(changes = {}) {
+    const rows = [];
+    if (changes.client_deadline) rows.push({ field: 'client_deadline', label: 'Client deadline', from: changes.client_deadline.from || 'Not set', to: changes.client_deadline.to || 'Removed' });
+    if (changes.internal_due_date) rows.push({ field: 'internal_due_date', label: 'Internal due date', from: changes.internal_due_date.from || 'Not set', to: changes.internal_due_date.to || 'Removed' });
+    return rows;
+}
+
+async function fetchLatestTaskForEdit(jobID) {
+    try {
+        const { data, error } = await supabaseClient
+            .from('creative_requests')
+            .select('*')
+            .eq('job_id', jobID)
+            .maybeSingle();
+        if (error) throw error;
+        return data || null;
+    } catch(e) {
+        console.warn('Could not check latest task before edit save:', e.message);
+        return null;
+    }
+}
+
+function isTaskEditSchemaFallbackError(error) {
+    return /column|schema|cache|updated_at|client_deadline|internal_due|original_|assigned_pic|assignment_updated|request_type/i.test(error?.message || '');
+}
+
+function buildTaskEditFallbackPayload(payload = {}, legacyOnly = false) {
+    const clean = stripPICAssignmentPayloadFields({ ...payload });
+    delete clean.updated_at;
+    if (!legacyOnly) return clean;
+    const legacyKeys = ['client_name', 'project_title', 'region', 'requester_name', 'job_type', 'objective', 'brief', 'deadline', 'assignee', 'playbook_link', 'ref_link'];
+    return legacyKeys.reduce((acc, key) => {
+        if (Object.prototype.hasOwnProperty.call(clean, key)) acc[key] = clean[key];
+        return acc;
+    }, {});
+}
+
+async function saveTaskEditPayloadToSupabase(jobID, payload) {
+    const runUpdate = async (nextPayload) => {
+        const result = await supabaseClient
+            .from('creative_requests')
+            .update(nextPayload)
+            .eq('job_id', jobID)
+            .select('*')
+            .maybeSingle();
+        return result;
+    };
+
+    let result = await runUpdate(payload);
+    if (!result.error) return { row: result.data, usedFallback: false, payload };
+    if (!isTaskEditSchemaFallbackError(result.error)) throw result.error;
+
+    const fallbackPayload = buildTaskEditFallbackPayload(payload);
+    result = await runUpdate(fallbackPayload);
+    if (!result.error) return { row: result.data, usedFallback: true, payload: fallbackPayload };
+    if (!isTaskEditSchemaFallbackError(result.error)) throw result.error;
+
+    const legacyPayload = buildTaskEditFallbackPayload(payload, true);
+    if (!Object.keys(legacyPayload).length) throw result.error;
+    result = await runUpdate(legacyPayload);
+    if (result.error) throw result.error;
+    return { row: result.data, usedFallback: true, payload: legacyPayload };
+}
+
+function renderTaskEditPostSave(jobID) {
+    renderDashboard();
+    renderBoards();
+    if (document.getElementById('calendar-section')?.classList.contains('active-section') || document.getElementById('dashboard')?.classList.contains('active')) {
+        if (typeof renderCalendar === 'function') renderCalendar(getCalendarSourceTasks());
+    }
+    if (typeof isKanbanMode !== 'undefined' && isKanbanMode && typeof renderKanbanBoard === 'function') renderKanbanBoard();
+
+    const detailModal = document.getElementById('globalDetailModal');
+    if (detailModal?.classList.contains('show')) {
+        openDetailModal(jobID, true);
+    } else {
+        openDetailModal(jobID);
+    }
+}
+
+function buildTaskEditChangeMeta(changes = {}) {
+    return {
+        changed_fields: Object.keys(changes),
+        changes
+    };
+}
+
 function setupSwipeToClose(modalEl, bodyId, closeFn) {
     if(!modalEl) return;
     let sy = 0, cy = 0, pulling = false;
@@ -8985,19 +9743,19 @@ function openDetailModal(jobID, isUpdate = false) {
         const ws = getWorkStatusLabel(wsRaw);
         const wsClass = `ws-${getWorkStatusSlug(wsRaw)}`;
         const isDoneTab = String(item.status).toLowerCase() === 'approved' && wsKey === 'done';
-        const securePin = localStorage.getItem('adtech_lead_pin');
-        const canEditPIC = securePin && String(item.status || '').toLowerCase() === 'approved';
+        const securePin = hasAdminAccess();
+        const canEditTaskDetails = canCurrentUserEditTask(item).canEdit && !isDoneTab;
+        const canEditPIC = canEditTaskDetails && String(item.status || '').toLowerCase() === 'approved';
         const canViewInternalDeadline = shouldUseInternalDeadlineForTask(item);
+        const safePlaybook = escapeJsString(getTaskSafeHttpUrl(item.playbook_link) || '');
+        const safeReferenceUrl = getTaskSafeHttpUrl(item.ref_link);
 
         document.getElementById('dm-jobid').innerText = `[${item.job_id}]`;
         document.getElementById('dm-title').innerText = `${item.client_name}: ${item.project_title}`;
         const modal = document.getElementById('globalDetailModal');
         if (modal) modal.dataset.currentJobId = item.job_id;
 
-        let playbookBtnHtml = '';
-        if(item.playbook_link) {
-            playbookBtnHtml = `<a href="${item.playbook_link}" target="_blank" class="premium-playbook-btn"><i data-lucide="layout-template"></i> Open Playbook</a>`;
-        }
+        let playbookBtnHtml = renderTaskPlaybookAction(item, canEditTaskDetails);
 
         // --- MULA LOGIK FORMAT BRIEF BERBEZA ---
         const briefText = String(item.brief || '');
@@ -9052,7 +9810,7 @@ function openDetailModal(jobID, isUpdate = false) {
             ${renderTaskAccessCheckPanel(item)}
             <div class="brief-box">
                 ${formattedBriefHTML}
-                ${item.ref_link ? `<p style="margin-top: 15px;"><strong>Reference:</strong> <a href="${item.ref_link}" target="_blank">Click to view reference</a></p>` : ''}
+                ${safeReferenceUrl ? `<p style="margin-top: 15px;"><strong>Reference:</strong> <a href="${escapeHtml(safeReferenceUrl)}" target="_blank" rel="noopener noreferrer">Click to view reference</a></p>` : ''}
                 ${formattedRemarks ? `<p style="margin-top: 15px; line-height: 1.6;"><strong>Remarks:</strong><br>${formattedRemarks}</p>` : ''}
             </div>
         `;
@@ -9064,15 +9822,15 @@ function openDetailModal(jobID, isUpdate = false) {
             if (securePin) {
                 warmPlaybookGenerator();
                 bodyHtml += `<div class="assign-area"><label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block; color: var(--text-main);">1. Select Creative PIC (Multiple Allowed):</label>${renderCreativePicGroups(item.job_id)}<label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block; color: var(--text-main);">2. Generate Creative Playbook:</label><div style="display:flex; gap:10px; margin-bottom: 15px; flex-wrap:wrap;"><input type="text" id="playbook-${item.job_id}" placeholder="Click Auto-Generate or paste link..." style="flex:1; min-width:200px; border-style: dashed; padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-input); color: var(--text-main);"><button onclick="generatePlaybook('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeRequester}')" id="btn-gen-${item.job_id}" class="btn-action" style="background:var(--link-color); color:white; border:none; min-width:140px; margin:0;"><i data-lucide="sparkles"></i> Auto-Generate</button></div></div>`;
-                footerHtml = handleHtml + `<div class="action-buttons"><button id="btn-approve-${item.job_id}" onclick="approveJob('${item.job_id}', '${safeClient}', '${safeTitle}')" class="btn-action btn-approve"><i data-lucide="check"></i> Approve & Assign</button><button onclick="openEditModal('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeDeadline}', '${safeAssignee}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit Request</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
+                footerHtml = handleHtml + `<div class="action-buttons"><button id="btn-approve-${item.job_id}" onclick="approveJob('${item.job_id}', '${safeClient}', '${safeTitle}')" class="btn-action btn-approve"><i data-lucide="check"></i> Approve & Assign</button><button onclick="openEditModal('${item.job_id}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit Request</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
             } else {
                 bodyHtml += `<div class="locked-msg"><i data-lucide="lock"></i> Status: Reviewing requirements. Awaiting Admin Assignment.</div>`;
             }
         } else {
             if (securePin && !isDoneTab) {
-                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('requester', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Requester</button><button onclick="copyText('team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Team</button>${wsKey === 'client review' ? `<button onclick="copyText('review', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}${wsKey === 'client review' ? `<button onclick="copyText('chase_client', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action" style="background: #0ea5e9; color: white; border: none;"><i data-lucide="message-circle"></i> Chase Requester</button>` : ''}${wsKey === 'revision' ? `<button onclick="copyText('revision_alert', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action" style="background: #ea580c; color: white; border: none;"><i data-lucide="alert-circle"></i> Msg: Revision</button>` : ''}<button onclick="copyText('chase', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '')" class="btn-action" style="background: var(--orange); color: white; border: none;"><i data-lucide="bell-ring"></i> Chase Status</button><button onclick="openEditModal('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeDeadline}', '${safeAssignee}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
+                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('requester', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${safePlaybook}', '${safeRequester}')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Requester</button><button onclick="copyText('team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${safePlaybook}', '')" class="btn-action btn-copy"><i data-lucide="copy"></i> Msg: Team</button>${wsKey === 'client review' ? `<button onclick="copyText('review', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${safePlaybook}', '${safeRequester}')" class="btn-action" style="background: #8b5cf6; color: white; border: none;"><i data-lucide="mail"></i> Msg: Review</button>` : ''}${wsKey === 'client review' ? `<button onclick="copyText('chase_client', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${safePlaybook}', '${safeRequester}')" class="btn-action" style="background: #0ea5e9; color: white; border: none;"><i data-lucide="message-circle"></i> Chase Requester</button>` : ''}${wsKey === 'revision' ? `<button onclick="copyText('revision_alert', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${safePlaybook}', '')" class="btn-action" style="background: #ea580c; color: white; border: none;"><i data-lucide="alert-circle"></i> Msg: Revision</button>` : ''}<button onclick="copyText('chase', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${safePlaybook}', '')" class="btn-action" style="background: var(--orange); color: white; border: none;"><i data-lucide="bell-ring"></i> Chase Status</button><button onclick="openEditModal('${item.job_id}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
             } else if (securePin && isDoneTab) {
-                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('done_team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${item.playbook_link}', '${safeRequester}')" class="btn-action btn-copy" style="flex:1; background: var(--green); color: white; border: none;"><i data-lucide="check-circle"></i> Msg: Team (Done)</button><select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select" style="background: var(--text-muted); flex: 1;"><option value="">Undo Status...</option><option value="Client Review">Move back to Review</option></select><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="flex: 1;"><i data-lucide="trash-2"></i> Delete Record</button></div>`;
+                footerHtml = handleHtml + `<div class="action-buttons"><button onclick="copyText('done_team', '${item.job_id}', '${safeClient}', '${safeTitle}', '${safeAssignee}', '${safeDeadline}', '${safePlaybook}', '${safeRequester}')" class="btn-action btn-copy" style="flex:1; background: var(--green); color: white; border: none;"><i data-lucide="check-circle"></i> Msg: Team (Done)</button><select onchange="updateWorkStatusOptimistic('${item.job_id}', this.value)" class="ws-select" style="background: var(--text-muted); flex: 1;"><option value="">Undo Status...</option><option value="Client Review">Move back to Review</option></select><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete" style="flex: 1;"><i data-lucide="trash-2"></i> Delete Record</button></div>`;
             }
         }
 
@@ -9325,8 +10083,12 @@ async function submitRequest() {
 async function approveJob(jobID, client, title) {
     const selectedPIC = Array.from(document.querySelectorAll(`.cb-${jobID}:checked`)).map(cb => cb.value).join(', ');
     if(!selectedPIC) return showAppleAlert("Missing Assignee", "Please select at least one creative PIC.");
-    const playbookLink = document.getElementById(`playbook-${jobID}`).value.trim();
-    if(!playbookLink) return showAppleAlert("Missing Link", "Please auto-generate or paste the Creative Playbook link first.");
+    const playbookInput = document.getElementById(`playbook-${jobID}`);
+    const playbookCheck = normalizeTaskUrlForSave(playbookInput?.value || '', 'Playbook URL');
+    if(!playbookCheck.value) return showAppleAlert("Missing Link", "Please auto-generate or paste the Creative Playbook link first.");
+    if(!playbookCheck.ok) return showAppleAlert("Invalid Link", playbookCheck.message, { tone: 'warning', icon: 'link' });
+    const playbookLink = playbookCheck.value;
+    if (playbookInput) playbookInput.value = playbookLink;
 
     const currentUser = localStorage.getItem('adtech_user_name') || 'Admin';
     const btn = document.getElementById(`btn-approve-${jobID}`);
@@ -9412,124 +10174,118 @@ async function approveJob(jobID, client, title) {
 }
 
 async function saveEdit() {
-    const jobID = document.getElementById('editJobId').value;
-    const client = document.getElementById('editClient').value;
-    const title = document.getElementById('editTitle').value;
-    const deadline = document.getElementById('editDeadline').value;
-    const internalDue = document.getElementById('editInternalDue')?.value || '';
-    const editAssignee = document.getElementById('editAssignee');
-    const assignee = editAssignee ? (editAssignee.value || editAssignee.dataset.originalAssignee || 'Unassigned') : 'Unassigned';
+    const state = activeEditTaskState;
+    if (!state) return showAppleAlert('Edit Unavailable', 'Please reopen the task edit panel.', { tone: 'warning', icon: 'file-pen-line' });
+    if (state.isSaving) return;
 
-    if(!client || !title || !deadline) return showAppleAlert("Missing Data", "Fields cannot be empty.");
-    const job = globalData.find(d => d.job_id === jobID);
-    const oldClientDeadline = toDateInputValue(getTaskClientDeadline(job));
-    const oldSavedInternalDue = toDateInputValue(getTaskInternalDueDate(job));
-    const oldInternalDue = toDateInputValue(getTaskEffectiveInternalDueDate(job));
-    let finalInternalDue = internalDue;
-    const clientDeadlineChanged = (oldClientDeadline || '') !== (deadline || '');
-    const internalChangedByInput = (oldInternalDue || '') !== (internalDue || '');
-    if (clientDeadlineChanged && !isInternalDueManuallyAdjusted(job) && !internalChangedByInput) {
-        finalInternalDue = generateSuggestedInternalDueForTask({ ...job, client_deadline: deadline, deadline, project_title: title }).date || '';
+    const jobID = state.jobID;
+    const job = (globalData || []).find(d => d.job_id === jobID);
+    if (!job) return showAppleAlert('Missing Task', 'This task could not be found.', { tone: 'warning', icon: 'search-x' });
+    if (!canCurrentUserEditTask(job).canEdit) return showAppleAlert('Admin Only', 'You no longer have permission to edit this task.', { tone: 'warning', icon: 'lock' });
+
+    const values = getTaskEditFormValues();
+    const validation = validateTaskEditValues(values);
+    const changes = getTaskEditChanges(state.original, values, validation.normalized);
+    const changeCount = Object.keys(changes).length;
+
+    if (!changeCount) {
+        setTaskEditStatus('No changes to save.', 'muted');
+        return;
     }
-    const oldSummary = job ? `${job.client_name || ''} | ${job.project_title || ''} | ${oldClientDeadline || ''} | ${oldInternalDue || ''} | ${getAssigneeDisplay(job.assignee)}` : '';
-    const newSummary = `${client} | ${title} | ${deadline} | ${finalInternalDue || 'No internal due'} | ${assignee}`;
-    const payload = {
-        client_name: client,
-        project_title: title,
-        deadline: deadline,
-        client_deadline: deadline,
-        ...buildPICAssignmentPayload(assignee),
-        internal_due_date: finalInternalDue || null
-    };
-
-    if (job && !job.original_client_deadline) payload.original_client_deadline = getTaskOriginalClientDeadline(job) || deadline;
-    if (finalInternalDue && job && !job.original_internal_due_date) payload.original_internal_due_date = finalInternalDue;
-    if (internalChangedByInput) {
-        payload.internal_due_source = 'manual';
-        payload.internal_due_manually_adjusted = true;
-    } else if (!oldSavedInternalDue && finalInternalDue) {
-        payload.internal_due_source = 'system_generated';
-        payload.internal_due_manually_adjusted = false;
+    if (!validation.valid) {
+        const message = validation.errors.slice(0, 5).join('\n');
+        setTaskEditStatus(validation.errors[0], 'danger');
+        return showAppleAlert('Check Edit Fields', message, { tone: 'warning', icon: 'circle-alert' });
     }
 
-    const changedDeadlines = [];
-    if (oldClientDeadline && oldClientDeadline !== deadline) changedDeadlines.push({ field: 'client_deadline', label: 'Client deadline', from: oldClientDeadline, to: deadline });
-    if (!oldClientDeadline && deadline) changedDeadlines.push({ field: 'client_deadline', label: 'Client deadline', from: 'Not set', to: deadline });
-    if ((oldInternalDue || '') !== (finalInternalDue || '')) changedDeadlines.push({ field: 'internal_due_date', label: 'Internal due date', from: oldInternalDue || 'Not set', to: finalInternalDue || 'Removed' });
-
-    if (changedDeadlines.length) {
-        return openDeadlineChangeDialog(jobID, payload, oldSummary, newSummary, changedDeadlines);
+    if (!state.conflictOverride && state.original.updated_at) {
+        const latestTask = await fetchLatestTaskForEdit(jobID);
+        const latestUpdatedAt = latestTask?.updated_at || latestTask?.modified_at || latestTask?.last_updated_at || '';
+        if (latestTask && latestUpdatedAt && latestUpdatedAt !== state.original.updated_at) {
+            const overwrite = await showAppleConfirm(
+                'This task was updated while you were editing.',
+                'Review the latest saved version or overwrite it with your current changes.',
+                { confirmText: 'Overwrite Changes', cancelText: 'Review Latest', tone: 'danger', icon: 'git-compare-arrows' }
+            );
+            if (!overwrite) {
+                const index = globalData.findIndex(row => row.job_id === jobID);
+                if (index >= 0) globalData[index] = { ...globalData[index], ...latestTask };
+                state.original = buildTaskEditSnapshot(latestTask);
+                document.getElementById('editTaskFormBody').innerHTML = renderTaskEditForm(state.original);
+                state.internalDueTouched = false;
+                state.keepCurrentInternalDue = false;
+                state.lastSuggestedForClientDeadline = '';
+                syncTaskEditDirtyState();
+                syncTaskEditDeadlineSuggestion();
+                refreshIcons();
+                setTaskEditStatus('Latest task data loaded. Review and edit again.', 'info');
+                return;
+            }
+            state.conflictOverride = true;
+        }
     }
 
-    await commitEditPayload(jobID, payload, oldSummary, newSummary, 'Request details edited');
+    const payload = buildTaskEditPayload(jobID, values, changes, validation.normalized);
+    const nextSnapshot = { ...state.original, ...values, playbook_link: validation.normalized.playbook_link, ref_link: validation.normalized.ref_link };
+    const oldSummary = getTaskEditSummary(state.original);
+    const newSummary = getTaskEditSummary(nextSnapshot);
+    const deadlineChanges = getTaskEditDeadlineChanges(changes);
+
+    if (deadlineChanges.length) {
+        return openDeadlineChangeDialog(jobID, payload, oldSummary, newSummary, deadlineChanges);
+    }
+
+    await commitEditPayload(jobID, payload, oldSummary, newSummary, 'Request details edited', buildTaskEditChangeMeta(changes));
 }
 
 async function commitEditPayload(jobID, payload, oldSummary, newSummary, noteText, meta = {}) {
     const btn = document.getElementById('saveEditBtn');
-    btn.innerHTML = 'Updating...';
-    btn.disabled = true;
+    const label = btn?.querySelector('span');
+    const icon = btn?.querySelector('i');
+    if (activeEditTaskState) activeEditTaskState.isSaving = true;
+    if (btn) btn.disabled = true;
+    if (label) label.textContent = 'Saving...';
+    if (icon) icon.setAttribute('data-lucide', 'loader-2');
+    if (icon) icon.classList.add('spin');
+    setTaskEditStatus('Saving changes to Supabase...', 'info');
+    refreshIcons();
+
     const job = globalData.find(d => d.job_id === jobID);
-    const oldAssigneeForEdit = job ? getAssigneeDisplay(job.assignee) : 'Unassigned';
+    const oldAssigneeForEdit = activeEditTaskState?.original?.assignee || (job ? getAssigneeDisplay(job.assignee) : 'Unassigned');
     const nextAssigneeForEdit = payload.assignee !== undefined ? getAssigneeDisplay(payload.assignee) : oldAssigneeForEdit;
     const picChangeMeta = payload.assignee !== undefined ? getPICChangeMeta(oldAssigneeForEdit, nextAssigneeForEdit) : { changed: false };
 
     try {
-        const { error } = await supabaseClient.from('creative_requests').update(payload).eq('job_id', jobID);
-        if(error) throw error;
-        if (job) Object.assign(job, payload);
-        logTaskActivity(jobID, meta.deadline_changed ? 'deadline_changed' : 'request_updated', oldSummary, newSummary, noteText, { ...meta, pic_change: picChangeMeta.changed ? picChangeMeta : undefined });
+        const result = await saveTaskEditPayloadToSupabase(jobID, payload);
+        if (job) Object.assign(job, payload, result.row || {});
+        await logTaskActivity(jobID, meta.deadline_changed ? 'deadline_changed' : 'request_updated', oldSummary, newSummary, noteText, {
+            ...meta,
+            pic_change: picChangeMeta.changed ? picChangeMeta : undefined,
+            fallback_payload_used: result.usedFallback || undefined
+        });
         if (picChangeMeta.changed) {
-            logTaskActivity(jobID, 'pic_changed', oldAssigneeForEdit, nextAssigneeForEdit, 'PIC changed from edit form', {
+            await logTaskActivity(jobID, 'pic_changed', oldAssigneeForEdit, nextAssigneeForEdit, 'PIC changed from edit form', {
                 ...picChangeMeta,
                 source: 'edit_form'
             });
         }
-        showNotification('Request Updated', '');
-        closeEditModal();
         closeSettingsDialog();
-        renderDashboard();
-        renderBoards();
+        closeEditModal({ keepBodyLock: true });
+        renderTaskEditPostSave(jobID);
+        showNotification('Task Updated', result.usedFallback ? 'Saved with legacy field fallback' : 'Changes saved');
     } catch(e) {
-        if (/column|schema|cache|client_deadline|internal_due|original_|assigned_pic|assignment_updated/i.test(e.message || '')) {
-            const fallbackPayload = stripPICAssignmentPayloadFields({ ...payload });
-            delete fallbackPayload.internal_due_source;
-            delete fallbackPayload.internal_due_manually_adjusted;
-            try {
-                const retry = await supabaseClient.from('creative_requests').update(fallbackPayload).eq('job_id', jobID);
-                if (retry.error && /column|schema|cache|client_deadline|internal_due|original_|assigned_pic|assignment_updated/i.test(retry.error.message || '')) {
-                    const minimalPayload = {
-                        client_name: payload.client_name,
-                        project_title: payload.project_title,
-                        deadline: payload.deadline,
-                        assignee: payload.assignee
-                    };
-                    const secondRetry = await supabaseClient.from('creative_requests').update(minimalPayload).eq('job_id', jobID);
-                    if (secondRetry.error) throw secondRetry.error;
-                } else if (retry.error) {
-                    throw retry.error;
-                }
-                if (job) Object.assign(job, payload);
-                logTaskActivity(jobID, meta.deadline_changed ? 'deadline_changed' : 'request_updated', oldSummary, newSummary, `${noteText} (deadline fields saved in legacy column until migration is applied)`, { ...meta, pic_change: picChangeMeta.changed ? picChangeMeta : undefined });
-                if (picChangeMeta.changed) {
-                    logTaskActivity(jobID, 'pic_changed', oldAssigneeForEdit, nextAssigneeForEdit, 'PIC changed from edit form', {
-                        ...picChangeMeta,
-                        source: 'edit_form'
-                    });
-                }
-                showNotification('Request Updated', 'Run deadline migration for full reporting fields');
-                closeEditModal();
-                closeSettingsDialog();
-                renderDashboard();
-                renderBoards();
-            } catch(retryError) {
-                showAppleAlert("Update Error", retryError.message);
-            }
-        } else {
-            showAppleAlert("Update Error", e.message);
-        }
+        setTaskEditStatus(`Save failed: ${e.message}`, 'danger');
+        showAppleAlert("Update Error", e.message, { tone: 'danger', icon: 'alert-triangle' });
     } finally {
-        btn.innerHTML = 'Update Request';
-        btn.disabled = false;
+        if (activeEditTaskState) activeEditTaskState.isSaving = false;
+        if (btn) btn.disabled = false;
+        if (label) label.textContent = 'Save Changes';
+        if (icon) {
+            icon.setAttribute('data-lucide', 'save');
+            icon.classList.remove('spin');
+        }
+        syncTaskEditDirtyState();
+        refreshIcons();
     }
 }
 

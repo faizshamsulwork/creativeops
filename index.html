@@ -142,37 +142,29 @@
         </div>
     </div>
 
-    <div id="editModal" class="modal-overlay" style="z-index: 7000;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Edit Request Details</h3>
-                <button class="close-btn" onclick="closeEditModal()"><i data-lucide="x"></i></button>
-            </div>
-            <div class="input-group" style="margin-bottom: 15px;">
-                <label>Job ID</label><input type="text" id="editJobId" disabled style="background: var(--bg-box); color: var(--text-muted);">
-            </div>
-            <div class="input-group" style="margin-bottom: 15px;">
-                <label>Client Name</label><input type="text" id="editClient">
-            </div>
-            <div class="input-group" style="margin-bottom: 15px;">
-                <label>Project Title</label><input type="text" id="editTitle">
-            </div>
-            <div class="input-group" style="margin-bottom: 15px;">
-                <label>Creative PIC</label>
-                <select id="editAssignee">
-                    <option value="Unassigned">-- Unassigned --</option>
-                    <optgroup label="Malaysia"><option value="Abel">Abel</option><option value="Aaron">Aaron</option><option value="Simon">Simon</option><option value="Alya">Alya</option><option value="Steven">Steven</option><option value="Faiz Shamsul">Faiz Shamsul</option></optgroup>
-                    <optgroup label="Indonesia"><option value="Miftahul Fikri">Miftahul Fikri</option><option value="Youke Yap">Youke Yap</option><option value="Annisya Y.">Annisya Y.</option></optgroup>
-                </select>
-            </div>
-            <div class="input-group" style="margin-bottom: 15px;">
-                <label>Client Deadline</label><input type="date" id="editDeadline">
-            </div>
-            <div class="input-group" style="margin-bottom: 15px;">
-                <label>Internal Due Date</label><input type="date" id="editInternalDue">
-            </div>
-            <button class="btn-submit" id="saveEditBtn" onclick="saveEdit()" style="margin-top:20px; width:100%;">Update Request</button>
-        </div>
+    <div id="editModal" class="task-edit-modal-overlay" aria-hidden="true" role="presentation" onclick="handleEditTaskBackdrop(event)" onkeydown="handleEditTaskKeydown(event)">
+        <section class="task-edit-modal" role="dialog" aria-modal="true" aria-labelledby="editTaskTitle" onclick="event.stopPropagation()">
+            <header class="task-edit-header">
+                <div>
+                    <span class="task-edit-eyebrow">Task Edit</span>
+                    <h3 id="editTaskTitle">Edit Request Details</h3>
+                    <p>Update only the fields that need changing.</p>
+                </div>
+                <div class="task-edit-header-actions">
+                    <input type="text" id="editJobId" class="task-edit-job-id" aria-label="Job ID" readonly>
+                    <button type="button" class="task-edit-close" onclick="requestCloseEditTaskModal()" aria-label="Close edit modal"><i data-lucide="x"></i></button>
+                </div>
+            </header>
+            <div id="editTaskStatus" class="task-edit-status" aria-live="polite"></div>
+            <div id="editTaskFormBody" class="task-edit-body"></div>
+            <footer class="task-edit-footer">
+                <button type="button" class="task-edit-secondary" onclick="requestCloseEditTaskModal()">Cancel</button>
+                <button type="button" class="task-edit-primary" id="saveEditBtn" onclick="saveEdit()" disabled>
+                    <i data-lucide="save"></i>
+                    <span>Save Changes</span>
+                </button>
+            </footer>
+        </section>
     </div>
 
     <div id="introPage" class="intro-overlay">
