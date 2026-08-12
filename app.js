@@ -26,6 +26,9 @@ let globalReviewResponses = [];
 let reviewPairDraft = [];
 let activeReviewAssignment = null;
 let activeReviewDraft = null;
+let activeReviewCodeHashes = [];
+let activeReviewStep = 0;
+let lastGeneratedReviewCodes = [];
 let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
 let currentRegionFilter = 'all';
@@ -52,6 +55,8 @@ let completionModalLastFocus = null;
 const completionModalOpenedKeys = new Set();
 const completionStatusInFlight = new Set();
 let clientReviewJustMovedRefreshTimer = null;
+let kanbanJustMovedRefreshTimer = null;
+let kanbanCardStatusMemory = {}; // job_id -> last rendered column slug, this browser tab only (drives the one-time entrance animation)
 let calendarViewMode = localStorage.getItem('adtech_calendar_view') || '';
 let calendarShowCompleted = localStorage.getItem('adtech_calendar_show_completed') === 'true';
 let selectedCalendarDateKey = '';
@@ -70,6 +75,7 @@ const CLIENT_REVIEW_WINDOW_DAYS = 5;
 const CLIENT_REVIEW_WARNING_DAY = 4;
 const CLIENT_REVIEW_WATCH_DAY = 3;
 const CLIENT_REVIEW_JUST_MOVED_PIN_MINUTES = 30;
+const KANBAN_JUST_MOVED_PIN_SECONDS = 300; // 5 min — general "just moved" highlight for every non-Client-Review column
 const CLIENT_REVIEW_DEFAULT_WAITING_REASON = 'Awaiting feedback / approval';
 const REQUEST_BOARD_FILTERS = [
     { id: 'all', label: 'All Tasks' },
@@ -999,6 +1005,41 @@ function scheduleClientReviewJustMovedExpiryRefresh(tasks = []) {
     const delay = Math.max(1000, nextExpiry - Date.now() + 250);
     clientReviewJustMovedRefreshTimer = setTimeout(() => {
         clientReviewJustMovedRefreshTimer = null;
+        if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
+    }, delay);
+}
+
+/**
+ * Generalized version of the Client Review "just moved" pin, driven by last_moved_at — which
+ * updateWorkStatusOptimistic() already stamps on EVERY status change, drag or manual, into any
+ * column. Powers the highlight glow + badge for every column except Client Review, which keeps
+ * its own longer, more specific pin (see getClientReviewJustMovedMeta above).
+ */
+function getWorkStatusJustMovedMeta(task = {}) {
+    const timestamp = getTimestampValue(task.last_moved_at, 0);
+    if (!timestamp) return { active: false, timestamp: 0, remainingSeconds: 0 };
+    const ageMs = Date.now() - timestamp;
+    const windowMs = KANBAN_JUST_MOVED_PIN_SECONDS * 1000;
+    const active = ageMs >= 0 && ageMs <= windowMs;
+    const remainingSeconds = active ? Math.max(1, Math.ceil((windowMs - ageMs) / 1000)) : 0;
+    return { active, timestamp, remainingSeconds };
+}
+
+function scheduleWorkStatusJustMovedExpiryRefresh(tasks = []) {
+    if (kanbanJustMovedRefreshTimer) {
+        clearTimeout(kanbanJustMovedRefreshTimer);
+        kanbanJustMovedRefreshTimer = null;
+    }
+    const windowMs = KANBAN_JUST_MOVED_PIN_SECONDS * 1000;
+    const nextExpiry = (tasks || [])
+        .map(task => getWorkStatusJustMovedMeta(task))
+        .filter(meta => meta.active)
+        .map(meta => meta.timestamp + windowMs)
+        .reduce((soonest, value) => Math.min(soonest, value), Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(nextExpiry)) return;
+    const delay = Math.max(1000, nextExpiry - Date.now() + 250);
+    kanbanJustMovedRefreshTimer = setTimeout(() => {
+        kanbanJustMovedRefreshTimer = null;
         if (typeof isKanbanMode !== 'undefined' && isKanbanMode) renderKanbanBoard();
     }, delay);
 }
@@ -2244,7 +2285,7 @@ async function fetchTaskRelatedLogsForCurrentAccess() {
                 .limit(5000);
             if (shouldNarrow) activityQuery = activityQuery.in('job_id', authorisedJobIds);
             const { data: activityData, error: activityError } = await activityQuery;
-            globalActivityLogs = activityError ? localActivity : filterTaskScopedRowsForCurrentAccess([...(activityData || []).map(normalizeLogRow), ...localActivity]);
+            globalActivityLogs = activityError ? localActivity : filterTaskScopedRowsForCurrentAccess(dedupeActivityLogRows([...(activityData || []).map(normalizeLogRow), ...localActivity]));
         }
     } catch(e) {
         globalActivityLogs = localActivity;
@@ -2261,7 +2302,7 @@ async function fetchTaskRelatedLogsForCurrentAccess() {
                 .limit(5000);
             if (shouldNarrow) noteQuery = noteQuery.in('job_id', authorisedJobIds);
             const { data: noteData, error: noteError } = await noteQuery;
-            globalNoteLogs = noteError ? localNotes : filterTaskScopedRowsForCurrentAccess([...(noteData || []).map(normalizeNoteRow), ...localNotes]);
+            globalNoteLogs = noteError ? localNotes : filterTaskScopedRowsForCurrentAccess(dedupeNoteLogRows([...(noteData || []).map(normalizeNoteRow), ...localNotes]));
         }
     } catch(e) {
         globalNoteLogs = localNotes;
@@ -2717,7 +2758,14 @@ function showPage(id) {
 
     // Render semula data mengikut tab yang aktif
     if (id === 'settings') renderSettingsPage();
-    if (id === 'team-review') renderTeamReviewPage();
+    if (id === 'team-review') {
+        renderTeamReviewPage();
+        // Realtime pushes cover most updates, but a fresh fetch on every tab visit means admin
+        // never has to guess whether a submission just isn't synced yet vs. simply not pushed live.
+        if (hasSuperAdminAccess() && typeof fetchTeamReviewData === 'function') {
+            fetchTeamReviewData().then(renderTeamReviewPage);
+        }
+    }
     if (id === 'rate-card') renderRateCardPage();
     if (id === 'quote-builder' && typeof renderQuoteBuilderPage === 'function') renderQuoteBuilderPage();
 
@@ -3164,7 +3212,41 @@ function selectClientName(name) {
 }
 
 // 🌟 FUNGSI UTAMA: Tarik semua data
+let fetchSupabaseDataInFlight = false;
+let fetchSupabaseDataQueuedArgs = null;
+
+/**
+ * Guards against overlapping fetch cycles. Multiple realtime listeners (see
+ * setupRealtimeSubscription) can each independently call this within milliseconds of one another
+ * for a single logical action (e.g. saving a note touches both creative_requests and
+ * task_activity_logs). Without this guard, two full fetches run concurrently, race each other,
+ * and whichever finishes LAST wins — even if it started from staler data. That race is what was
+ * causing note counts (and other board state) to flicker between values, and the repeated
+ * re-renders it triggered showed up as cards visibly "vibrating" under the cursor.
+ */
 async function fetchSupabaseData(force = false, silent = false) {
+    if (fetchSupabaseDataInFlight) {
+        fetchSupabaseDataQueuedArgs = {
+            force: force || Boolean(fetchSupabaseDataQueuedArgs?.force),
+            silent: silent && fetchSupabaseDataQueuedArgs?.silent !== false
+        };
+        return;
+    }
+
+    fetchSupabaseDataInFlight = true;
+    try {
+        await fetchSupabaseDataImpl(force, silent);
+    } finally {
+        fetchSupabaseDataInFlight = false;
+        if (fetchSupabaseDataQueuedArgs) {
+            const next = fetchSupabaseDataQueuedArgs;
+            fetchSupabaseDataQueuedArgs = null;
+            fetchSupabaseData(next.force, next.silent);
+        }
+    }
+}
+
+async function fetchSupabaseDataImpl(force = false, silent = false) {
     const editModal = document.getElementById('editModal');
     if (!force && editModal && editModal.style.display === 'flex') return;
 
@@ -3176,20 +3258,6 @@ async function fetchSupabaseData(force = false, silent = false) {
 
     const activeTag = document.activeElement ? document.activeElement.tagName : '';
     if (!force && (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT')) return;
-
-    // SILENT SYNC INDICATOR
-    let syncIndicator = document.getElementById('silent-sync-indicator');
-    if (silent) {
-        if (!syncIndicator) {
-            syncIndicator = document.createElement('div');
-            syncIndicator.id = 'silent-sync-indicator';
-            syncIndicator.innerHTML = '<i data-lucide="refresh-cw" class="spin" style="width:14px;height:14px;"></i> Syncing...';
-            syncIndicator.style.cssText = 'position:fixed; bottom:20px; right:20px; background:var(--bg-box); border:1px solid var(--border-main); padding:6px 12px; border-radius:20px; font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:6px; z-index:9999; opacity:0; transition:opacity 0.3s ease; box-shadow:0 4px 6px rgba(0,0,0,0.1);';
-            document.body.appendChild(syncIndicator);
-            refreshIcons();
-        }
-        setTimeout(() => { syncIndicator.style.opacity = '1'; }, 10);
-    }
 
     try {
         await fetchClientsList();
@@ -3252,15 +3320,27 @@ async function fetchSupabaseData(force = false, silent = false) {
             if (overlay) overlay.classList.remove('show');
             // 🌟 TRIGGER GATEKEEPER BILA HABIS LOADING
             if (typeof checkAndShowReturnOverlay === 'function') checkAndShowReturnOverlay();
-        } else if (syncIndicator) {
-            syncIndicator.style.opacity = '0';
-            setTimeout(() => { if(syncIndicator) syncIndicator.remove(); }, 300);
         }
     }
 } // <--- Pastikan ada kurungan tutup untuk fetchSupabaseData
 
 // 🌟 FUNGSI BARU: SUPABASE REAL-TIME LISTENER (MAGIC SYNC)
 let isRealtimeSubscribed = false;
+let realtimeRefreshDebounceTimer = null;
+
+/**
+ * A single user action often touches more than one table (e.g. saving a note inserts into
+ * task_note_logs AND task_activity_logs, moving a card updates creative_requests AND logs
+ * activity) — each touched table fires its own postgres_changes event below. Debouncing coalesces
+ * a burst of events arriving within ~400ms into a single fetch instead of one per table.
+ */
+function scheduleRealtimeRefresh() {
+    if (realtimeRefreshDebounceTimer) clearTimeout(realtimeRefreshDebounceTimer);
+    realtimeRefreshDebounceTimer = setTimeout(() => {
+        realtimeRefreshDebounceTimer = null;
+        fetchSupabaseData(true, true);
+    }, 900);
+}
 
 function setupRealtimeSubscription() {
     if (isRealtimeSubscribed) return;
@@ -3269,21 +3349,21 @@ function setupRealtimeSubscription() {
         .channel('adtech-live-sync')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'creative_requests' }, (payload) => {
             console.log('Magik Real-Time: Perubahan dikesan pada tiket!', payload);
-            fetchSupabaseData(true, true);
+            scheduleRealtimeRefresh();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'team_leaves' }, (payload) => {
             console.log('Magik Real-Time: Perubahan cuti dikesan!', payload);
-            fetchSupabaseData(true, true);
+            scheduleRealtimeRefresh();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'handover_logs' }, (payload) => {
             console.log('Magik Real-Time: Perubahan handover dikesan!', payload);
-            fetchSupabaseData(true, true);
+            scheduleRealtimeRefresh();
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_cycles' }, () => fetchSupabaseData(true, true))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_assignments' }, () => fetchSupabaseData(true, true))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_responses' }, () => fetchSupabaseData(true, true))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_activity_logs' }, () => fetchSupabaseData(true, true))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_client_waiting_periods' }, () => fetchSupabaseData(true, true))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_cycles' }, () => scheduleRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_assignments' }, () => scheduleRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_responses' }, () => scheduleRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_activity_logs' }, () => scheduleRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_client_waiting_periods' }, () => scheduleRealtimeRefresh())
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('🚀 Berjaya sambung ke Supabase Real-Time!');
@@ -7462,17 +7542,18 @@ async function getReviewCodeLookupHashes(rawCode) {
     return [...new Set(hashes.filter(Boolean))];
 }
 
-async function fetchTeamReviewData(options = {}) {
-    const reviewerAccess = Boolean(options.reviewerAccess);
+async function fetchTeamReviewData() {
     const adminAccess = hasSuperAdminAccess();
-    if (!adminAccess && !reviewerAccess) {
+    if (!adminAccess) {
+        // Reviewers never need the full dataset in memory — unlockTeamReviewCode() and
+        // fetchTeamReviewResponseForAssignment() re-prove access with their pass on every call instead.
         globalReviewCycles = [];
         globalReviewAssignments = [];
         globalReviewResponses = [];
         return;
     }
 
-    const local = adminAccess ? getLocalTeamReviewStore() : { cycles: [], assignments: [], responses: [] };
+    const local = getLocalTeamReviewStore();
     let cycles = local.cycles;
     let assignments = local.assignments;
     let responses = local.responses;
@@ -7499,23 +7580,24 @@ async function fetchTeamReviewData(options = {}) {
         if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review assignments fallback:', e.message);
     }
 
-    if (adminAccess) {
-        try {
-            const { data, error } = await supabaseClient
-                .from('team_review_responses')
-                .select('*')
-                .order('submitted_at', { ascending: false });
-            if (error) throw error;
-            responses = mergeRowsById((data || []).map(normalizeReviewResponse), local.responses);
-        } catch(e) {
-            if (!/does not exist|schema|relation|table/i.test(e.message || '')) console.log('Team review responses fallback:', e.message);
-        }
+    try {
+        // team_review_responses has no direct SELECT grant (see supabase-team-review-hardening.sql) —
+        // this RPC is the only way to read response content, admin included.
+        const { data, error } = await supabaseClient.rpc('team_review_admin_list_responses');
+        if (error) throw error;
+        responses = mergeRowsById((data || []).map(normalizeReviewResponse), local.responses);
+    } catch(e) {
+        if (!/does not exist|schema|relation|table|function|rpc/i.test(e.message || '')) console.log('Team review responses fallback:', e.message);
+    }
 
-        if (await syncLocalTeamReviewStoreToSupabase(local)) {
-            cycles = mergeRowsById(local.cycles.map(normalizeReviewCycle), cycles);
-            assignments = mergeRowsById(local.assignments.map(normalizeReviewAssignment), assignments);
-            responses = mergeRowsById(local.responses.map(normalizeReviewResponse), responses);
-        }
+    // Bug fix: this used to merge with local (this admin's own cached copy from whenever the round
+    // was created) as the PRIMARY source, so a stale local "pending" permanently overwrote a fresh
+    // "submitted" status from Supabase on every fetch. Fresh server data must win here — local only
+    // fills in items that genuinely haven't synced to Supabase yet (e.g. created while offline).
+    if (await syncLocalTeamReviewStoreToSupabase(local)) {
+        cycles = mergeRowsById(cycles, local.cycles.map(normalizeReviewCycle));
+        assignments = mergeRowsById(assignments, local.assignments.map(normalizeReviewAssignment));
+        responses = mergeRowsById(responses, local.responses.map(normalizeReviewResponse));
     }
 
     globalReviewCycles = cycles.map(normalizeReviewCycle);
@@ -7523,18 +7605,19 @@ async function fetchTeamReviewData(options = {}) {
     globalReviewResponses = responses.map(normalizeReviewResponse);
 }
 
-async function fetchTeamReviewResponseForAssignment(assignmentId) {
+async function fetchTeamReviewResponseForAssignment(assignmentId, codeHashes = []) {
     if (!assignmentId) return null;
     const existing = getReviewResponseForAssignment(assignmentId);
     if (existing) return existing;
+    // Admin already has every response via fetchTeamReviewData(); a reviewer with no cached copy must
+    // re-prove their pass here since team_review_responses has no direct SELECT grant anymore.
+    if (!codeHashes.length) return null;
 
     try {
-        const { data, error } = await supabaseClient
-            .from('team_review_responses')
-            .select('*')
-            .eq('assignment_id', assignmentId)
-            .order('submitted_at', { ascending: false })
-            .limit(1);
+        const { data, error } = await supabaseClient.rpc('team_review_get_response', {
+            p_assignment_id: assignmentId,
+            p_code_hashes: codeHashes
+        });
         if (error) throw error;
         const row = Array.isArray(data) ? data[0] : data;
         if (!row) return null;
@@ -7542,7 +7625,7 @@ async function fetchTeamReviewResponseForAssignment(assignmentId) {
         globalReviewResponses = mergeRowsById([response], globalReviewResponses || []);
         return response;
     } catch(e) {
-        if (!/does not exist|schema|relation|table|no rows/i.test(e.message || '')) console.log('Team review response lookup fallback:', e.message);
+        if (!/does not exist|schema|relation|table|function|rpc|no rows/i.test(e.message || '')) console.log('Team review response lookup fallback:', e.message);
         return null;
     }
 }
@@ -7656,7 +7739,7 @@ async function persistTeamReviewCycle(cycle, assignments) {
     return { savedToSupabase, lastError };
 }
 
-async function persistTeamReviewSubmission(assignment, response) {
+async function persistTeamReviewSubmission(assignment, response, codeHashes = []) {
     const submittedAt = response.submitted_at || new Date().toISOString();
     const updatedAssignment = { ...assignment, status: 'submitted', submitted_at: submittedAt };
     const dbResponse = cleanTeamReviewResponseForSupabase({ ...response, submitted_at: submittedAt });
@@ -7664,16 +7747,20 @@ async function persistTeamReviewSubmission(assignment, response) {
     let lastError = null;
 
     try {
-        const { error: responseError } = await supabaseClient
-            .from('team_review_responses')
-            .upsert([dbResponse], { onConflict: 'id' });
-        if (responseError) throw responseError;
-
-        const { error: assignmentError } = await supabaseClient
-            .from('team_review_assignments')
-            .update({ status: 'submitted', submitted_at: submittedAt })
-            .eq('id', assignment.id);
-        if (assignmentError) throw assignmentError;
+        // team_review_responses has no direct INSERT grant — this RPC re-validates the pass hash
+        // server-side before writing, so a submission can't be forged without a real assignment code.
+        const { error } = await supabaseClient.rpc('team_review_submit', {
+            p_response_id: dbResponse.id,
+            p_assignment_id: assignment.id,
+            p_code_hashes: codeHashes,
+            p_ratings: dbResponse.ratings,
+            p_comments: dbResponse.comments,
+            p_strengths: dbResponse.strengths,
+            p_improvements: dbResponse.improvements,
+            p_final_comment: dbResponse.final_comment,
+            p_average_score: dbResponse.average_score
+        });
+        if (error) throw error;
         savedToSupabase = true;
     } catch(e) {
         lastError = e;
@@ -7691,8 +7778,10 @@ async function syncLocalTeamReviewStoreToSupabase(localStore = getLocalTeamRevie
     if (!hasSuperAdminAccess()) return false;
     const cycles = (localStore.cycles || []).map(cleanTeamReviewCycleForSupabase).filter(row => row.id);
     const assignments = (localStore.assignments || []).map(cleanTeamReviewAssignmentForSupabase).filter(row => row.id);
-    const responses = (localStore.responses || []).map(cleanTeamReviewResponseForSupabase).filter(row => row.id);
-    if (!cycles.length && !assignments.length && !responses.length) return true;
+    // Responses are intentionally NOT pushed here anymore — team_review_responses has no direct
+    // write grant now, only the team_review_submit RPC (which needs the reviewer's pass hash, not
+    // available from this locally-cached admin store). Locally-cached responses stay local-only.
+    if (!cycles.length && !assignments.length) return true;
 
     try {
         if (cycles.length) {
@@ -7703,16 +7792,11 @@ async function syncLocalTeamReviewStoreToSupabase(localStore = getLocalTeamRevie
             const { error } = await supabaseClient.from('team_review_assignments').upsert(assignments, { onConflict: 'id' });
             if (error) throw error;
         }
-        if (responses.length) {
-            const { error } = await supabaseClient.from('team_review_responses').upsert(responses, { onConflict: 'id' });
-            if (error) throw error;
-        }
         return true;
     } catch(e) {
         try {
             await upsertTeamReviewRowsViaRest('team_review_cycles', cycles);
             await upsertTeamReviewRowsViaRest('team_review_assignments', assignments);
-            await upsertTeamReviewRowsViaRest('team_review_responses', responses);
             return true;
         } catch(restError) {
             console.log('Team review local sync fallback:', restError.message || e.message);
@@ -7776,6 +7860,18 @@ function getTeamReviewMemberOptions(selected = '') {
 
 function getReviewCycle(cycleId) {
     return (globalReviewCycles || []).find(cycle => cycle.id === cycleId) || null;
+}
+
+/**
+ * Test rounds reuse the existing "status" column (status: 'test') instead of a new DB column —
+ * no SQL migration needed, works retroactively. Kept out of dashboard totals and CSV exports.
+ */
+function isTestReviewCycle(cycle) {
+    return cycle?.status === 'test';
+}
+
+function isTestReviewCycleId(cycleId) {
+    return isTestReviewCycle(getReviewCycle(cycleId));
 }
 
 function getReviewResponseForAssignment(assignmentId) {
@@ -7871,9 +7967,9 @@ function renderTeamReviewMetrics() {
     const wrap = document.getElementById('teamReviewMetrics');
     if (!wrap) return;
 
-    const cycles = globalReviewCycles || [];
-    const assignments = globalReviewAssignments || [];
-    const responses = globalReviewResponses || [];
+    const cycles = (globalReviewCycles || []).filter(cycle => !isTestReviewCycle(cycle));
+    const assignments = (globalReviewAssignments || []).filter(row => !isTestReviewCycleId(row.cycle_id));
+    const responses = (globalReviewResponses || []).filter(row => !isTestReviewCycleId(row.cycle_id));
     const pending = assignments.filter(row => row.status !== 'submitted').length;
     const submitted = assignments.filter(row => row.status === 'submitted').length;
     const avgScores = responses.map(row => Number(row.average_score)).filter(Boolean);
@@ -7914,8 +8010,19 @@ function addReviewPairDraft() {
     if (!reviewer || !reviewee) return showAppleAlert('Missing Pair', 'Please select both reviewer and reviewee.');
     if (normalizeNameKey(reviewer) === normalizeNameKey(reviewee)) return showAppleAlert('Invalid Pair', 'Reviewer and reviewee must be different people.');
 
-    const duplicate = reviewPairDraft.some(pair => normalizeNameKey(pair.reviewer_name) === normalizeNameKey(reviewer) && normalizeNameKey(pair.reviewee_name) === normalizeNameKey(reviewee));
-    if (duplicate) return showAppleAlert('Pair Exists', 'This reviewer pair is already added.');
+    const reviewerKey = normalizeNameKey(reviewer);
+    const revieweeKey = normalizeNameKey(reviewee);
+
+    const duplicateInDraft = reviewPairDraft.some(pair => normalizeNameKey(pair.reviewer_name) === reviewerKey && normalizeNameKey(pair.reviewee_name) === revieweeKey);
+    if (duplicateInDraft) return showAppleAlert('Pair Exists', 'This reviewer pair is already added.');
+
+    const duplicateInOpenCycle = (globalReviewAssignments || []).some(row => {
+        if (row.status === 'submitted') return false;
+        const cycle = getReviewCycle(row.cycle_id);
+        if (cycle && cycle.status !== 'active') return false;
+        return normalizeNameKey(row.reviewer_name) === reviewerKey && normalizeNameKey(row.reviewee_name) === revieweeKey;
+    });
+    if (duplicateInOpenCycle) return showAppleAlert('Pair Already Pending', 'This reviewer already has an open, unsubmitted review for this person in another round. Wait for it to be submitted or delete that round first.');
 
     reviewPairDraft.push({
         reviewer_name: reviewer,
@@ -7937,9 +8044,11 @@ async function createTeamReviewCycle(event) {
 
     const titleInput = document.getElementById('reviewCycleTitle');
     const deadlineInput = document.getElementById('reviewCycleDeadline');
+    const isTestInput = document.getElementById('reviewCycleIsTest');
     const btn = document.getElementById('btnCreateReviewCycle');
     const title = titleInput?.value.trim() || '';
     const deadline = deadlineInput?.value || '';
+    const isTest = Boolean(isTestInput?.checked);
 
     if (!title) return showAppleAlert('Missing Round Name', 'Please add a review round name first.');
     if (!deadline) return showAppleAlert('Missing Deadline', 'Please choose a deadline.');
@@ -7957,7 +8066,7 @@ async function createTeamReviewCycle(event) {
         const cycle = normalizeReviewCycle({
             id: generateTeamReviewId('cycle'),
             title,
-            status: 'active',
+            status: isTest ? 'test' : 'active',
             deadline,
             created_by: getCurrentUserName() || 'Admin',
             created_at: now,
@@ -7986,21 +8095,19 @@ async function createTeamReviewCycle(event) {
 
         const result = await persistTeamReviewCycle(cycle, assignments);
         generatedCodes.forEach(item => setReviewCodeInVault(item.id, item.code));
+        lastGeneratedReviewCodes = generatedCodes.map(item => ({ ...item, cycle_id: cycle.id }));
         reviewPairDraft = [];
         if (titleInput) titleInput.value = '';
         if (deadlineInput) deadlineInput.value = '';
+        if (isTestInput) isTestInput.checked = false;
         renderTeamReviewPage();
+        renderPassesReadyPanel(cycle, lastGeneratedReviewCodes);
 
-        const codeList = generatedCodes.map(item => `${item.reviewer_name} for ${item.reviewee_name}: ${item.code}`).join('\n');
         if (!result.savedToSupabase) {
-            const errorText = result.lastError?.message ? `
-
-Supabase error: ${result.lastError.message}` : '';
-            showAppleAlert('Not Shared Yet', `The round is saved on this admin device, but the team cannot use these passes until it syncs to Supabase. Run supabase-team-review.sql if needed, then reopen Team Review as superadmin to auto-sync.${errorText}
-
-${codeList}`);
+            const errorText = result.lastError?.message ? ` Supabase error: ${result.lastError.message}` : '';
+            showAppleAlert('Not Shared Yet', `The round is saved on this admin device, but the team cannot use these passes until it syncs to Supabase. Run supabase-team-review.sql if needed, then reopen Team Review as superadmin to auto-sync.${errorText}`);
         } else {
-            showAppleAlert('Review Round Created', `Review passes are ready. Share each pass only with the assigned reviewer.\n\n${codeList}`);
+            showNotification(isTest ? 'Test Round Created' : 'Review Round Created', `${assignments.length} pass${assignments.length === 1 ? '' : 'es'} ready below — send each one only to that reviewer`);
         }
     } catch(e) {
         showAppleAlert('Create Review Failed', e.message);
@@ -8011,6 +8118,76 @@ ${codeList}`);
             refreshIcons();
         }
     }
+}
+
+/**
+ * Shows freshly generated review passes as a clean inline panel instead of a plain alert() dump,
+ * so admin can copy/send each one without losing the create-round context.
+ */
+function renderPassesReadyPanel(cycle, generatedCodes) {
+    const wrap = document.getElementById('teamReviewPassesReady');
+    if (!wrap) return;
+
+    if (!cycle || !generatedCodes?.length) {
+        wrap.style.display = 'none';
+        wrap.innerHTML = '';
+        return;
+    }
+
+    const rows = generatedCodes.map(item => `
+        <div class="review-pass-row">
+            <div>
+                <strong>${escapeHtml(item.reviewer_name)}</strong>
+                <span>reviews ${escapeHtml(item.reviewee_name)}</span>
+            </div>
+            <div class="review-pass-code-group">
+                <code>${escapeHtml(item.code)}</code>
+                <button type="button" onclick="copyReviewPassCodeOnly('${escapeHtml(item.code)}', this)" aria-label="Copy code"><i data-lucide="copy"></i></button>
+            </div>
+        </div>
+    `).join('');
+
+    wrap.style.display = 'block';
+    wrap.innerHTML = `
+        <div class="review-passes-ready-head">
+            <div>
+                <span>Passes Ready${isTestReviewCycle(cycle) ? ' · TEST ROUND' : ''}</span>
+                <h4>${escapeHtml(cycle.title)}</h4>
+                <p>Send each pass privately to that reviewer only — whoever has it can submit that review.</p>
+            </div>
+            <button type="button" class="review-nav-btn secondary" onclick="dismissPassesReadyPanel()"><span>Done</span></button>
+        </div>
+        <div class="review-pass-list">${rows}</div>
+        <button type="button" class="review-copy-all-btn" onclick="copyAllReviewPasses('${cycle.id}')"><i data-lucide="copy-check"></i><span>Copy All Passes</span></button>
+    `;
+    refreshIcons();
+}
+
+function copyReviewPassCodeOnly(code, btn) {
+    navigator.clipboard.writeText(code);
+    if (btn) {
+        const original = btn.innerHTML;
+        btn.innerHTML = '<i data-lucide="check"></i>';
+        refreshIcons();
+        setTimeout(() => { btn.innerHTML = original; refreshIcons(); }, 1200);
+    }
+    showNotification('Code Copied', code);
+}
+
+function copyAllReviewPasses(cycleId) {
+    if (!hasSuperAdminAccess()) return;
+    const cycle = getReviewCycle(cycleId);
+    const codes = lastGeneratedReviewCodes.filter(item => item.cycle_id === cycleId);
+    if (!codes.length) return showAppleAlert('Nothing To Copy', 'These passes are no longer available on this device. Use the reset icon on a specific assignment to reissue one.');
+
+    const message = `${cycle?.title || 'Team Review'} — Review Passes\nDeadline: ${formatDate(cycle?.deadline)}\n\n${codes.map(item => `${item.reviewer_name} → reviews ${item.reviewee_name}: ${item.code}`).join('\n')}\n\nSplit these up and send each line privately to that reviewer only.`;
+    navigator.clipboard.writeText(message);
+    showNotification('All Passes Copied', 'Remember to split them up before sending');
+}
+
+function dismissPassesReadyPanel() {
+    lastGeneratedReviewCodes = [];
+    renderPassesReadyPanel(null, []);
 }
 
 function renderTeamReviewCycleList() {
@@ -8039,6 +8216,7 @@ function renderTeamReviewCycleList() {
                     </div>
                     <div class="review-assignment-actions">
                         <span class="review-status-pill ${statusClass}">${assignment.status === 'submitted' ? 'Submitted' : 'Pending'}</span>
+                        ${assignment.status === 'submitted' ? `<button type="button" onclick="openTeamReviewResponseModal('${assignment.id}')" aria-label="View response"><i data-lucide="eye"></i></button>` : ''}
                         <button type="button" onclick="copyReviewInvite('${assignment.id}')"><i data-lucide="copy"></i></button>
                         <button type="button" onclick="resetReviewCode('${assignment.id}')"><i data-lucide="rotate-cw"></i></button>
                     </div>
@@ -8047,10 +8225,10 @@ function renderTeamReviewCycleList() {
         }).join('');
 
         return `
-            <div class="review-cycle-card">
+            <div class="review-cycle-card ${isTestReviewCycle(cycle) ? 'is-test' : ''}">
                 <div class="review-cycle-top">
                     <div>
-                        <span>${cycle.status === 'active' ? 'Open' : escapeHtml(cycle.status)}</span>
+                        <span>${isTestReviewCycle(cycle) ? 'TEST — excluded from exports' : cycle.status === 'active' ? 'Open' : escapeHtml(cycle.status)}</span>
                         <h4>${escapeHtml(cycle.title)}</h4>
                         <small>Deadline ${formatDate(cycle.deadline)}</small>
                     </div>
@@ -8065,6 +8243,84 @@ function renderTeamReviewCycleList() {
         `;
     }).join('');
     refreshIcons();
+}
+
+/**
+ * Read-only detail view of one submitted review — ratings per question, category averages,
+ * and the reviewer's written comments. Reuses the app's standard detail-modal chrome.
+ */
+function openTeamReviewResponseModal(assignmentId) {
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
+    const assignment = (globalReviewAssignments || []).find(row => row.id === assignmentId);
+    const response = getReviewResponseForAssignment(assignmentId);
+    if (!assignment || !response) return showAppleAlert('Response Not Loaded', "This response isn't in memory yet — reopen Team Review as superadmin to refresh, then try again.");
+
+    const cycle = getReviewCycle(assignment.cycle_id);
+    const titleEl = document.getElementById('teamReviewResponseTitle');
+    const bodyEl = document.getElementById('teamReviewResponseBody');
+    if (titleEl) titleEl.innerText = `${assignment.reviewer_name} → ${assignment.reviewee_name}`;
+    if (bodyEl) bodyEl.innerHTML = renderTeamReviewResponseDetail(assignment, response, cycle);
+    refreshIcons();
+
+    const modal = document.getElementById('teamReviewResponseModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    modal.offsetHeight;
+    modal.classList.add('show');
+    document.body.classList.add('no-scroll');
+}
+
+function closeTeamReviewResponseModal() {
+    const modal = document.getElementById('teamReviewResponseModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    setTimeout(() => {
+        modal.style.display = 'none';
+        document.body.classList.remove('no-scroll');
+    }, 400);
+}
+
+function renderTeamReviewResponseDetail(assignment, response, cycle) {
+    const categories = TEAM_REVIEW_QUESTION_GROUPS.map(group => `
+        <div class="review-detail-category">
+            <div class="review-detail-category-head">
+                <h4>${escapeHtml(group.title)}</h4>
+                <strong>${getReviewCategoryAverage(response.ratings, group.key) || '--'}</strong>
+            </div>
+            <div class="review-detail-question-list">
+                ${group.questions.map(question => `
+                    <div class="review-detail-question">
+                        <span>${escapeHtml(question.text)}</span>
+                        <strong>${Number(response.ratings?.[question.id]) || '--'}</strong>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+
+    const summaryBlocks = [
+        { label: 'Strengths', value: response.strengths },
+        { label: 'Improvement Area', value: response.improvements },
+        { label: 'Additional Comments', value: response.final_comment }
+    ].filter(block => block.value).map(block => `
+        <div class="review-detail-note">
+            <span>${block.label}</span>
+            <p>${escapeHtml(block.value)}</p>
+        </div>
+    `).join('') || '<div class="review-empty-note">No written comments left.</div>';
+
+    return `
+        <div class="review-detail-summary">
+            <div>
+                <span>${escapeHtml(cycle?.title || 'Team Review')} · Submitted ${formatDate(response.submitted_at)}</span>
+                <h3>${escapeHtml(assignment.reviewee_name)}</h3>
+                <p>Reviewed by ${escapeHtml(assignment.reviewer_name)}</p>
+            </div>
+            <div class="review-detail-score"><span>Average</span><strong>${response.average_score || calculateReviewAverage(response.ratings) || '--'}</strong></div>
+        </div>
+        <div class="review-detail-categories">${categories}</div>
+        <div class="review-detail-notes">${summaryBlocks}</div>
+    `;
 }
 
 async function deleteTeamReviewCycle(cycleId) {
@@ -8112,6 +8368,9 @@ async function resetReviewCode(assignmentId) {
     if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
     const assignment = globalReviewAssignments.find(row => row.id === assignmentId);
     if (!assignment) return;
+
+    const confirmed = await showAppleConfirm('Reset Review Pass?', `Any pass already sent to ${assignment.reviewer_name} for this review will stop working immediately. Only reset this if they lost it or it needs to be reissued.`, { confirmText: 'Reset Pass', cancelText: 'Cancel', tone: 'danger', icon: 'rotate-cw' });
+    if (!confirmed) return;
 
     const code = generateReviewCode(assignment.reviewer_name);
     const updatePayload = {
@@ -8169,7 +8428,8 @@ async function unlockTeamReviewCode() {
     }
 
     try {
-        const { assignment, error } = await findTeamReviewAssignmentByCode(input?.value || code);
+        const rawCode = input?.value || code;
+        const { assignment, error } = await findTeamReviewAssignmentByCode(rawCode);
         if (!assignment) {
             if (error) {
                 return showAppleAlert('Review Sync Issue', `Could not check Supabase for this pass. ${error.message || 'Please ask admin to refresh and sync the review round.'}`);
@@ -8178,7 +8438,8 @@ async function unlockTeamReviewCode() {
         }
 
         activeReviewAssignment = assignment;
-        const response = await fetchTeamReviewResponseForAssignment(assignment.id);
+        activeReviewCodeHashes = await getReviewCodeLookupHashes(rawCode);
+        const response = await fetchTeamReviewResponseForAssignment(assignment.id, activeReviewCodeHashes);
         activeReviewDraft = response ? {
             ratings: { ...response.ratings },
             comments: { ...response.comments },
@@ -8186,6 +8447,7 @@ async function unlockTeamReviewCode() {
             improvements: response.improvements || '',
             final_comment: response.final_comment || ''
         } : { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
+        activeReviewStep = getInitialReviewStep(activeReviewDraft);
 
         if (input) input.value = '';
         renderActiveReviewForm();
@@ -8235,32 +8497,15 @@ function renderActiveReviewForm() {
     }
 
     activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
-    const questions = getTeamReviewQuestionList();
-    const answered = questions.filter(question => Number(activeReviewDraft.ratings[question.id]) > 0).length;
-    const progress = Math.round((answered / questions.length) * 100);
+    const groups = TEAM_REVIEW_QUESTION_GROUPS;
+    const totalSteps = groups.length + 1; // +1 for the final summary step
+    activeReviewStep = Math.min(Math.max(activeReviewStep, 0), totalSteps - 1);
 
-    const categories = TEAM_REVIEW_QUESTION_GROUPS.map(group => `
-        <div class="review-category-card ${group.tone}">
-            <div class="review-category-head">
-                <div>
-                    <span>${group.questions.length} questions</span>
-                    <h4>${escapeHtml(group.title)}</h4>
-                </div>
-                <strong>${getReviewCategoryAverage(activeReviewDraft.ratings, group.key) || '--'}</strong>
-            </div>
-            ${group.questions.map(question => `
-                <div class="review-question-row">
-                    <p>${escapeHtml(question.text)}</p>
-                    <div class="review-score-set">
-                        ${[1, 2, 3, 4, 5].map(score => `
-                            <button type="button" class="review-score-btn ${Number(activeReviewDraft.ratings[question.id]) === score ? 'active' : ''}" onclick="setReviewScore('${question.id}', ${score})">${score}</button>
-                        `).join('')}
-                    </div>
-                </div>
-            `).join('')}
-            <textarea class="review-textarea" placeholder="Optional context for this section" oninput="setReviewCategoryComment('${group.key}', this.value)">${escapeHtml(activeReviewDraft.comments[group.key] || '')}</textarea>
-        </div>
-    `).join('');
+    const dots = Array.from({ length: totalSteps }, (_, i) => {
+        const reachable = i <= activeReviewStep;
+        const state = i < activeReviewStep ? 'done' : i === activeReviewStep ? 'active' : '';
+        return `<button type="button" class="review-step-dot ${state}" ${reachable ? `onclick="goToReviewStep(${i})"` : 'disabled tabindex="-1"'} aria-label="Step ${i + 1} of ${totalSteps}"></button>`;
+    }).join('');
 
     wrap.innerHTML = `
         <div class="review-form-head">
@@ -8271,27 +8516,95 @@ function renderActiveReviewForm() {
             </div>
             <button type="button" onclick="closeActiveReviewForm()"><i data-lucide="x"></i></button>
         </div>
-        <div class="review-progress-wrap">
-            <div><span>${answered}/${questions.length} rated</span><strong>${progress}%</strong></div>
-            <div class="review-progress-bar"><span style="width:${progress}%"></span></div>
+        <div class="review-step-dots">${dots}</div>
+        ${activeReviewStep < groups.length ? renderReviewCategoryStep(groups[activeReviewStep]) : renderReviewSummaryStep()}
+    `;
+    refreshIcons();
+}
+
+/**
+ * One category (3 questions) per screen — keeps every step short and focused instead of one long form.
+ */
+function renderReviewCategoryStep(group) {
+    const answeredCount = group.questions.filter(question => Number(activeReviewDraft.ratings[question.id]) > 0).length;
+    const stepComplete = answeredCount === group.questions.length;
+
+    return `
+        <div class="review-step-card">
+            <span class="review-step-kicker">${group.questions.length} quick questions</span>
+            <h2>${escapeHtml(group.title)}</h2>
+            <div class="review-step-questions">
+                ${group.questions.map(question => `
+                    <div class="review-step-question">
+                        <p>${escapeHtml(question.text)}</p>
+                        ${renderReviewSegmentedScore(question.id)}
+                    </div>
+                `).join('')}
+            </div>
+            <div class="review-rating-note"><span>Strongly disagree</span><span>Strongly agree</span></div>
         </div>
-        <div class="review-rating-note"><span>1 = Strongly Disagree</span><span>5 = Strongly Agree</span></div>
-        <div class="review-category-stack">${categories}</div>
-        <div class="review-summary-grid">
-            <label>Strengths<textarea class="review-textarea" placeholder="What should this person continue doing?" oninput="setReviewSummaryField('strengths', this.value)">${escapeHtml(activeReviewDraft.strengths || '')}</textarea></label>
-            <label>Improvement Area<textarea class="review-textarea" placeholder="What should this person improve next?" oninput="setReviewSummaryField('improvements', this.value)">${escapeHtml(activeReviewDraft.improvements || '')}</textarea></label>
-            <label class="full">Additional Comments<textarea class="review-textarea" placeholder="Anything else admin should know?" oninput="setReviewSummaryField('final_comment', this.value)">${escapeHtml(activeReviewDraft.final_comment || '')}</textarea></label>
+        <div class="review-step-nav">
+            ${activeReviewStep > 0 ? `<button type="button" class="review-nav-btn secondary" onclick="goToReviewStep(${activeReviewStep - 1})"><i data-lucide="arrow-left"></i><span>Back</span></button>` : '<span></span>'}
+            <button type="button" class="review-nav-btn primary" ${stepComplete ? '' : 'disabled'} onclick="goToReviewStep(${activeReviewStep + 1})"><span>Next</span><i data-lucide="arrow-right"></i></button>
         </div>
-        <div class="review-submit-row">
+    `;
+}
+
+function renderReviewSegmentedScore(questionId) {
+    const current = Number(activeReviewDraft.ratings[questionId]) || 0;
+    return `
+        <div class="review-segmented" role="radiogroup">
+            ${[1, 2, 3, 4, 5].map(score => `<button type="button" role="radio" aria-checked="${current === score}" class="${current === score ? 'active' : ''}" onclick="setReviewScore('${questionId}', ${score})">${score}</button>`).join('')}
+        </div>
+    `;
+}
+
+function renderReviewSummaryStep() {
+    return `
+        <div class="review-step-card">
+            <span class="review-step-kicker">Last step</span>
+            <h2>Wrap it up</h2>
+            <div class="review-summary-grid">
+                <label>Strengths<textarea class="review-textarea" placeholder="What should this person continue doing?" oninput="setReviewSummaryField('strengths', this.value)">${escapeHtml(activeReviewDraft.strengths || '')}</textarea></label>
+                <label>Improvement Area<textarea class="review-textarea" placeholder="What should this person improve next?" oninput="setReviewSummaryField('improvements', this.value)">${escapeHtml(activeReviewDraft.improvements || '')}</textarea></label>
+                <label class="full">Additional Comments<textarea class="review-textarea" placeholder="Anything else admin should know? (optional)" oninput="setReviewSummaryField('final_comment', this.value)">${escapeHtml(activeReviewDraft.final_comment || '')}</textarea></label>
+            </div>
+        </div>
+        <div class="review-step-nav">
+            <button type="button" class="review-nav-btn secondary" onclick="goToReviewStep(${TEAM_REVIEW_QUESTION_GROUPS.length - 1})"><i data-lucide="arrow-left"></i><span>Back</span></button>
             <button type="button" onclick="submitTeamReview()" class="review-submit-btn"><i data-lucide="send"></i><span>Submit Review</span></button>
         </div>
     `;
-    refreshIcons();
+}
+
+/**
+ * Picks up where a reviewer left off: the first category with an unrated question, or the
+ * summary step if every category is already complete.
+ */
+function getInitialReviewStep(draft) {
+    const ratings = draft?.ratings || {};
+    const firstIncomplete = TEAM_REVIEW_QUESTION_GROUPS.findIndex(group => group.questions.some(question => !Number(ratings[question.id])));
+    return firstIncomplete === -1 ? TEAM_REVIEW_QUESTION_GROUPS.length : firstIncomplete;
+}
+
+function goToReviewStep(index) {
+    const totalSteps = TEAM_REVIEW_QUESTION_GROUPS.length + 1;
+    const clamped = Math.min(Math.max(index, 0), totalSteps - 1);
+    // Defensive: the Next button is already disabled until the current category is complete,
+    // this just blocks a stray call (e.g. a dot click) from skipping ahead past it too.
+    if (clamped > activeReviewStep) {
+        const currentGroup = TEAM_REVIEW_QUESTION_GROUPS[activeReviewStep];
+        if (currentGroup && currentGroup.questions.some(question => !Number(activeReviewDraft?.ratings?.[question.id]))) return;
+    }
+    activeReviewStep = clamped;
+    renderActiveReviewForm();
 }
 
 function closeActiveReviewForm() {
     activeReviewAssignment = null;
     activeReviewDraft = null;
+    activeReviewCodeHashes = [];
+    activeReviewStep = 0;
     renderActiveReviewForm();
 }
 
@@ -8299,11 +8612,6 @@ function setReviewScore(questionId, score) {
     activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
     activeReviewDraft.ratings[questionId] = score;
     renderActiveReviewForm();
-}
-
-function setReviewCategoryComment(categoryKey, value) {
-    activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
-    activeReviewDraft.comments[categoryKey] = value;
 }
 
 function setReviewSummaryField(field, value) {
@@ -8334,14 +8642,19 @@ async function submitTeamReview() {
         submitted_at: submittedAt
     });
 
-    const result = await persistTeamReviewSubmission(assignment, response);
+    const result = await persistTeamReviewSubmission(assignment, response, activeReviewCodeHashes);
     activeReviewAssignment = { ...assignment, status: 'submitted', submitted_at: submittedAt };
     renderTeamReviewPage();
-    showNotification(result.savedToSupabase ? 'Review Submitted' : 'Review Saved Locally', 'Thank you for the honest feedback');
+
+    if (!result.savedToSupabase && /does not exist|schema|relation|table|function|rpc/i.test(result.lastError?.message || '')) {
+        showAppleAlert('Review Saved On This Device Only', 'Your answers are safe on this device, but the server function to sync them is missing. Ask admin to run supabase-team-review-hardening.sql in Supabase SQL Editor, then reopen this pass to sync.');
+    } else {
+        showNotification(result.savedToSupabase ? 'Review Submitted' : 'Review Saved Locally', 'Thank you for the honest feedback');
+    }
 }
 
 function buildTeamReviewQuestionRows() {
-    return (globalReviewResponses || []).flatMap(response => {
+    return (globalReviewResponses || []).filter(response => !isTestReviewCycleId(response.cycle_id)).flatMap(response => {
         const assignment = globalReviewAssignments.find(row => row.id === response.assignment_id) || {};
         const cycle = getReviewCycle(response.cycle_id) || {};
         return getTeamReviewQuestionList().map(question => ({
@@ -8366,7 +8679,7 @@ function buildTeamReviewQuestionRows() {
 
 function buildTeamReviewSummaryRows() {
     const summary = {};
-    (globalReviewResponses || []).forEach(response => {
+    (globalReviewResponses || []).filter(response => !isTestReviewCycleId(response.cycle_id)).forEach(response => {
         if (!summary[response.reviewee_name]) {
             summary[response.reviewee_name] = {
                 reviewee_name: response.reviewee_name,
@@ -8405,7 +8718,7 @@ function buildTeamReviewSummaryRows() {
 }
 
 function buildTeamReviewCompletionRows() {
-    return (globalReviewAssignments || []).map(assignment => {
+    return (globalReviewAssignments || []).filter(assignment => !isTestReviewCycleId(assignment.cycle_id)).map(assignment => {
         const cycle = getReviewCycle(assignment.cycle_id) || {};
         return {
             cycle_title: cycle.title || '',
@@ -8422,12 +8735,13 @@ function buildTeamReviewCompletionRows() {
 }
 
 function buildTeamReviewReportContext() {
+    const testCycleCount = (globalReviewCycles || []).filter(isTestReviewCycle).length;
     return `# Adtechinno Team Review Report Pack
 
 Generated: ${new Date().toLocaleString('en-MY')}
-Cycles exported: ${(globalReviewCycles || []).length}
-Assignments exported: ${(globalReviewAssignments || []).length}
-Responses exported: ${(globalReviewResponses || []).length}
+Cycles exported: ${(globalReviewCycles || []).filter(cycle => !isTestReviewCycle(cycle)).length}
+Assignments exported: ${buildTeamReviewCompletionRows().length}
+Responses exported: ${(globalReviewResponses || []).filter(row => !isTestReviewCycleId(row.cycle_id)).length}${testCycleCount ? `\nTest rounds excluded: ${testCycleCount}` : ''}
 
 ## Suggested ChatGPT Prompt
 You are a people operations and creative team performance analyst. Analyze these team review exports confidentially. Identify team strengths, recurring blockers, coaching opportunities, workload or collaboration risks, and recommended actions to improve productivity, quality, ownership, communication, and team expansion planning. Keep feedback constructive and avoid personal blame.
@@ -8441,13 +8755,17 @@ You are a people operations and creative team performance analyst. Analyze these
 
 function exportTeamReviewPack() {
     if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
-    if (!(globalReviewAssignments || []).length) return showAppleAlert('Export Failed', 'No team review data available yet.');
+
+    const completionRows = buildTeamReviewCompletionRows();
+    if (!completionRows.length) {
+        const onlyTestData = (globalReviewAssignments || []).length > 0;
+        return showAppleAlert('Export Failed', onlyTestData ? 'Only test round data exists right now — it\'s excluded from exports on purpose. Untick "Test round" on a real round, or create one, before exporting.' : 'No team review data available yet.');
+    }
 
     const date = new Date().toISOString().split('T')[0];
     const base = `Adtechinno_Team_Review_${date}`;
     const questionRows = buildTeamReviewQuestionRows();
     const summaryRows = buildTeamReviewSummaryRows();
-    const completionRows = buildTeamReviewCompletionRows();
 
     downloadTextFile(`${base}_question_scores.csv`, rowsToCSV(['cycle_title', 'deadline', 'reviewer_name', 'reviewee_name', 'reviewer_region', 'reviewee_region', 'category', 'question', 'rating', 'category_comment', 'strengths', 'improvements', 'final_comment', 'average_score', 'submitted_at'], questionRows), 'text/csv;charset=utf-8;');
     downloadTextFile(`${base}_summary.csv`, rowsToCSV(['reviewee_name', 'responses', 'average_score', 'work_quality_avg', 'ownership_avg', 'teamwork_avg', 'growth_avg', 'strengths', 'improvements'], summaryRows), 'text/csv;charset=utf-8;');
@@ -8541,6 +8859,38 @@ function normalizeNoteRow(row = {}) {
         status_at_time: row.status_at_time || row.work_status || '',
         created_at: row.created_at || new Date().toISOString()
     };
+}
+
+function isLocallyGeneratedLogId(id) {
+    return String(id || '').startsWith('local-') || String(id || '').startsWith('note-');
+}
+
+/**
+ * Notes/activity fallback to localStorage when the Supabase insert fails (see logTaskNote /
+ * logTaskActivity), but that local copy is never removed once the real row eventually syncs —
+ * and it carries its own client-generated id, so a plain id-based merge doesn't catch it. This
+ * collapses same job + same content + same actor within the same minute into one row, always
+ * preferring the real Supabase row over the local-only placeholder. Fixes note/activity counts
+ * inflating or drifting depending on what's left over in a given browser's localStorage.
+ */
+function dedupeTaskLogRows(rows = [], keyFields = []) {
+    const seen = new Map();
+    rows.forEach(row => {
+        const key = [row.job_id, ...keyFields.map(field => row[field]), String(row.created_at || '').slice(0, 16)].join('|');
+        const existing = seen.get(key);
+        if (!existing || (isLocallyGeneratedLogId(existing.id) && !isLocallyGeneratedLogId(row.id))) {
+            seen.set(key, row);
+        }
+    });
+    return [...seen.values()];
+}
+
+function dedupeNoteLogRows(rows = []) {
+    return dedupeTaskLogRows(rows, ['note_text', 'actor_name']);
+}
+
+function dedupeActivityLogRows(rows = []) {
+    return dedupeTaskLogRows(rows, ['action_type', 'old_value', 'new_value', 'note_text']);
 }
 
 async function logTaskActivity(jobID, actionType, oldValue = '', newValue = '', noteText = '', meta = {}) {
@@ -12984,6 +13334,7 @@ function renderKanbanBoard() {
     ];
 
     let html = '';
+    const nextCardStatusMemory = {};
     statusConfig.forEach(cfg => {
         const statusName = cfg.name;
 
@@ -13006,10 +13357,18 @@ function renderKanbanBoard() {
             return diff !== null && diff <= 0;
         }).length : 0;
 
+        // A card is "entering" this column if this tab last saw it in a DIFFERENT column — drives
+        // the one-time drop-in animation without replaying it on every re-render while it sits here.
+        const enteringJobIds = new Set(colTasks.filter(t => {
+            const remembered = kanbanCardStatusMemory[t.job_id];
+            return remembered !== undefined && remembered !== statusSlug;
+        }).map(t => t.job_id));
+        colTasks.forEach(t => { nextCardStatusMemory[t.job_id] = statusSlug; });
+
         const dragDropEvents = cfg.isPending ? '' : `ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="drop(event, '${statusName}')"`;
 
         html += `
-        <div class="kanban-column ${columnStateClass} status-${statusSlug} ${isDoneZone ? 'is-done-zone' : ''}" data-status-key="${statusSlug}" style="border-top-color: ${cfg.color}; ${isDoneZone ? 'background: rgba(16, 185, 129, 0.03); border: 1px dashed rgba(16, 185, 129, 0.3);' : ''}" ${dragDropEvents}>
+        <div class="kanban-column ${columnStateClass} status-${statusSlug} ${isDoneZone ? 'is-done-zone' : ''} ${enteringJobIds.size ? 'kanban-column-received' : ''}" data-status-key="${statusSlug}" style="border-top-color: ${cfg.color}; ${isDoneZone ? 'background: rgba(16, 185, 129, 0.03); border: 1px dashed rgba(16, 185, 129, 0.3);' : ''}" ${dragDropEvents}>
             <div class="kanban-column-header">
                 <span style="color: ${cfg.color};">${cfg.label || statusName}</span>
                 <span style="display:inline-flex; align-items:center; gap:6px;">
@@ -13022,13 +13381,17 @@ function renderKanbanBoard() {
                 const cursorStyle = cfg.isPending ? 'cursor: pointer;' : 'cursor: grab;';
                 const typeMeta = getRequestTypeMeta(t);
 
-                const justMovedMeta = getClientReviewJustMovedMeta(t);
+                // Client Review keeps its own longer, more specific pin; every other column uses the
+                // general last_moved_at-based highlight so any drag anywhere gets the same treatment.
+                const justMovedMeta = statusName === 'Client Review' ? getClientReviewJustMovedMeta(t) : getWorkStatusJustMovedMeta(t);
                 const isJustMoved = justMovedMeta.active;
+                const isEntering = enteringJobIds.has(t.job_id);
                 const glow = isJustMoved ? `border-left-color: ${cfg.color}; background: linear-gradient(90deg, ${cfg.bg} 0%, transparent 80%); box-shadow: 0 4px 15px ${cfg.bg.replace('0.1', '0.2')};` : `border-left-color: ${cfg.color};`;
-                const badge = isJustMoved ? `<span class="just-moved-badge" style="--badge-accent:${cfg.color}; --badge-glow:${cfg.bg.replace('0.1', '0.3')};" title="Pinned for ${justMovedMeta.remainingMinutes} min">Just Moved</span>` : '';
+                const remainingLabel = justMovedMeta.remainingMinutes ? `${justMovedMeta.remainingMinutes} min` : `${Math.ceil((justMovedMeta.remainingSeconds || 0) / 60) || 1} min`;
+                const badge = isJustMoved ? `<span class="just-moved-badge" style="--badge-accent:${cfg.color}; --badge-glow:${cfg.bg.replace('0.1', '0.3')};" title="Pinned for ${remainingLabel}">Just Moved</span>` : '';
 
                 return `
-                <div class="kanban-drag-card request-type-card type-${typeMeta.key} ${isJustMoved ? 'is-just-moved' : ''}" id="${t.job_id}" ${cardDragAttr} onclick="openDetailModal('${t.job_id}')" title="Click to view full details" style="${glow} ${cursorStyle}">
+                <div class="kanban-drag-card request-type-card type-${typeMeta.key} ${isJustMoved ? 'is-just-moved' : ''} ${isEntering ? 'kanban-card-entering' : ''}" id="${t.job_id}" ${cardDragAttr} onclick="openDetailModal('${t.job_id}')" title="Click to view full details" style="${glow} ${cursorStyle}">
                     <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
                         <span class="kd-id" style="margin:0; white-space:nowrap;">[${t.job_id}] ${getFlag(t.region)}</span>
                         ${renderRequestTypePill(t, true)}
@@ -13055,7 +13418,9 @@ function renderKanbanBoard() {
         const column = kanbanContainer.querySelector(`.kanban-column[data-status-key="${statusKey}"]`);
         if (column) column.scrollTop = scrollTop;
     });
+    kanbanCardStatusMemory = nextCardStatusMemory;
     scheduleClientReviewJustMovedExpiryRefresh(activeData);
+    scheduleWorkStatusJustMovedExpiryRefresh(activeData);
     refreshIcons();
 }
 
