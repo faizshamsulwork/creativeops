@@ -3304,7 +3304,12 @@ async function fetchSupabaseDataImpl(force = false, silent = false) {
         if (oldDataString !== newDataString || force) {
             if(document.getElementById('dashboard').classList.contains('active')) renderDashboard();
             if(document.getElementById('workload').classList.contains('active') || document.getElementById('done').classList.contains('active')) renderBoards();
-            if(document.getElementById('team-review')?.classList.contains('active')) renderTeamReviewPage();
+            // Reviewers (non-admin) never get anything new from fetchTeamReviewData() — it's a
+            // no-op for them — so re-rendering here on every unrelated realtime tick (someone
+            // dragging a task elsewhere, another team member's note, etc.) only tore down and
+            // rebuilt their in-progress wizard for no reason, replaying its entrance animation
+            // and reading as constant "blinking". Only admin has anything worth refreshing here.
+            if(document.getElementById('team-review')?.classList.contains('active') && hasSuperAdminAccess()) renderTeamReviewPage();
             if(document.getElementById('leave').classList.contains('active')) {
                 if(typeof renderLeaveHistory === 'function') renderLeaveHistory();
                 // PAKSA RENDER HANDOVER BILA TAB INI AKTIF
