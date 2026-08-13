@@ -7552,10 +7552,17 @@ async function fetchTeamReviewData() {
     const adminAccess = hasSuperAdminAccess();
     if (!adminAccess) {
         // Reviewers never need the full dataset in memory — unlockTeamReviewCode() and
-        // fetchTeamReviewResponseForAssignment() re-prove access with their pass on every call instead.
-        globalReviewCycles = [];
-        globalReviewAssignments = [];
-        globalReviewResponses = [];
+        // fetchTeamReviewResponseForAssignment() re-prove access with their pass on every call
+        // instead. BUT this runs on every background realtime tick too, so blindly wiping
+        // everything here was also erasing the cycle info (title/deadline) for whichever review
+        // the reviewer currently has open mid-session — the deadline would show, then a few
+        // seconds later disappear once any unrelated realtime event triggered a refresh. Keep
+        // only what belongs to their active session; still clear everything else.
+        const keepCycleId = activeReviewAssignment?.cycle_id;
+        const keepAssignmentId = activeReviewAssignment?.id;
+        globalReviewCycles = keepCycleId ? (globalReviewCycles || []).filter(c => c.id === keepCycleId) : [];
+        globalReviewAssignments = keepAssignmentId ? (globalReviewAssignments || []).filter(a => a.id === keepAssignmentId) : [];
+        globalReviewResponses = keepAssignmentId ? (globalReviewResponses || []).filter(r => r.assignment_id === keepAssignmentId) : [];
         return;
     }
 
