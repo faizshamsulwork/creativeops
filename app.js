@@ -28,6 +28,7 @@ let activeReviewAssignment = null;
 let activeReviewDraft = null;
 let activeReviewCodeHashes = [];
 let activeReviewStep = 0;
+let lastAnimatedReviewStep = -1; // tracks which step last played its entrance animation, so clicking a rating (same step, full re-render) doesn't replay it
 let lastGeneratedReviewCodes = [];
 let calMonth = new Date().getMonth();
 let calYear = new Date().getFullYear();
@@ -8443,6 +8444,7 @@ async function unlockTeamReviewCode() {
         }
 
         activeReviewAssignment = assignment;
+        lastAnimatedReviewStep = -1;
         activeReviewCodeHashes = await getReviewCodeLookupHashes(rawCode);
         const response = await fetchTeamReviewResponseForAssignment(assignment.id, activeReviewCodeHashes);
         activeReviewDraft = response ? {
@@ -8522,20 +8524,24 @@ function renderActiveReviewForm() {
             <button type="button" onclick="closeActiveReviewForm()"><i data-lucide="x"></i></button>
         </div>
         <div class="review-step-dots">${dots}</div>
-        ${activeReviewStep < groups.length ? renderReviewCategoryStep(groups[activeReviewStep]) : renderReviewSummaryStep()}
+        ${activeReviewStep < groups.length ? renderReviewCategoryStep(groups[activeReviewStep], lastAnimatedReviewStep !== activeReviewStep) : renderReviewSummaryStep(lastAnimatedReviewStep !== activeReviewStep)}
     `;
+    lastAnimatedReviewStep = activeReviewStep;
     refreshIcons();
 }
 
 /**
  * One category (3 questions) per screen — keeps every step short and focused instead of one long form.
+ * `animate` only plays the entrance animation when this step is newly entered — setReviewScore()
+ * re-renders this same card on every rating click, and without this guard the card would replay
+ * its fade/slide-in on every single click, which is what was showing up as constant "blinking".
  */
-function renderReviewCategoryStep(group) {
+function renderReviewCategoryStep(group, animate = false) {
     const answeredCount = group.questions.filter(question => Number(activeReviewDraft.ratings[question.id]) > 0).length;
     const stepComplete = answeredCount === group.questions.length;
 
     return `
-        <div class="review-step-card">
+        <div class="review-step-card ${animate ? 'step-enter' : ''}">
             <span class="review-step-kicker">${group.questions.length} quick questions</span>
             <h2>${escapeHtml(group.title)}</h2>
             <div class="review-step-questions">
@@ -8564,9 +8570,9 @@ function renderReviewSegmentedScore(questionId) {
     `;
 }
 
-function renderReviewSummaryStep() {
+function renderReviewSummaryStep(animate = false) {
     return `
-        <div class="review-step-card">
+        <div class="review-step-card ${animate ? 'step-enter' : ''}">
             <span class="review-step-kicker">Last step</span>
             <h2>Wrap it up</h2>
             <div class="review-summary-grid">
@@ -8610,6 +8616,7 @@ function closeActiveReviewForm() {
     activeReviewDraft = null;
     activeReviewCodeHashes = [];
     activeReviewStep = 0;
+    lastAnimatedReviewStep = -1;
     renderActiveReviewForm();
 }
 

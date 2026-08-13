@@ -2553,7 +2553,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 .review-step-dot[onclick] { cursor: pointer; }
 .review-step-dot.active { width: 22px; background: var(--link-color); }
 .review-step-dot.done { background: var(--green); }
-.review-step-card { border: 0; border-radius: 0; background: none; padding: 4px 0 0; text-align: center; box-shadow: none; animation: reviewStepIn 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+.review-step-card { border: 0; border-radius: 0; background: none; padding: 4px 0 0; text-align: center; box-shadow: none; }
+/* Only plays when this step is newly entered (see lastAnimatedReviewStep in app.js) — every
+   rating click re-renders this same card, and animating unconditionally on every re-render was
+   the actual cause of the form appearing to "blink" while filling it in. */
+.review-step-card.step-enter { animation: reviewStepIn 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes reviewStepIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .review-step-kicker { display: block; color: var(--link-color); font-size: 0.68rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
 .review-step-card h2 { margin: 0 0 28px 0; color: var(--text-strong); font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
