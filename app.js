@@ -7941,6 +7941,7 @@ function renderTeamReviewPage() {
     const adminAccess = hasSuperAdminAccess();
     const shell = page.querySelector('.team-review-shell');
     if (shell) shell.classList.toggle('reviewer-only', !adminAccess);
+    page.classList.toggle('reviewer-mode', !adminAccess);
     page.querySelectorAll('.settings-admin-only').forEach(el => {
         if (el.id === 'teamReviewAdminPanel') el.style.display = adminAccess ? 'block' : 'none';
         else el.style.display = adminAccess ? 'inline-flex' : 'none';
