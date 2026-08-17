@@ -8833,6 +8833,67 @@ function exportTeamReviewPack() {
     showNotification('Team Review Exported', 'Ready for ChatGPT reporting');
 }
 
+// Groups every real (non-test) submitted response by reviewee and writes out each reviewer's
+// per-category ratings, category comments, and summary fields as plain text — self-contained
+// enough to paste straight into a chat AI with no CSV attachments needed.
+function buildTeamReviewInlineReport() {
+    const responses = (globalReviewResponses || []).filter(response => !isTestReviewCycleId(response.cycle_id));
+    const byReviewee = {};
+    responses.forEach(response => {
+        (byReviewee[response.reviewee_name] = byReviewee[response.reviewee_name] || []).push(response);
+    });
+
+    return Object.keys(byReviewee).sort((a, b) => a.localeCompare(b)).map(revieweeName => {
+        const entries = byReviewee[revieweeName];
+        const avg = (entries.reduce((sum, r) => sum + Number(r.average_score || 0), 0) / entries.length).toFixed(1);
+        const body = entries.map(response => {
+            const groupLines = TEAM_REVIEW_QUESTION_GROUPS.map(group => {
+                const qLines = group.questions.map(q => `  - ${q.text}: ${response.ratings?.[q.id] || '—'}/5`).join('\n');
+                const comment = response.comments?.[group.key] ? `\n  Comment: "${response.comments[group.key]}"` : '';
+                return `${group.title}:\n${qLines}${comment}`;
+            }).join('\n');
+            return `Reviewer: ${response.reviewer_name} (submitted ${formatDate(response.submitted_at) || response.submitted_at || 'unknown date'})\n${groupLines}\nStrengths: ${response.strengths || '—'}\nImprovement Area: ${response.improvements || '—'}\nAdditional Comments: ${response.final_comment || '—'}`;
+        }).join('\n\n');
+        return `## ${revieweeName} — ${entries.length} reviewer${entries.length === 1 ? '' : 's'}, average score ${avg}/5\n\n${body}`;
+    }).join('\n\n---\n\n');
+}
+
+function buildTeamReviewCoachingPrompt() {
+    return `You are a people manager coach helping me prepare for 1-on-1 performance conversations with my team, based on the peer/manager review data below.
+
+For EACH person, using ONLY the ratings/comments given for them, write:
+
+1. Snapshot — 2-3 sentences: overall standing, average score, how many reviewers.
+2. Strengths to reinforce — 3 to 5 bullets, synthesized across ALL of that person's reviewers (don't just repeat one reviewer's exact wording unless it's unusually clear and worth keeping as-is).
+3. Growth areas — 2 to 4 bullets, framed constructively and specific — not vague ("communication") but concrete ("share WIP updates in the team channel before EOD instead of only when asked").
+4. Talking points for the 1-on-1 — 2 to 3 open questions to ask them, phrased so the conversation feels collaborative, not a lecture.
+5. 90-day development plan — 2 to 3 concrete, measurable actions with a rough timeline or check-in point, tied directly to the growth areas above.
+
+Rules:
+- Base every point on the actual data below — do not invent feedback it doesn't support.
+- If someone has only one reviewer, flag that explicitly and mark the write-up "preliminary" until more reviewers weigh in.
+- Tone: constructive, specific, and caring but honest — written for a manager preparing for a real conversation, not corporate HR-speak.
+- Output one clearly separated section per person, in the same order they appear below.
+
+Here is the review data:
+
+${buildTeamReviewInlineReport()}
+`;
+}
+
+function copyTeamReviewPrompt() {
+    if (!hasSuperAdminAccess()) return showAppleAlert('Superadmin Only', 'Team Review is private.');
+
+    const responseCount = (globalReviewResponses || []).filter(response => !isTestReviewCycleId(response.cycle_id)).length;
+    if (!responseCount) {
+        const onlyTestData = (globalReviewResponses || []).length > 0;
+        return showAppleAlert('Nothing To Copy', onlyTestData ? 'Only test round submissions exist right now — they\'re excluded on purpose. Untick "Test round" on a real round before copying.' : 'No submitted reviews yet — this fills in once your team submits their reviews.');
+    }
+
+    navigator.clipboard.writeText(buildTeamReviewCoachingPrompt());
+    showNotification('Prompt Copied', `Paste into ChatGPT/Claude — covers ${responseCount} submitted review${responseCount === 1 ? '' : 's'}`);
+}
+
 function getLocalTaskNotes() {
     try { return JSON.parse(localStorage.getItem('adtech_task_status_notes') || '{}'); }
     catch(e) { return {}; }

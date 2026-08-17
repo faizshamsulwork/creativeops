@@ -2461,6 +2461,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 .review-export-btn, .review-create-btn, .review-submit-btn { min-height: 44px; border: 0; border-radius: 10px; background: var(--link-color); color: white; font-weight: 900; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: 0.2s ease; padding: 0 16px; white-space: nowrap; }
 .review-export-btn i, .review-create-btn i, .review-submit-btn i { width: 17px; height: 17px; }
 .review-export-btn:hover, .review-create-btn:hover, .review-submit-btn:hover { transform: translateY(-1px); box-shadow: 0 16px 34px -26px rgba(14, 165, 233, 0.9); }
+.team-review-hero-actions { gap: 10px; flex-wrap: wrap; }
+.review-export-btn.secondary { background: none; border: 1px solid var(--border-main); color: var(--text-main); box-shadow: none; }
+.review-export-btn.secondary:hover { background: var(--bg-card); color: var(--text-strong); box-shadow: none; }
 .review-simple-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
 .review-simple-steps div { display: flex; align-items: center; gap: 8px; min-height: 38px; border: 1px solid var(--border-light); border-radius: 10px; background: rgba(148, 163, 184, 0.045); padding: 0 10px; min-width: 0; }
 .review-simple-steps strong { width: 20px; height: 20px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: rgba(14, 165, 233, 0.14); color: var(--link-color); font-size: 0.7rem; font-weight: 900; flex-shrink: 0; }
