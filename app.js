@@ -155,6 +155,16 @@ const WORKSPACE_COUNTRIES = [
 
 const TEAM_REVIEW_QUESTION_GROUPS = [
     {
+        key: 'creative_quality',
+        title: 'Creative & Craft Quality',
+        tone: 'teal',
+        questions: [
+            { id: 'creative_thinking', text: 'Brings strong creative ideas and original thinking to the work' },
+            { id: 'brief_brand_fit', text: 'Deliverables stay true to the brief and brand guidelines' },
+            { id: 'execution_polish', text: 'Shows strong attention to detail and polish in execution' }
+        ]
+    },
+    {
         key: 'work_quality',
         title: 'Work Quality & Reliability',
         tone: 'blue',
@@ -7748,7 +7758,12 @@ async function persistTeamReviewCycle(cycle, assignments) {
         }
     }
 
-    persistReviewDataLocally({ cycles: [cycle], assignments });
+    // Only cache locally when the Supabase write genuinely failed. Caching unconditionally meant
+    // an in-flight fetchTeamReviewData() that had already captured the local store (with this
+    // cycle still in it, from before a later delete) would upsert it right back into Supabase via
+    // syncLocalTeamReviewStoreToSupabase() — a deleted round could "resurrect" itself seconds
+    // after being deleted, purely from timing.
+    if (!savedToSupabase) persistReviewDataLocally({ cycles: [cycle], assignments });
     return { savedToSupabase, lastError };
 }
 
@@ -7782,7 +7797,10 @@ async function persistTeamReviewSubmission(assignment, response, codeHashes = []
     globalReviewAssignments = globalReviewAssignments.map(row => row.id === assignment.id ? normalizeReviewAssignment(updatedAssignment) : row);
     const withoutOldResponse = globalReviewResponses.filter(row => row.assignment_id !== assignment.id);
     globalReviewResponses = [normalizeReviewResponse(response), ...withoutOldResponse];
-    persistReviewDataLocally({ assignments: [updatedAssignment], responses: [response] });
+    // Same reasoning as persistTeamReviewCycle above: only cache locally on genuine failure, or a
+    // stale in-flight fetch can resurrect this submission/assignment state after it's been
+    // changed again (e.g. the round it belongs to gets deleted).
+    if (!savedToSupabase) persistReviewDataLocally({ assignments: [updatedAssignment], responses: [response] });
     return { savedToSupabase, lastError };
 }
 
@@ -8407,7 +8425,7 @@ async function resetReviewCode(assignmentId) {
 
     const updated = normalizeReviewAssignment({ ...assignment, ...updatePayload });
     setReviewCodeInVault(assignment.id, code);
-    persistReviewDataLocally({ assignments: [updated] });
+    if (!saved) persistReviewDataLocally({ assignments: [updated] });
     renderTeamReviewPage();
     showAppleAlert(saved ? 'Review Code Reset' : 'Code Reset Locally', `${assignment.reviewer_name} for ${assignment.reviewee_name}: ${code}`);
 }
@@ -8579,19 +8597,20 @@ function renderReviewSegmentedScore(questionId) {
 }
 
 function renderReviewSummaryStep(animate = false) {
+    const canSubmit = Boolean(String(activeReviewDraft.strengths || '').trim() && String(activeReviewDraft.improvements || '').trim());
     return `
         <div class="review-step-card ${animate ? 'step-enter' : ''}">
             <span class="review-step-kicker">Last step</span>
             <h2>Wrap it up</h2>
             <div class="review-summary-grid">
-                <label>Strengths<textarea class="review-textarea" placeholder="What should this person continue doing?" oninput="setReviewSummaryField('strengths', this.value)">${escapeHtml(activeReviewDraft.strengths || '')}</textarea></label>
-                <label>Improvement Area<textarea class="review-textarea" placeholder="What should this person improve next?" oninput="setReviewSummaryField('improvements', this.value)">${escapeHtml(activeReviewDraft.improvements || '')}</textarea></label>
+                <label>Strengths <span class="review-required-mark">*</span><textarea class="review-textarea" placeholder="What should this person continue doing?" oninput="setReviewSummaryField('strengths', this.value)">${escapeHtml(activeReviewDraft.strengths || '')}</textarea></label>
+                <label>Improvement Area <span class="review-required-mark">*</span><textarea class="review-textarea" placeholder="What should this person improve next?" oninput="setReviewSummaryField('improvements', this.value)">${escapeHtml(activeReviewDraft.improvements || '')}</textarea></label>
                 <label class="full">Additional Comments<textarea class="review-textarea" placeholder="Anything else admin should know? (optional)" oninput="setReviewSummaryField('final_comment', this.value)">${escapeHtml(activeReviewDraft.final_comment || '')}</textarea></label>
             </div>
         </div>
         <div class="review-step-nav">
             <button type="button" class="review-nav-btn secondary" onclick="goToReviewStep(${TEAM_REVIEW_QUESTION_GROUPS.length - 1})"><i data-lucide="arrow-left"></i><span>Back</span></button>
-            <button type="button" onclick="submitTeamReview()" class="review-submit-btn"><i data-lucide="send"></i><span>Submit Review</span></button>
+            <button type="button" id="review-submit-btn" onclick="submitTeamReview()" class="review-submit-btn" ${canSubmit ? '' : 'disabled'}><i data-lucide="send"></i><span>Submit Review</span></button>
         </div>
     `;
 }
@@ -8637,6 +8656,12 @@ function setReviewScore(questionId, score) {
 function setReviewSummaryField(field, value) {
     activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
     activeReviewDraft[field] = value;
+    // Toggle the submit button directly instead of a full renderActiveReviewForm() — re-rendering
+    // on every keystroke would rebuild the textarea and lose focus/cursor position mid-typing.
+    if (field === 'strengths' || field === 'improvements') {
+        const btn = document.getElementById('review-submit-btn');
+        if (btn) btn.disabled = !String(activeReviewDraft.strengths || '').trim() || !String(activeReviewDraft.improvements || '').trim();
+    }
 }
 
 async function submitTeamReview() {
@@ -8644,6 +8669,8 @@ async function submitTeamReview() {
     activeReviewDraft = activeReviewDraft || { ratings: {}, comments: {}, strengths: '', improvements: '', final_comment: '' };
     const missing = getTeamReviewQuestionList().filter(question => !Number(activeReviewDraft.ratings[question.id]));
     if (missing.length) return showAppleAlert('Incomplete Review', 'Please rate every question before submitting.');
+    if (!String(activeReviewDraft.strengths || '').trim()) return showAppleAlert('Missing Strengths', 'Please share at least one strength before submitting — this is what makes the review useful.');
+    if (!String(activeReviewDraft.improvements || '').trim()) return showAppleAlert('Missing Improvement Area', 'Please share at least one improvement area before submitting.');
 
     const assignment = activeReviewAssignment;
     const submittedAt = new Date().toISOString();
@@ -8763,13 +8790,25 @@ Cycles exported: ${(globalReviewCycles || []).filter(cycle => !isTestReviewCycle
 Assignments exported: ${buildTeamReviewCompletionRows().length}
 Responses exported: ${(globalReviewResponses || []).filter(row => !isTestReviewCycleId(row.cycle_id)).length}${testCycleCount ? `\nTest rounds excluded: ${testCycleCount}` : ''}
 
-## Suggested ChatGPT Prompt
-You are a people operations and creative team performance analyst. Analyze these team review exports confidentially. Identify team strengths, recurring blockers, coaching opportunities, workload or collaboration risks, and recommended actions to improve productivity, quality, ownership, communication, and team expansion planning. Keep feedback constructive and avoid personal blame.
+## Suggested Prompt (paste this + the 3 CSVs below into Claude/ChatGPT)
+You are a people operations and creative team performance analyst. Using the attached CSVs, write ONE final performance review per team member (each distinct reviewee), in exactly this structure:
+
+1. Overall Summary — 2-3 sentences, grounded in their average score and the reviewer comments.
+2. Strengths — 3 to 5 bullet points, synthesized across ALL of that person's reviewers (not just one reviewer's wording).
+3. Areas to Improve — 2 to 4 bullet points, framed constructively and actionably, not as criticism.
+4. Suggested Focus for Next Cycle — 1 to 3 concrete, specific action items.
+
+Rules:
+- Base every point on the actual ratings/comments provided — do not invent feedback the data doesn't support.
+- Synthesize across reviewers rather than quoting one person verbatim, unless a quote is unusually clear and worth keeping as-is.
+- Keep tone constructive and specific — this will be shared with the person and/or their manager, so avoid personal blame.
+- If a reviewee has only one reviewer, say so explicitly and note the write-up is preliminary until more reviewers weigh in.
+- Group output by reviewee name, in the same order as team_review_summary.csv.
 
 ## Files
-- team_review_question_scores.csv: One row per question rating with category comments.
-- team_review_summary.csv: Aggregated scores and comment themes by reviewee.
-- team_review_completion.csv: Reviewer assignment completion and pending status.
+- team_review_question_scores.csv: One row per question rating with category comments — the most detailed source.
+- team_review_summary.csv: Aggregated scores per category and concatenated strengths/improvements text by reviewee — start here for a per-person view.
+- team_review_completion.csv: Reviewer assignment completion and pending status — use to flag reviewees with too few responses to synthesize confidently.
 `;
 }
 

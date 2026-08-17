@@ -2430,8 +2430,25 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 #team-review.reviewer-mode .team-review-hero > div > span { text-align: center; }
 #team-review.reviewer-mode .team-review-hero h1 { font-size: 1.5rem; }
 #team-review.reviewer-mode .team-review-hero p { margin: 0 auto; }
+/* On very wide screens a single ~700px card left the rest of the page feeling like empty
+   leftover space. Bring the whole page's canvas in instead of just the card, and add a soft
+   ambient glow behind it so the space around the card reads as deliberate atmosphere. */
+#team-review.reviewer-mode { max-width: 1040px; margin: 0 auto; }
 .team-review-shell { display: grid; grid-template-columns: minmax(360px, 0.85fr) minmax(520px, 1.15fr); gap: 16px; align-items: start; }
-.team-review-shell.reviewer-only { grid-template-columns: minmax(320px, 720px); justify-content: center; }
+.team-review-shell.reviewer-only { grid-template-columns: minmax(320px, 720px); justify-content: center; position: relative; }
+.team-review-shell.reviewer-only::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 900px; height: 900px;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(14, 165, 233, 0.16) 0%, rgba(14, 165, 233, 0) 68%);
+    z-index: -1;
+    pointer-events: none;
+}
+[data-theme="dark"] .team-review-shell.reviewer-only::before {
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, rgba(56, 189, 248, 0) 68%);
+}
 .review-panel { background: var(--bg-card); border: 1px solid var(--border-main); border-radius: 14px; padding: 20px; box-shadow: 0 22px 60px -48px rgba(15, 23, 42, 0.8); min-width: 0; }
 [data-theme="dark"] .review-panel { background: linear-gradient(145deg, rgba(17, 24, 39, 0.96), rgba(30, 41, 59, 0.66)); border-color: rgba(71, 85, 105, 0.48); box-shadow: 0 24px 70px -54px rgba(56, 189, 248, 0.45), inset 0 1px 0 rgba(255,255,255,0.035); }
 .review-access-panel { border: 0; border-radius: 28px; padding: 40px; background: linear-gradient(160deg, var(--bg-card) 0%, rgba(14, 165, 233, 0.05) 100%); box-shadow: 0 40px 90px -46px rgba(15, 23, 42, 0.28); }
@@ -2482,7 +2499,45 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 .review-cycle-form { display: grid; gap: 14px; border: 1px solid var(--border-light); background: rgba(148, 163, 184, 0.045); border-radius: 12px; padding: 14px; margin-bottom: 16px; }
 .review-form-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 12px; }
 .review-test-toggle { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px dashed rgba(245, 158, 11, 0.4); border-radius: 10px; background: rgba(245, 158, 11, 0.06); cursor: pointer; }
-.review-test-toggle input { width: 16px; height: 16px; accent-color: var(--orange); flex-shrink: 0; cursor: pointer; }
+/* The global `input { appearance: none; ... }` reset (see base input rule) strips native checkbox
+   rendering with no replacement, so a plain accent-color checkbox here was toggling correctly but
+   showing no visible check mark at all. Draw a custom one instead of relying on native appearance. */
+.review-test-toggle input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    padding: 0;
+    margin: 0;
+    border-radius: 6px;
+    border: 1.5px solid var(--border-main);
+    background: var(--bg-input);
+    box-shadow: none;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    transition: 0.15s ease;
+}
+.review-test-toggle input[type="checkbox"]:checked {
+    background: var(--orange);
+    border-color: var(--orange);
+}
+.review-test-toggle input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+.review-test-toggle input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--orange);
+    outline-offset: 2px;
+}
 .review-test-toggle span { color: var(--text-main); font-size: 0.78rem; font-weight: 650; }
 .review-test-toggle span strong { color: var(--orange); }
 .review-pair-builder { display: grid; gap: 10px; }
@@ -2604,6 +2659,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 .review-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
 .review-summary-grid label { color: var(--text-muted); font-size: 0.72rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.55px; }
 .review-summary-grid label.full { grid-column: 1 / -1; }
+.review-required-mark { color: var(--red); }
 .review-summary-grid .review-textarea { margin-top: 7px; min-height: 86px; }
 .review-submit-row { display: flex; justify-content: flex-end; margin-top: 14px; }
 .review-submit-btn { min-width: 180px; }
