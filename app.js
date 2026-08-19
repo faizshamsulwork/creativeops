@@ -8947,6 +8947,29 @@ function getTaskNoteCount(item) {
     return getTaskNoteValue(item) ? 1 : 0;
 }
 
+// saveMonthlyProgress() writes its "Monthly progress: X/Y deliverables ready..." line through the
+// same logTaskNote() as a real comment, so on a monthly-plan task these auto-generated rows can
+// quickly outnumber the actual human comments and bury them. This tags that specific format so the
+// Task Notes UI can show real comments by default and tuck the progress trail away collapsed —
+// note getTaskNoteValue/getLatestTaskNote are left untouched since saveMonthlyProgress also reads
+// the latest note back to restore its deliverable-count inputs, and that must keep seeing these.
+function isAutoProgressNote(text) {
+    return /^Monthly progress:/i.test(String(text || '').trim());
+}
+
+function getManualTaskNoteLogs(jobID) {
+    return getTaskNoteLogs(jobID).filter(log => !isAutoProgressNote(log.note_text));
+}
+
+function getAutoProgressNoteLogs(jobID) {
+    return getTaskNoteLogs(jobID).filter(log => isAutoProgressNote(log.note_text));
+}
+
+function getLatestManualTaskNote(item) {
+    if (!item) return null;
+    return getManualTaskNoteLogs(item.job_id)[0] || null;
+}
+
 function getLocalActivityLogs() {
     try { return JSON.parse(localStorage.getItem('adtech_task_activity_logs') || '[]'); }
     catch(e) { return []; }
@@ -9778,21 +9801,14 @@ function renderTaskNoteRow(jobID, log) {
 }
 
 function renderTaskNotesBox(item) {
-    const noteLogs = getTaskNoteLogs(item.job_id);
-    const latest = getLatestTaskNote(item);
-    const noteCount = getTaskNoteCount(item);
+    const noteLogs = getManualTaskNoteLogs(item.job_id);
+    const progressLogs = getAutoProgressNoteLogs(item.job_id);
+    const latest = getLatestManualTaskNote(item);
+    const noteCount = noteLogs.length;
     const canAdd = canAddTaskNote(item);
 
     const rows = noteLogs.length ? noteLogs.slice(0, 12).map(log => renderTaskNoteRow(item.job_id, log)).join('')
-        : (latest?.note_text ? `
-        <div class="task-note-thread-row">
-            <div>
-                <strong>${escapeHtml(latest.actor_name || 'Unknown')}</strong>
-                <span>${formatDateTime(latest.created_at)} · ${escapeHtml(latest.status_at_time || 'No status')}</span>
-            </div>
-            <p>${escapeHtml(latest.note_text)}</p>
-        </div>
-    ` : '<div class="task-note-empty">No notes yet. Add the first update for this task.</div>');
+        : '<div class="task-note-empty">No notes yet. Add the first update for this task.</div>';
 
     const latestPreview = latest?.note_text
         ? `<small>${escapeHtml(latest.note_text.length > 120 ? latest.note_text.slice(0, 117) + '...' : latest.note_text)}</small>`
@@ -9802,6 +9818,8 @@ function renderTaskNotesBox(item) {
     // instead of snapping shut on every action — a plain <details> has no memory of its own state.
     const wasOpen = document.querySelector('.task-notes-box')?.open;
     const keepOpen = wasOpen || (editingNoteId && noteLogs.some(log => log.id === editingNoteId));
+    const progressWasOpen = document.querySelector('.task-note-progress-box')?.open;
+    const keepProgressOpen = progressWasOpen || (editingNoteId && progressLogs.some(log => log.id === editingNoteId));
 
     return `
         <details class="task-notes-box" ${keepOpen ? 'open' : ''}>
@@ -9812,7 +9830,7 @@ function renderTaskNotesBox(item) {
             <div class="task-note-latest">${latestPreview}</div>
             ${canAdd ? `
                 <div class="task-note-input-wrap">
-                    <textarea id="task-note-${item.job_id}" class="task-note-textarea" placeholder="Add a quick update. Type @ to tag someone — e.g. 2/10 visuals ready, @Ain Sabrina please check colour direction..." oninput="handleTaskNoteInput(event, '${item.job_id}')" onblur="hideMentionDropdown('${item.job_id}')"></textarea>
+                    <textarea id="task-note-${item.job_id}" class="task-note-textarea" placeholder="Add a quick update. Type @ to tag someone — e.g. Need revision on slide 4-8, or @Ain Sabrina please check colour direction..." oninput="handleTaskNoteInput(event, '${item.job_id}')" onblur="hideMentionDropdown('${item.job_id}')"></textarea>
                     <div id="task-note-mentions-${item.job_id}" class="premium-dropdown"></div>
                 </div>
                 <div class="task-note-actions">
@@ -9823,6 +9841,12 @@ function renderTaskNotesBox(item) {
             `}
             <div class="task-note-thread-head">History</div>
             <div class="task-note-thread">${rows}</div>
+            ${progressLogs.length ? `
+                <details class="task-note-progress-box" ${keepProgressOpen ? 'open' : ''}>
+                    <summary><i data-lucide="bar-chart-3"></i> Monthly progress updates <em>${progressLogs.length}</em></summary>
+                    <div class="task-note-thread">${progressLogs.slice(0, 20).map(log => renderTaskNoteRow(item.job_id, log)).join('')}</div>
+                </details>
+            ` : ''}
         </details>
     `;
 }
