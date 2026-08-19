@@ -17,7 +17,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    <link rel="stylesheet" href="style.css?v=15">
+    <link rel="stylesheet" href="style.css?v=18">
     <link rel="stylesheet" href="mobile.css" media="(max-width: 992px)">
 </head>
 <body>
@@ -245,6 +245,7 @@
                 <div class="nav-item" id="btn-settings" onclick="showPage('settings')"><i data-lucide="settings"></i> <span>Settings</span></div>
             </div>
             <div class="bottom-actions">
+                <button id="notifBellBtn" class="action-btn" onclick="openNotificationsPanel()"><i data-lucide="bell"></i> <span>Notifications</span><span id="notif-badge" class="nav-badge" style="display:none;">0</span></button>
                 <button id="themeBtn" class="action-btn" onclick="toggleTheme(event)"><i data-lucide="moon"></i> <span>Dark Mode</span></button>
                 <button id="assetBtn" class="action-btn" onclick="openAssetGate()"><i data-lucide="folder-key"></i> <span>Branding Assets</span></button>
                 <button id="adminBtn" class="action-btn" onclick="toggleAdmin()"><i data-lucide="lock"></i> <span>Admin Access</span></button>
@@ -1000,7 +1001,7 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
 </div>
 
 <script src="rate-card-data.js?v=2"></script>
-<script src="app.js?v=15"></script>
+<script src="app.js?v=18"></script>
 <script src="quote-builder.js?v=2"></script>
 </body>
 </html>

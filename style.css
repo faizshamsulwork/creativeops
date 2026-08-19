@@ -1957,7 +1957,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 .task-notes-box summary em { font-style: normal; color: var(--text-muted); font-size: 0.72rem; font-weight: 800; background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 999px; padding: 5px 9px; white-space: nowrap; }
 .task-note-latest { padding: 0 20px 14px 20px; color: var(--text-muted); font-size: 0.8rem; font-weight: 650; line-height: 1.45; }
 .task-note-latest small { display: block; background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 12px; padding: 11px 12px; white-space: pre-wrap; }
-.task-note-textarea { min-height: 76px; resize: vertical; line-height: 1.5; margin: 0 20px; width: calc(100% - 40px); box-sizing: border-box; }
+.task-note-input-wrap { position: relative; margin: 0 20px; }
+.task-note-textarea { min-height: 76px; resize: vertical; line-height: 1.5; margin: 0; width: 100%; box-sizing: border-box; }
+.task-note-input-wrap .premium-dropdown { max-height: 200px; }
+.note-mention-tag { color: var(--link-color); font-weight: 800; }
 .task-note-actions { display: flex; justify-content: flex-end; padding: 12px 20px 16px 20px; }
 .task-note-actions .btn-action { flex: 0 0 auto; min-width: 130px; }
 .task-note-readonly { margin: 0 20px 16px 20px; background: var(--bg-box); border: 1px dashed var(--border-main); color: var(--text-main); border-radius: 12px; padding: 14px; line-height: 1.5; white-space: pre-wrap; }
@@ -1966,9 +1969,36 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
 .task-note-thread-row { background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 12px; padding: 12px; }
 .task-note-thread-row div { display: flex; justify-content: space-between; gap: 10px; color: var(--text-strong); font-size: 0.82rem; }
 .task-note-thread-row span { color: var(--text-muted); font-size: 0.72rem; font-weight: 650; }
+.task-note-thread-row span em { font-style: normal; color: var(--link-color); }
 .task-note-thread-row p { margin: 8px 0 0 0; color: var(--text-main); line-height: 1.45; white-space: pre-wrap; }
+.task-note-thread-row.editing { border-color: var(--link-color); }
+.task-note-thread-row.editing .task-note-textarea { margin-top: 8px; min-height: 60px; }
+.task-note-row-actions { display: flex; justify-content: flex-end; gap: 4px; margin-top: 8px; }
+.task-note-row-actions button { background: none; border: 1px solid var(--border-light); color: var(--text-muted); width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.15s ease; }
+.task-note-row-actions button i { width: 13px; height: 13px; }
+.task-note-row-actions button:hover { border-color: var(--link-color); color: var(--link-color); }
+.task-note-row-actions button:last-child:hover { border-color: var(--red); color: var(--red); }
+.task-note-row-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.task-note-row-btn { min-height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border-main); background: none; color: var(--text-main); font-size: 0.76rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: 0.15s ease; }
+.task-note-row-btn i { width: 13px; height: 13px; }
+.task-note-row-btn:hover { background: var(--bg-card); }
+.task-note-row-btn.primary { background: var(--link-color); color: white; border-color: transparent; }
+.task-note-row-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 12px 26px -20px rgba(14, 165, 233, 0.9); }
 .task-note-empty { color: var(--text-muted); font-size: 0.82rem; background: var(--bg-box); border: 1px dashed var(--border-main); border-radius: 12px; padding: 12px; }
 .task-note-preview { display: flex; align-items: flex-start; gap: 7px; background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 10px; padding: 9px 10px; margin: 0 0 14px 0; color: var(--text-muted); font-size: 0.78rem; font-weight: 600; line-height: 1.35; }
+
+/* Notification bell + panel */
+#notifBellBtn { position: relative; }
+.notif-list { display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.notif-row { display: flex; align-items: flex-start; gap: 11px; background: var(--bg-box); border: 1px solid var(--border-light); border-radius: 12px; padding: 12px; cursor: pointer; transition: 0.15s ease; }
+.notif-row:hover { border-color: var(--link-color); transform: translateY(-1px); }
+.notif-row.unread { background: rgba(14, 165, 233, 0.06); border-color: rgba(14, 165, 233, 0.22); }
+.notif-row-icon { width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: rgba(14, 165, 233, 0.1); color: var(--link-color); }
+.notif-row-icon i { width: 15px; height: 15px; }
+.notif-row-body { min-width: 0; color: var(--text-main); font-size: 0.82rem; line-height: 1.45; }
+.notif-row-body strong { color: var(--text-strong); }
+.notif-row-body p { margin: 4px 0; color: var(--text-muted); white-space: pre-wrap; }
+.notif-row-time { color: var(--text-muted); font-size: 0.7rem; font-weight: 650; }
 .task-note-preview i { width: 14px; height: 14px; color: var(--link-color); flex-shrink: 0; margin-top: 1px; }
 .task-note-preview span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .task-note-preview strong { color: var(--text-strong); }
@@ -3219,9 +3249,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--l
     .logo-sub { display: none; }
     
     .bottom-actions { margin: 0; flex-direction: row; gap: 10px; width: auto; }
-    .action-btn { padding: 10px; font-size: 0; width: auto; border-radius: 10px;}
+    .action-btn { padding: 10px; font-size: 0; width: auto; border-radius: 10px; position: relative; }
     .action-btn i { width: 20px; height: 20px; margin: 0; }
-    .action-btn span { display: none; }
+    .action-btn span:not(.nav-badge) { display: none; }
+    .action-btn .nav-badge { position: absolute; top: 2px; right: 2px; margin: 0; padding: 2px 5px; font-size: 0.6rem; }
     
     .nav-group { position: fixed; bottom: 0; left: 0; width: 100%; height: 75px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid var(--border-main); flex-direction: row; justify-content: space-around; align-items: center; padding: 0 10px; z-index: 1000; box-shadow: 0 -10px 30px rgba(0,0,0,0.05); box-sizing: border-box;}
     [data-theme="dark"] .nav-group { background: rgba(17, 24, 39, 0.9); box-shadow: 0 -10px 30px rgba(0,0,0,0.3);}
@@ -4440,7 +4471,7 @@ html::before { top: 20%; left: 30%; width: 40vw; height: 40vh; background: var(-
 
     .logo-container::after,
     .nav-item > span:not(.nav-badge),
-    .action-btn > span {
+    .action-btn > span:not(.nav-badge) {
         opacity: 0;
         white-space: nowrap;
         transform: translateX(-6px);
@@ -4452,8 +4483,8 @@ html::before { top: 20%; left: 30%; width: 40vw; height: 40vh; background: var(-
     .sidebar:focus-within .logo-container::after,
     .sidebar:hover .nav-item > span:not(.nav-badge),
     .sidebar:focus-within .nav-item > span:not(.nav-badge),
-    .sidebar:hover .action-btn > span,
-    .sidebar:focus-within .action-btn > span {
+    .sidebar:hover .action-btn > span:not(.nav-badge),
+    .sidebar:focus-within .action-btn > span:not(.nav-badge) {
         opacity: 1;
         transform: translateX(0);
     }

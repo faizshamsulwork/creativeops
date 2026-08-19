@@ -20,6 +20,9 @@ let globalTeamStatus = [];
 let globalHandovers = [];
 let globalActivityLogs = [];
 let globalNoteLogs = [];
+let globalNotifications = [];
+let taskNoteMentions = {}; // job_id -> Set of names picked via the '@' autocomplete on that note's textarea
+let editingNoteId = null; // id of the task_note_logs row currently open for inline edit, if any
 let globalReviewCycles = [];
 let globalReviewAssignments = [];
 let globalReviewResponses = [];
@@ -3120,6 +3123,8 @@ async function startApp() {
         const firstName = extractFirstName(userName); document.getElementById('syncMsg').innerText = `Welcome back, ${firstName}.`;
 
         await fetchSupabaseData(true);
+        fetchTaskNotifications();
+        ensureNotificationPermission(); // runs inside the "Start Now" click gesture, so the browser permission prompt is allowed to show
 
         const intro = document.getElementById('introPage'); const app = document.getElementById('app-wrapper');
         intro.style.opacity = '0'; setTimeout(() => { intro.style.display = 'none'; app.classList.add('app-active'); document.body.classList.remove('no-scroll'); }, 600);
@@ -3157,6 +3162,7 @@ function checkSavedName() {
 
         // 🌟 FIX: Sistem akan tarik data dengan betul masa mula-mula masuk
         fetchSupabaseData(true);
+        fetchTaskNotifications();
     } else {
         showPage('dashboard'); document.getElementById('introPage').style.display = 'flex'; document.body.classList.add('no-scroll');
         setTimeout(() => { const overlay = document.getElementById('soft-refresh-overlay'); if (overlay) overlay.classList.remove('show'); }, 500);
@@ -3380,6 +3386,7 @@ function setupRealtimeSubscription() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_responses' }, () => scheduleRealtimeRefresh())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'task_activity_logs' }, () => scheduleRealtimeRefresh())
         .on('postgres_changes', { event: '*', schema: 'public', table: 'task_client_waiting_periods' }, () => scheduleRealtimeRefresh())
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'task_notifications' }, (payload) => handleIncomingTaskNotification(payload))
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('🚀 Berjaya sambung ke Supabase Real-Time!');
@@ -3390,6 +3397,12 @@ function setupRealtimeSubscription() {
 
 // Aktifkan Real-Time ini secara automatik 2 saat selepas website dibuka
 setTimeout(setupRealtimeSubscription, 2000);
+
+// Safety net alongside the realtime push above: if the tab was backgrounded/asleep long enough
+// that a websocket event got dropped, catch up on notifications the moment it's looked at again.
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && getCurrentUserName()) fetchTaskNotifications();
+});
 
 function isTaskEligibleForInternalDueBackfill(task = {}) {
     const status = String(task.status || '').toLowerCase();
@@ -8972,7 +8985,10 @@ function normalizeLogRow(row = {}) {
 
 function normalizeNoteRow(row = {}) {
     return {
-        id: row.id || row.local_id || `note-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        // task_note_logs.id is a bigint identity, so Supabase returns it as a JS number — always
+        // stringify it so id comparisons (Edit/Delete match against a string pulled off an
+        // onclick's HTML attribute) don't silently fail on 78 !== '78'.
+        id: row.id != null ? String(row.id) : (row.local_id || `note-${Date.now()}-${Math.random().toString(16).slice(2)}`),
         job_id: row.job_id || '',
         actor_name: row.actor_name || row.actor || 'Unknown',
         note_text: row.note_text || row.notes || '',
@@ -9045,6 +9061,228 @@ async function logTaskActivity(jobID, actionType, oldValue = '', newValue = '', 
     }
 }
 
+// ========================================================
+// 🌟 TASK NOTE NOTIFICATIONS (bell + @mentions)
+// ========================================================
+// Recipients = the task's assignee(s) + the superadmin, always, plus anyone explicitly
+// @mentioned (who may not be the assignee — e.g. tagging a second creative or a proofer in).
+// The note author never notifies themselves.
+function generateNotificationId() {
+    return `notif-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getNoteMentionCandidates(query, jobID) {
+    const key = normalizeNameKey(query);
+    const me = normalizeNameKey(getCurrentUserName());
+    const already = taskNoteMentions[jobID] || new Set();
+    return getActiveTeamMembers()
+        .map(member => member.name)
+        .filter(name => normalizeNameKey(name) !== me)
+        .filter(name => !already.has(name))
+        .filter(name => normalizeNameKey(name).includes(key))
+        .slice(0, 6);
+}
+
+function handleTaskNoteInput(event, jobID) {
+    const textarea = event.target;
+    const container = document.getElementById(`task-note-mentions-${jobID}`);
+    if (!container) return;
+
+    const caret = textarea.selectionStart;
+    const match = textarea.value.slice(0, caret).match(/(?:^|\s)@([a-zA-Z0-9' -]{0,30})$/);
+    if (!match) {
+        container.classList.remove('show');
+        container.innerHTML = '';
+        return;
+    }
+
+    const candidates = getNoteMentionCandidates(match[1], jobID);
+    if (!candidates.length) {
+        container.classList.remove('show');
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = candidates.map(name => `<div class="dropdown-item" onmousedown="selectTaskNoteMention(event, '${jobID}', '${name.replace(/'/g, "\\'")}')"><i data-lucide="at-sign" style="width:14px;height:14px;color:var(--text-muted);"></i>${escapeHtml(name)}</div>`).join('');
+    container.classList.add('show');
+    refreshIcons();
+}
+
+function selectTaskNoteMention(event, jobID, name) {
+    if (event) event.preventDefault(); // fires before the textarea's blur, so the caret/selection below is still valid
+    const textarea = document.getElementById(`task-note-${jobID}`);
+    const container = document.getElementById(`task-note-mentions-${jobID}`);
+    if (textarea) {
+        const caret = textarea.selectionStart;
+        const value = textarea.value;
+        const match = value.slice(0, caret).match(/(?:^|\s)@([a-zA-Z0-9' -]{0,30})$/);
+        if (match) {
+            const atIndex = caret - match[1].length - 1;
+            const inserted = `@${name} `;
+            textarea.value = value.slice(0, atIndex) + inserted + value.slice(caret);
+            const newCaret = atIndex + inserted.length;
+            textarea.setSelectionRange(newCaret, newCaret);
+        }
+        textarea.focus();
+    }
+
+    taskNoteMentions[jobID] = taskNoteMentions[jobID] || new Set();
+    taskNoteMentions[jobID].add(name);
+
+    if (container) { container.classList.remove('show'); container.innerHTML = ''; }
+}
+
+function hideMentionDropdown(jobID) {
+    // Delayed so a click on a dropdown item (mousedown) still registers before blur wipes it.
+    setTimeout(() => {
+        const container = document.getElementById(`task-note-mentions-${jobID}`);
+        if (container) container.classList.remove('show');
+    }, 150);
+}
+
+async function createTaskNotifications(job, noteText, actorName, mentionedNames = []) {
+    const recipients = new Map(); // normalized name -> { name, kind }
+    getAssignedPICNames(job.assignee).forEach(name => recipients.set(normalizeNameKey(name), { name, kind: 'note_added' }));
+    SUPER_ADMIN_NAMES.forEach(name => { if (!recipients.has(normalizeNameKey(name))) recipients.set(normalizeNameKey(name), { name, kind: 'note_added' }); });
+    mentionedNames.forEach(name => recipients.set(normalizeNameKey(name), { name, kind: 'mention' })); // mention is more specific, wins on overlap
+    recipients.delete(normalizeNameKey(actorName));
+
+    if (!recipients.size) return;
+
+    const rows = [...recipients.values()].map(r => ({
+        id: generateNotificationId(),
+        job_id: job.job_id,
+        client_name: job.client_name || '',
+        project_title: job.project_title || '',
+        recipient_name: r.name,
+        actor_name: actorName,
+        kind: r.kind,
+        note_preview: noteText.length > 160 ? `${noteText.slice(0, 157)}...` : noteText,
+        created_at: new Date().toISOString()
+    }));
+
+    try {
+        const { error } = await supabaseClient.from('task_notifications').insert(rows);
+        if (error) throw error;
+    } catch(e) {
+        // Best-effort only — the note itself is already saved via logTaskNote's own fallback.
+        // Worst case here is a missed ping, not lost data, so no local-queue retry is needed.
+        console.warn('Notification insert failed:', e.message);
+    }
+}
+
+async function fetchTaskNotifications() {
+    const me = getCurrentUserName();
+    if (!me) return;
+    try {
+        const { data, error } = await supabaseClient
+            .from('task_notifications')
+            .select('*')
+            .ilike('recipient_name', me)
+            .order('created_at', { ascending: false })
+            .limit(100);
+        if (error) throw error;
+        globalNotifications = data || [];
+    } catch(e) {
+        console.warn('Failed to load notifications:', e.message);
+    }
+    updateNotifBadge();
+}
+
+function updateNotifBadge() {
+    const unread = (globalNotifications || []).filter(n => !n.read_at).length;
+    const badge = document.getElementById('notif-badge');
+    if (!badge) return;
+    badge.style.display = unread > 0 ? 'inline-block' : 'none';
+    badge.innerText = unread > 9 ? '9+' : unread;
+}
+
+function ensureNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+}
+
+function maybeFireDesktopNotification(row) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (!document.hidden) return; // they're already looking at the tab — the in-app toast covers it
+    const title = row.kind === 'mention' ? `${row.actor_name || 'Someone'} mentioned you` : `${row.actor_name || 'Someone'} added a note`;
+    try {
+        const desktopNotif = new Notification(title, {
+            body: `${row.client_name || ''}: ${row.project_title || ''}\n${row.note_preview || ''}`,
+            tag: row.id
+        });
+        desktopNotif.onclick = () => window.focus();
+    } catch(e) { console.warn('Desktop notification failed:', e.message); }
+}
+
+function handleIncomingTaskNotification(payload) {
+    const row = payload?.new;
+    if (!row) return;
+    const me = getCurrentUserName();
+    if (!me || normalizeNameKey(row.recipient_name) !== normalizeNameKey(me)) return;
+    if ((globalNotifications || []).some(n => n.id === row.id)) return;
+
+    globalNotifications = [row, ...(globalNotifications || [])];
+    updateNotifBadge();
+    showNotification(row.kind === 'mention' ? `${row.actor_name || 'Someone'} mentioned you` : `${row.actor_name || 'Someone'} added a note`, row.note_preview || '');
+    maybeFireDesktopNotification(row);
+}
+
+async function markNotificationRead(id) {
+    const notif = (globalNotifications || []).find(n => n.id === id);
+    if (!notif || notif.read_at) return;
+    notif.read_at = new Date().toISOString();
+    updateNotifBadge();
+    try {
+        await supabaseClient.from('task_notifications').update({ read_at: notif.read_at }).eq('id', id);
+    } catch(e) { console.warn('Failed to mark notification read:', e.message); }
+}
+
+async function markAllNotificationsRead() {
+    const unread = (globalNotifications || []).filter(n => !n.read_at);
+    if (!unread.length) return;
+    const now = new Date().toISOString();
+    unread.forEach(n => n.read_at = now);
+    updateNotifBadge();
+    openNotificationsPanel();
+    try {
+        await supabaseClient.from('task_notifications').update({ read_at: now }).in('id', unread.map(n => n.id));
+    } catch(e) { console.warn('Failed to mark all notifications read:', e.message); }
+}
+
+function openNotificationFromPanel(id) {
+    const notif = (globalNotifications || []).find(n => n.id === id);
+    if (!notif) return;
+    markNotificationRead(id);
+    closeSettingsDialog();
+    setTimeout(() => openDetailModal(notif.job_id), 200); // isUpdate defaults to false — this must actually show the modal, not just refresh an already-open one
+}
+
+function openNotificationsPanel() {
+    ensureNotificationPermission();
+    const rows = globalNotifications || [];
+    const unreadCount = rows.filter(n => !n.read_at).length;
+
+    const body = rows.length ? rows.map(n => `
+        <div class="notif-row ${n.read_at ? '' : 'unread'}" onclick="openNotificationFromPanel('${n.id}')">
+            <span class="notif-row-icon"><i data-lucide="${n.kind === 'mention' ? 'at-sign' : 'message-square-text'}"></i></span>
+            <div class="notif-row-body">
+                <strong>${escapeHtml(n.actor_name || 'Someone')}</strong> ${n.kind === 'mention' ? 'mentioned you on' : 'added a note on'} <strong>${escapeHtml(n.client_name || '')}: ${escapeHtml(n.project_title || '')}</strong>
+                <p>${escapeHtml(n.note_preview || '')}</p>
+                <span class="notif-row-time">${formatDateTime(n.created_at)} · ${escapeHtml(n.job_id || '')}</span>
+            </div>
+        </div>
+    `).join('') : '<div class="task-note-empty">No notifications yet — this fills in once someone notes a task you\'re on, or @mentions you.</div>';
+
+    openSettingsDialog({
+        kind: 'notifications',
+        icon: 'bell',
+        title: 'Notifications',
+        description: unreadCount ? `${unreadCount} unread` : "You're all caught up.",
+        body: `<div class="notif-list">${body}</div>`,
+        footer: unreadCount ? `<button type="button" class="settings-action-btn" onclick="markAllNotificationsRead()">Mark all read</button>` : ''
+    });
+}
+
 async function logTaskNote(job, noteText) {
     if (!job) return null;
 
@@ -9059,14 +9297,19 @@ async function logTaskNote(job, noteText) {
     globalNoteLogs.unshift(row);
 
     try {
-        const { error } = await supabaseClient.from('task_note_logs').insert([{
+        // .select() to read back the server-assigned id (task_note_logs.id is a DB-generated
+        // identity, not something we can set from the client) and patch it onto the optimistic
+        // local row above — otherwise this row keeps its local-only placeholder id until the next
+        // full refetch, and Edit/Delete on a note you just added would silently target nothing.
+        const { data, error } = await supabaseClient.from('task_note_logs').insert([{
             job_id: row.job_id,
             actor_name: row.actor_name,
             note_text: row.note_text,
             status_at_time: row.status_at_time,
             created_at: row.created_at
-        }]);
+        }]).select();
         if (error) throw error;
+        if (data?.[0]?.id != null) row.id = String(data[0].id);
     } catch(e) {
         setLocalNoteLogs([row, ...getLocalNoteLogs()]);
         console.warn('Note log saved locally only:', e.message);
@@ -9491,21 +9734,57 @@ function canAddTaskNote(item) {
     return Boolean(item && localStorage.getItem('adtech_user_name'));
 }
 
+// A note is only editable/deletable once it's a real synced task_note_logs row (has a real id,
+// not the local-fallback placeholder used before a save round-trips) and belongs to the person
+// asking — or the superadmin, for cleanup.
+function canManageTaskNote(log) {
+    if (!log || isLocallyGeneratedLogId(log.id)) return false;
+    return hasSuperAdminAccess() || normalizeNameKey(log.actor_name) === normalizeNameKey(getCurrentUserName());
+}
+
+function renderTaskNoteRow(jobID, log) {
+    if (editingNoteId === log.id) {
+        return `
+            <div class="task-note-thread-row editing">
+                <div>
+                    <strong>${escapeHtml(log.actor_name || 'Unknown')}</strong>
+                    <span>${formatDateTime(log.created_at)} · ${escapeHtml(log.status_at_time || 'No status')}</span>
+                </div>
+                <textarea id="edit-note-${log.id}" class="task-note-textarea">${escapeHtml(log.note_text)}</textarea>
+                <div class="task-note-row-edit-actions">
+                    <button type="button" class="task-note-row-btn" onclick="cancelEditTaskNote('${jobID}')">Cancel</button>
+                    <button type="button" class="task-note-row-btn primary" onclick="saveEditedTaskNote('${jobID}', '${log.id}')"><i data-lucide="check"></i> Save</button>
+                </div>
+            </div>
+        `;
+    }
+
+    const canManage = canManageTaskNote(log);
+    return `
+        <div class="task-note-thread-row">
+            <div>
+                <strong>${escapeHtml(log.actor_name || 'Unknown')}</strong>
+                <span>${formatDateTime(log.created_at)} · ${escapeHtml(log.status_at_time || 'No status')}${log.edited_at ? ' · <em>edited</em>' : ''}</span>
+            </div>
+            <p>${escapeHtml(log.note_text)}</p>
+            ${canManage ? `
+                <div class="task-note-row-actions">
+                    <button type="button" title="Edit note" onclick="startEditTaskNote('${jobID}', '${log.id}')"><i data-lucide="pencil"></i></button>
+                    <button type="button" title="Delete note" onclick="deleteTaskNote('${jobID}', '${log.id}')"><i data-lucide="trash-2"></i></button>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
 function renderTaskNotesBox(item) {
     const noteLogs = getTaskNoteLogs(item.job_id);
     const latest = getLatestTaskNote(item);
     const noteCount = getTaskNoteCount(item);
     const canAdd = canAddTaskNote(item);
 
-    const rows = noteLogs.length ? noteLogs.slice(0, 12).map(log => `
-        <div class="task-note-thread-row">
-            <div>
-                <strong>${escapeHtml(log.actor_name || 'Unknown')}</strong>
-                <span>${formatDateTime(log.created_at)} · ${escapeHtml(log.status_at_time || 'No status')}</span>
-            </div>
-            <p>${escapeHtml(log.note_text)}</p>
-        </div>
-    `).join('') : (latest?.note_text ? `
+    const rows = noteLogs.length ? noteLogs.slice(0, 12).map(log => renderTaskNoteRow(item.job_id, log)).join('')
+        : (latest?.note_text ? `
         <div class="task-note-thread-row">
             <div>
                 <strong>${escapeHtml(latest.actor_name || 'Unknown')}</strong>
@@ -9519,15 +9798,23 @@ function renderTaskNotesBox(item) {
         ? `<small>${escapeHtml(latest.note_text.length > 120 ? latest.note_text.slice(0, 117) + '...' : latest.note_text)}</small>`
         : '<small>No notes yet</small>';
 
+    // Stays open across re-renders (adding/editing/deleting a note all re-render this whole box)
+    // instead of snapping shut on every action — a plain <details> has no memory of its own state.
+    const wasOpen = document.querySelector('.task-notes-box')?.open;
+    const keepOpen = wasOpen || (editingNoteId && noteLogs.some(log => log.id === editingNoteId));
+
     return `
-        <details class="task-notes-box">
+        <details class="task-notes-box" ${keepOpen ? 'open' : ''}>
             <summary>
                 <span><i data-lucide="message-square-text"></i><strong>Task Notes</strong></span>
                 <em>${noteCount} update${noteCount === 1 ? '' : 's'}</em>
             </summary>
             <div class="task-note-latest">${latestPreview}</div>
             ${canAdd ? `
-                <textarea id="task-note-${item.job_id}" class="task-note-textarea" placeholder="Add a quick update. Example: 2/10 visuals ready, waiting for client feedback, or checking copy direction..."></textarea>
+                <div class="task-note-input-wrap">
+                    <textarea id="task-note-${item.job_id}" class="task-note-textarea" placeholder="Add a quick update. Type @ to tag someone — e.g. 2/10 visuals ready, @Ain Sabrina please check colour direction..." oninput="handleTaskNoteInput(event, '${item.job_id}')" onblur="hideMentionDropdown('${item.job_id}')"></textarea>
+                    <div id="task-note-mentions-${item.job_id}" class="premium-dropdown"></div>
+                </div>
                 <div class="task-note-actions">
                     <button type="button" id="btn-note-${item.job_id}" onclick="saveTaskNote(event, '${item.job_id}')" class="btn-action btn-copy"><i data-lucide="send"></i> Add Note</button>
                 </div>
@@ -9538,6 +9825,70 @@ function renderTaskNotesBox(item) {
             <div class="task-note-thread">${rows}</div>
         </details>
     `;
+}
+
+function startEditTaskNote(jobID, noteId) {
+    editingNoteId = noteId;
+    openDetailModal(jobID, true);
+}
+
+function cancelEditTaskNote(jobID) {
+    editingNoteId = null;
+    openDetailModal(jobID, true);
+}
+
+async function saveEditedTaskNote(jobID, noteId) {
+    const textarea = document.getElementById(`edit-note-${noteId}`);
+    if (!textarea) return;
+
+    const newText = textarea.value.trim();
+    if (!newText) return showAppleAlert('Empty Note', 'Please write something before saving — or delete the note instead.');
+
+    const log = (globalNoteLogs || []).find(row => row.id === noteId);
+    if (!log) return;
+
+    const previousText = log.note_text;
+    const previousEditedAt = log.edited_at;
+    log.note_text = newText;
+    log.edited_at = new Date().toISOString();
+    editingNoteId = null;
+
+    try {
+        const { error } = await supabaseClient.from('task_note_logs').update({ note_text: newText, edited_at: log.edited_at }).eq('id', noteId);
+        if (error) throw error;
+        showNotification('Note Updated', 'Your edit has been saved');
+    } catch(e) {
+        log.note_text = previousText;
+        log.edited_at = previousEditedAt;
+        showAppleAlert('Update Failed', e.message);
+    }
+
+    openDetailModal(jobID, true);
+    renderDashboard();
+    renderBoards();
+}
+
+async function deleteTaskNote(jobID, noteId) {
+    const log = (globalNoteLogs || []).find(row => row.id === noteId);
+    if (!log) return;
+
+    const confirmed = await showAppleConfirm('Delete Note?', "This removes it from this task's history for everyone. This can't be undone.", { confirmText: 'Delete Note', cancelText: 'Cancel', tone: 'danger', icon: 'trash-2' });
+    if (!confirmed) return;
+
+    try {
+        const { error } = await supabaseClient.from('task_note_logs').delete().eq('id', noteId);
+        if (error) throw error;
+    } catch(e) {
+        return showAppleAlert('Delete Failed', e.message);
+    }
+
+    globalNoteLogs = (globalNoteLogs || []).filter(row => row.id !== noteId);
+    setLocalNoteLogs(getLocalNoteLogs().filter(row => row.id !== noteId));
+    showNotification('Note Deleted', "Removed from this task's history");
+
+    openDetailModal(jobID, true);
+    renderDashboard();
+    renderBoards();
 }
 
 async function saveTaskNote(event, jobID) {
@@ -9566,6 +9917,10 @@ async function saveTaskNote(event, jobID) {
 
     try {
         await logTaskNote(job, note);
+
+        const mentioned = [...(taskNoteMentions[jobID] || [])];
+        createTaskNotifications(job, note, getCurrentActor(), mentioned); // fire-and-forget, non-critical
+        delete taskNoteMentions[jobID];
 
         const { error } = await supabaseClient
             .from('creative_requests')
