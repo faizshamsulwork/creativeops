@@ -1,0 +1,5 @@
+# Local-only Supabase override (see local.config.example.js) — never commit real or placeholder
+# local credentials here, each developer creates their own from the example file.
+local.config.js
+
+.DS_Store

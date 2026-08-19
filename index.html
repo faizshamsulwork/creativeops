@@ -1000,6 +1000,9 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
     </div>
 </div>
 
+<!-- Local-only Supabase override (gitignored). Harmless 404 on production/Vercel, which never
+     uses it — app.js falls back to the production project there. See local.config.example.js. -->
+<script src="local.config.js"></script>
 <script src="rate-card-data.js?v=2"></script>
 <script src="app.js?v=19"></script>
 <script src="quote-builder.js?v=2"></script>

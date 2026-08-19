@@ -1,11 +1,112 @@
 // ========================================================
 // 🌟 1. SETUP SUPABASE & CONFIGURATION
 // ========================================================
-const SUPABASE_URL = 'https://jceiajlgymtvpviebfnk.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjZWlhamxneW10dnB2aWViZm5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NTQ2NzcsImV4cCI6MjA5MTUzMDY3N30.gGmc7kL01FD8rRmZC1wiLFHgn5Wlbn0Lmp3IY9C2ODs';
+//
+// Local vs production separation
+// -------------------------------
+// This is a zero-build static site — no bundler, no dev server, nothing that reads a .env file.
+// Vercel serves index.html/app.js exactly as committed, so there is no mechanism for an env file
+// to ever reach this code. Environment is decided at RUNTIME instead, from the hostname the page
+// was actually loaded from:
+//   - localhost / 127.0.0.1 / ::1  -> LOCAL Supabase project only (see local.config.js, gitignored)
+//   - anything else (Vercel)       -> PRODUCTION Supabase project (hardcoded below, as before)
+//
+// A local override file (local.config.js, loaded by index.html before this script, gitignored —
+// see local.config.example.js for the template) supplies the local project's URL/anon key. If it's
+// missing, or if it ever somehow resolves to the production project, app init is BLOCKED with a
+// visible error instead of silently falling back to real Adtechinno data.
+const PRODUCTION_SUPABASE_URL = 'https://jceiajlgymtvpviebfnk.supabase.co';
+const PRODUCTION_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjZWlhamxneW10dnB2aWViZm5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NTQ2NzcsImV4cCI6MjA5MTUzMDY3N30.gGmc7kL01FD8rRmZC1wiLFHgn5Wlbn0Lmp3IY9C2ODs';
+const PRODUCTION_SUPABASE_HOST = 'jceiajlgymtvpviebfnk.supabase.co';
+
+const IS_LOCAL_HOST = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
+// Populated by local.config.js when present (see local.config.example.js). Never committed — each
+// developer points this at their own `supabase start` instance.
+const LOCAL_SUPABASE_CONFIG = window.__ADTECH_LOCAL_SUPABASE__ || null;
+
+// Renders a full-screen, unmissable error and halts the rest of this script. Used only for the
+// local/production misconfiguration cases below — this is a hard stop, not a warning.
+function blockAppInitialization(title, message) {
+    const render = () => {
+        document.documentElement.innerHTML = `<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#1a0505;color:#fecaca;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;box-sizing:border-box;">
+            <div style="max-width:640px;background:#2a0808;border:1px solid #7f1d1d;border-radius:12px;padding:32px;box-shadow:0 10px 40px rgba(0,0,0,0.5);">
+                <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#fca5a5;margin-bottom:10px;">⛔ Configuration Error — App Blocked</div>
+                <h1 style="margin:0 0 14px;font-size:20px;color:#fff;">${title}</h1>
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#fecaca;white-space:pre-line;">${message}</p>
+            </div>
+        </body>`;
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
+    else render();
+    throw new Error(`[Creative OS blocked] ${title}: ${message}`);
+}
+
+let SUPABASE_URL;
+let SUPABASE_ANON_KEY;
+
+if (IS_LOCAL_HOST) {
+    if (!LOCAL_SUPABASE_CONFIG || !LOCAL_SUPABASE_CONFIG.url || !LOCAL_SUPABASE_CONFIG.anonKey) {
+        blockAppInitialization(
+            'Local Supabase not configured',
+            "You're on localhost, so Creative OS refuses to fall back to the production database.\n\nCopy local.config.example.js to local.config.js and fill in the URL/anon key from your local `supabase start` (or `supabase status`), then reload."
+        );
+    }
+    SUPABASE_URL = LOCAL_SUPABASE_CONFIG.url;
+    SUPABASE_ANON_KEY = LOCAL_SUPABASE_CONFIG.anonKey;
+} else {
+    SUPABASE_URL = PRODUCTION_SUPABASE_URL;
+    SUPABASE_ANON_KEY = PRODUCTION_SUPABASE_ANON_KEY;
+}
+
+// Hard safety guard: localhost must never end up pointed at the production project, however that
+// happened (a stale/miscopied local.config.js, a typo, etc.) — block instead of silently running
+// local development against real company data.
+if (IS_LOCAL_HOST) {
+    let resolvedHost = '';
+    try { resolvedHost = new URL(SUPABASE_URL).hostname; } catch(e) {}
+    if (resolvedHost === PRODUCTION_SUPABASE_HOST) {
+        blockAppInitialization(
+            'localhost is pointing at PRODUCTION Supabase',
+            `local.config.js resolves to the production project (${resolvedHost}).\n\nRefusing to start — this would run local development against real Adtechinno data. Point local.config.js at your local Supabase instance instead.`
+        );
+    }
+}
+
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const GAS_API = 'https://script.google.com/macros/s/AKfycbwKNzX9BsgsTz2Cu-L_egPvrwKe-hrcsVMSEAxVy7sDgdCYd8TYyzWAnxJwjf1wOlXx/exec';
+// Subtle on-screen indicator so nobody mistakes a local session for production — localhost only.
+if (IS_LOCAL_HOST) {
+    const showLocalDbBadge = () => {
+        const badge = document.createElement('div');
+        badge.textContent = 'DEV · LOCAL DATABASE';
+        badge.style.cssText = 'position:fixed;bottom:12px;left:12px;z-index:999999;background:#111827;color:#facc15;font:700 11px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:0.06em;padding:6px 10px;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,0.35);pointer-events:none;opacity:0.92;';
+        document.body.appendChild(badge);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showLocalDbBadge);
+    else showLocalDbBadge();
+}
+
+// AdTechinno AutoPlaybook — new standalone deployment (2026-08-19), replacing an earlier deployment
+// that was returning broken/non-CORS responses to every caller (reproduced identically from
+// localhost and the live production origin — a third-party outage unrelated to, and not caused by,
+// the local/production Supabase separation). Verified with a live POST of the real
+// generate_playbook payload before this URL was put here: real JSON back, status "success", a
+// genuine docs.google.com/presentation Slides URL.
+const PRODUCTION_GAS_API = 'https://script.google.com/macros/s/AKfycbyplyMgXSxmbF2Zu2AmNKejV2bBKWApJPa6OpgSjy-dpTMK_lryjxNbpnYbsd5ESYVn/exec';
+// Auto Generate Playbook (generatePlaybook() -> gasPost()) is the ONLY thing that calls GAS_API. On
+// localhost only, this points at a small local mock instead (see local-gas-mock-server.py) purely
+// so the Playbook button can be exercised during local development without depending on external
+// state or creating real Slides decks; production always uses the real URL above. Override the
+// mock's address via window.__ADTECH_LOCAL_GAS_API__ in local.config.js if you run it on a
+// different port.
+const LOCAL_GAS_API_DEFAULT = 'http://127.0.0.1:8787/exec';
+const GAS_API = IS_LOCAL_HOST ? (window.__ADTECH_LOCAL_GAS_API__ || LOCAL_GAS_API_DEFAULT) : PRODUCTION_GAS_API;
+// TELEGRAM_API is a separate, differently-deployed script that Auto Generate Playbook never calls
+// (grep confirms: only submit/approve/status-change flows call it) — left untouched, real, and
+// unmocked. Those flows are unrelated to this fix and still hit the real Telegram bot from
+// localhost if exercised, exactly as before — a pre-existing, separately-flagged residual risk, not
+// something this change touches either way.
 const TELEGRAM_API = 'https://script.google.com/macros/s/AKfycbyC-UgaT5QWgaWqfAQN2K-tRE2BhFYumAWzDxM6GBApTddvI9SmQHcAyMoh1sN2UML1/exec';
 
 let PIC_LIST = [];
@@ -14,12 +115,20 @@ let дизайнериID = [];
 let allStaffMY = [];
 let allStaffID = [];
 let globalTeamMembers = [];
+let lastTeamMembersFetchAt = 0; // ms epoch — see fetchSupabaseDataImpl's dedupe against the pre-boot fetch
 
 let globalData = [];
 let globalTeamStatus = [];
 let globalHandovers = [];
 let globalActivityLogs = [];
 let globalNoteLogs = [];
+// job_id -> note count, seeded by a lightweight bulk fetch (see fetchNoteCountsForCurrentAccess)
+// so board cards can show an accurate badge without pulling every note's full content into memory.
+let noteCountByJobId = new Map();
+// Cached result of the non-admin "which columns exist for role-based access filtering" probe (see
+// fetchCreativeRequestsForCurrentAccess) so we only ever run that detection query once per session
+// instead of on every single full sync.
+let cachedCreativeRequestRoleFields = null;
 let globalNotifications = [];
 let taskNoteMentions = {}; // job_id -> Set of names picked via the '@' autocomplete on that note's textarea
 let editingNoteId = null; // id of the task_note_logs row currently open for inline edit, if any
@@ -2253,15 +2362,25 @@ async function fetchCreativeRequestsForCurrentAccess() {
     const knownLegacyFields = ['assignee', 'requester_name'];
     let availableRoleFields = knownLegacyFields;
 
-    try {
-        const { data: sampleRows } = await supabaseClient
-            .from('creative_requests')
-            .select('*')
-            .limit(1);
-        const sample = Array.isArray(sampleRows) ? (sampleRows[0] || {}) : {};
-        const detectedFields = fullRoleFields.filter(field => Object.prototype.hasOwnProperty.call(sample, field));
-        if (detectedFields.length) availableRoleFields = detectedFields;
-    } catch(e) {}
+    // Which of these columns actually exist never changes during a session (it's a schema fact,
+    // not data), so this probe used to fire a `select('*').limit(1)` on every single full sync —
+    // once cached, it never needs to run again this session.
+    if (cachedCreativeRequestRoleFields) {
+        availableRoleFields = cachedCreativeRequestRoleFields;
+    } else {
+        try {
+            const { data: sampleRows } = await supabaseClient
+                .from('creative_requests')
+                .select('*')
+                .limit(1);
+            const sample = Array.isArray(sampleRows) ? (sampleRows[0] || {}) : {};
+            const detectedFields = fullRoleFields.filter(field => Object.prototype.hasOwnProperty.call(sample, field));
+            if (detectedFields.length) {
+                availableRoleFields = detectedFields;
+                cachedCreativeRequestRoleFields = detectedFields;
+            }
+        } catch(e) {}
+    }
 
     const fullFilter = buildLegacyCreativeRequestAccessFilter(availableRoleFields);
     const legacyFilter = buildLegacyCreativeRequestAccessFilter(knownLegacyFields);
@@ -2282,44 +2401,107 @@ function filterTaskScopedRowsForCurrentAccess(rows = []) {
     return list.filter(row => allowedJobIds.has(String(row.job_id || '')));
 }
 
+/**
+ * This used to eagerly pull up to 5000 rows x full columns from BOTH task_activity_logs and
+ * task_note_logs on every single sync (initial load, every realtime tick, every tab-visibility
+ * refresh) just so board cards could show a note-count badge and the detail modal had history
+ * pre-warmed. That was the single largest source of Supabase egress in the app.
+ *
+ * Now: note counts for cards come from a lightweight job_id-only bulk query below (no note text,
+ * actor, or timestamps transferred). Full per-task activity/note history is loaded on demand only
+ * when that task's detail modal is opened (see fetchTaskLogsForJob) or when an admin explicitly
+ * exports the report pack (see fetchAndMergeTaskLogs). The Settings "recent changes" widget pulls
+ * its own small slice (see fetchRecentActivityForSettings).
+ */
 async function fetchTaskRelatedLogsForCurrentAccess() {
-    const localActivity = filterTaskScopedRowsForCurrentAccess(getLocalActivityLogs().map(normalizeLogRow));
-    const localNotes = filterTaskScopedRowsForCurrentAccess(getLocalNoteLogs().map(normalizeNoteRow));
+    await fetchNoteCountsForCurrentAccess();
+}
+
+async function fetchNoteCountsForCurrentAccess() {
     const authorisedJobIds = [...new Set((globalData || []).map(task => String(task.job_id || '')).filter(Boolean))];
+    if (!authorisedJobIds.length) { noteCountByJobId = new Map(); return; }
     const shouldNarrow = !(hasAdminAccess() || isSuperAdmin);
 
     try {
-        if (shouldNarrow && !authorisedJobIds.length) {
-            globalActivityLogs = localActivity;
-        } else {
-            let activityQuery = supabaseClient
-                .from('task_activity_logs')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(5000);
-            if (shouldNarrow) activityQuery = activityQuery.in('job_id', authorisedJobIds);
-            const { data: activityData, error: activityError } = await activityQuery;
-            globalActivityLogs = activityError ? localActivity : filterTaskScopedRowsForCurrentAccess(dedupeActivityLogRows([...(activityData || []).map(normalizeLogRow), ...localActivity]));
-        }
+        let noteQuery = supabaseClient.from('task_note_logs').select('job_id');
+        if (shouldNarrow) noteQuery = noteQuery.in('job_id', authorisedJobIds);
+        const { data, error } = await noteQuery;
+        if (error) throw error;
+        const map = new Map();
+        (data || []).forEach(row => {
+            const key = String(row.job_id || '');
+            if (key) map.set(key, (map.get(key) || 0) + 1);
+        });
+        noteCountByJobId = map;
     } catch(e) {
-        globalActivityLogs = localActivity;
+        console.log('Note count fetch failed:', e.message);
     }
+}
+
+/**
+ * Loads full activity + note history for a specific set of tasks and merges it into the
+ * globalActivityLogs/globalNoteLogs caches that getTaskLogs()/getTaskNoteLogs() read from — used
+ * both for opening a single task's detail modal and for the admin report export (many tasks at
+ * once). Chunked because a large `.in()` list can hit URL length limits.
+ */
+async function fetchAndMergeTaskLogs(jobIds = []) {
+    const ids = [...new Set((jobIds || []).map(id => String(id || '')).filter(Boolean))];
+    if (!ids.length) return;
+    const idSet = new Set(ids);
+    const CHUNK = 150;
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
 
     try {
-        if (shouldNarrow && !authorisedJobIds.length) {
-            globalNoteLogs = localNotes;
-        } else {
-            let noteQuery = supabaseClient
-                .from('task_note_logs')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(5000);
-            if (shouldNarrow) noteQuery = noteQuery.in('job_id', authorisedJobIds);
-            const { data: noteData, error: noteError } = await noteQuery;
-            globalNoteLogs = noteError ? localNotes : filterTaskScopedRowsForCurrentAccess(dedupeNoteLogRows([...(noteData || []).map(normalizeNoteRow), ...localNotes]));
-        }
+        const [activityChunks, noteChunks] = await Promise.all([
+            Promise.all(chunks.map(chunk => supabaseClient.from('task_activity_logs').select('*').in('job_id', chunk).order('created_at', { ascending: false }))),
+            Promise.all(chunks.map(chunk => supabaseClient.from('task_note_logs').select('*').in('job_id', chunk).order('created_at', { ascending: false })))
+        ]);
+
+        const freshActivity = activityChunks.flatMap(r => (r.error ? [] : (r.data || []))).map(normalizeLogRow);
+        const freshNotes = noteChunks.flatMap(r => (r.error ? [] : (r.data || []))).map(normalizeNoteRow);
+
+        const localActivity = filterTaskScopedRowsForCurrentAccess(getLocalActivityLogs().map(normalizeLogRow)).filter(l => idSet.has(l.job_id));
+        const localNotes = filterTaskScopedRowsForCurrentAccess(getLocalNoteLogs().map(normalizeNoteRow)).filter(l => idSet.has(l.job_id));
+
+        globalActivityLogs = dedupeActivityLogRows([
+            ...freshActivity, ...localActivity,
+            ...(globalActivityLogs || []).filter(l => !idSet.has(l.job_id))
+        ]);
+        globalNoteLogs = dedupeNoteLogRows([
+            ...freshNotes, ...localNotes,
+            ...(globalNoteLogs || []).filter(l => !idSet.has(l.job_id))
+        ]);
+
+        const countMap = noteCountByJobId || new Map();
+        const freshNoteCountByJob = new Map();
+        freshNotes.forEach(n => freshNoteCountByJob.set(n.job_id, (freshNoteCountByJob.get(n.job_id) || 0) + 1));
+        ids.forEach(id => countMap.set(id, freshNoteCountByJob.get(id) || 0));
+        noteCountByJobId = countMap;
     } catch(e) {
-        globalNoteLogs = localNotes;
+        console.warn('Task log fetch failed:', e.message);
+    }
+}
+
+// Loads full activity + note history for exactly one task — called when its detail modal opens.
+async function fetchTaskLogsForJob(jobID) {
+    if (!jobID) return;
+    await fetchAndMergeTaskLogs([jobID]);
+}
+
+// Small bounded slice for the Settings "recent changes" widget — that only ever shows the latest
+// 4 entries, so there's no reason to hold the whole activity table in memory for it.
+async function fetchRecentActivityForSettings() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('task_activity_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(10);
+        if (error) throw error;
+        globalActivityLogs = dedupeActivityLogRows([...(data || []).map(normalizeLogRow), ...(globalActivityLogs || [])]);
+    } catch(e) {
+        console.log('Recent activity fetch failed:', e.message);
     }
 }
 
@@ -2771,7 +2953,14 @@ function showPage(id) {
     }
 
     // Render semula data mengikut tab yang aktif
-    if (id === 'settings') renderSettingsPage();
+    if (id === 'settings') {
+        renderSettingsPage();
+        // "Recent changes" only needs the latest handful of entries — fetch that small slice
+        // on demand instead of keeping the whole activity log table resident in memory.
+        if (typeof fetchRecentActivityForSettings === 'function') {
+            fetchRecentActivityForSettings().then(() => { if (document.getElementById('settings')?.classList.contains('active')) renderSettingsPage(); });
+        }
+    }
     if (id === 'team-review') {
         renderTeamReviewPage();
         // Realtime pushes cover most updates, but a fresh fetch on every tab visit means admin
@@ -3280,12 +3469,20 @@ async function fetchSupabaseDataImpl(force = false, silent = false) {
         await fetchClientsList();
 
         // 🌟 LOGIK BARU: Tarik senarai nama staf dari Supabase
-        try {
-            const { data: teamData, error: teamError } = await supabaseClient.from('team_members').select('*').order('name', { ascending: true });
-            if (!teamError && teamData) {
-                hydrateTeamCollections(teamData);
-            }
-        } catch(e) { console.error("Gagal load senarai team:", e.message); }
+        // Skipped when the pre-boot fetch (DOMContentLoaded, before login) already loaded this
+        // moments ago — the login flow calls this (with force=true) right after that pre-boot
+        // fetch, and team roster changes rarely enough that re-pulling it a second time within a
+        // few seconds is pure waste. Recency check applies even when force=true for that reason;
+        // an explicit refresh click more than 10s after the last pull still gets fresh data.
+        if (Date.now() - lastTeamMembersFetchAt > 10000) {
+            try {
+                const { data: teamData, error: teamError } = await supabaseClient.from('team_members').select('*').order('name', { ascending: true });
+                if (!teamError && teamData) {
+                    hydrateTeamCollections(teamData);
+                    lastTeamMembersFetchAt = Date.now();
+                }
+            } catch(e) { console.error("Gagal load senarai team:", e.message); }
+        }
 
         try {
             const { data: leaveData } = await supabaseClient.from('team_leaves').select('*');
@@ -3319,19 +3516,7 @@ async function fetchSupabaseDataImpl(force = false, silent = false) {
         const newDataString = JSON.stringify(globalData);
 
         if (oldDataString !== newDataString || force) {
-            if(document.getElementById('dashboard').classList.contains('active')) renderDashboard();
-            if(document.getElementById('workload').classList.contains('active') || document.getElementById('done').classList.contains('active')) renderBoards();
-            // Reviewers (non-admin) never get anything new from fetchTeamReviewData() — it's a
-            // no-op for them — so re-rendering here on every unrelated realtime tick (someone
-            // dragging a task elsewhere, another team member's note, etc.) only tore down and
-            // rebuilt their in-progress wizard for no reason, replaying its entrance animation
-            // and reading as constant "blinking". Only admin has anything worth refreshing here.
-            if(document.getElementById('team-review')?.classList.contains('active') && hasSuperAdminAccess()) renderTeamReviewPage();
-            if(document.getElementById('leave').classList.contains('active')) {
-                if(typeof renderLeaveHistory === 'function') renderLeaveHistory();
-                // PAKSA RENDER HANDOVER BILA TAB INI AKTIF
-                if(typeof renderHandoverList === 'function') renderHandoverList();
-            }
+            renderActiveViewsAfterTaskDataChange();
         }
 
     } catch (e) {
@@ -3346,22 +3531,152 @@ async function fetchSupabaseDataImpl(force = false, silent = false) {
     }
 } // <--- Pastikan ada kurungan tutup untuk fetchSupabaseData
 
-// 🌟 FUNGSI BARU: SUPABASE REAL-TIME LISTENER (MAGIC SYNC)
+// 🌟 SUPABASE REAL-TIME LISTENER (MAGIC SYNC)
+//
+// This used to treat every single realtime event — on any of 8 tables — as a signal to re-run the
+// ENTIRE fetchSupabaseData cascade: clients, team members, leaves, handovers, team review, the
+// whole creative_requests table, and (before the log-loading fix above) up to 5000 rows each of
+// activity/note logs. One person adding a note anywhere triggered that whole cascade for every
+// open browser tab. Now each table patches only the state it actually owns, and only the views
+// that could show something different re-render.
 let isRealtimeSubscribed = false;
-let realtimeRefreshDebounceTimer = null;
 
-/**
- * A single user action often touches more than one table (e.g. saving a note inserts into
- * task_note_logs AND task_activity_logs, moving a card updates creative_requests AND logs
- * activity) — each touched table fires its own postgres_changes event below. Debouncing coalesces
- * a burst of events arriving within ~400ms into a single fetch instead of one per table.
- */
-function scheduleRealtimeRefresh() {
-    if (realtimeRefreshDebounceTimer) clearTimeout(realtimeRefreshDebounceTimer);
-    realtimeRefreshDebounceTimer = setTimeout(() => {
-        realtimeRefreshDebounceTimer = null;
-        fetchSupabaseData(true, true);
-    }, 900);
+// Re-renders exactly what the old fetchSupabaseDataImpl re-rendered after a task-data change —
+// shared by the full sync path and the lightweight realtime patch path below.
+function renderActiveViewsAfterTaskDataChange() {
+    if(document.getElementById('dashboard').classList.contains('active')) renderDashboard();
+    if(document.getElementById('workload').classList.contains('active') || document.getElementById('done').classList.contains('active')) renderBoards();
+    if(document.getElementById('team-review')?.classList.contains('active') && hasSuperAdminAccess()) renderTeamReviewPage();
+    if(document.getElementById('leave').classList.contains('active')) {
+        if(typeof renderLeaveHistory === 'function') renderLeaveHistory();
+        if(typeof renderHandoverList === 'function') renderHandoverList();
+    }
+}
+
+let taskRealtimePatchDebounceTimer = null;
+// creative_requests postgres_changes payloads already carry the full new row (Supabase logical
+// replication always sends the complete row for INSERT/UPDATE, regardless of replica identity) —
+// so a change can be applied straight from the payload with zero extra network round-trip. Several
+// patches can land within milliseconds of each other (e.g. a bulk PIC reassignment); the render
+// pass is debounced so a burst still repaints the DOM only once, but data patches apply immediately.
+function scheduleTaskRealtimeRerender() {
+    if (taskRealtimePatchDebounceTimer) clearTimeout(taskRealtimePatchDebounceTimer);
+    taskRealtimePatchDebounceTimer = setTimeout(() => {
+        taskRealtimePatchDebounceTimer = null;
+        closeDetailModalIfCurrentTaskRestricted();
+        renderActiveViewsAfterTaskDataChange();
+        const modal = document.getElementById('globalDetailModal');
+        if (modal && modal.classList.contains('show') && modal.dataset.currentJobId) {
+            openDetailModal(modal.dataset.currentJobId, true);
+        }
+    }, 150);
+}
+
+function removeTaskFromGlobalData(jobId) {
+    const idx = (globalData || []).findIndex(t => String(t.job_id || '') === jobId);
+    if (idx !== -1) globalData.splice(idx, 1);
+}
+
+// Same authorisation predicate filterTasksForCurrentAccess() applies per-row, without its
+// lastAssignedRegionVisibility side effect (which is meant to summarise a whole-dataset pass, not
+// a single realtime row) and without region filtering — globalData itself is always authorisation-
+// filtered only, with region filtering applied later at render time (the full sync populates it via
+// filterTasksForCurrentAccess(data, { regionFilter: 'all' }); mirror that here).
+function isTaskAuthorisedForCurrentAccess(task) {
+    return hasAdminAccess() || isSuperAdmin || canCurrentUserViewTask(task);
+}
+
+function upsertTaskIntoGlobalData(row) {
+    if (!row || !row.job_id) return;
+    const jobId = String(row.job_id);
+    // Re-apply the exact same role authorisation this row would have gone through had it arrived
+    // via the normal filtered fetch — a realtime push bypasses that server-side filter, so this is
+    // what keeps a regular creative user's browser from holding tasks that aren't theirs.
+    if (!isTaskAuthorisedForCurrentAccess(row)) {
+        removeTaskFromGlobalData(jobId);
+        return;
+    }
+    const idx = (globalData || []).findIndex(t => String(t.job_id || '') === jobId);
+    if (idx !== -1) globalData[idx] = row;
+    else globalData.push(row);
+}
+
+function applyCreativeRequestRealtimeChange(payload) {
+    const eventType = payload.eventType || payload.event;
+    const jobId = String((payload.new && payload.new.job_id) || (payload.old && payload.old.job_id) || '');
+    if (!jobId) return; // nothing we can safely patch — the next manual/tab-visible sync will catch it up
+    if (eventType === 'DELETE') {
+        removeTaskFromGlobalData(jobId);
+    } else {
+        upsertTaskIntoGlobalData(payload.new);
+    }
+    globalData = deduplicateTasks(globalData);
+    scheduleTaskRealtimeRerender();
+}
+
+// Small ancillary tables (leaves, handovers) — patch just that table instead of the whole cascade.
+let leaveRealtimeDebounceTimer = null;
+function scheduleTeamLeaveRealtimeRefresh() {
+    if (leaveRealtimeDebounceTimer) clearTimeout(leaveRealtimeDebounceTimer);
+    leaveRealtimeDebounceTimer = setTimeout(async () => {
+        leaveRealtimeDebounceTimer = null;
+        try {
+            const { data } = await supabaseClient.from('team_leaves').select('*');
+            if (data) globalTeamStatus = data.map(row => ({
+                Name: row.name, Status: row.status || "", Start_Date: row.start_date || "", End_Date: row.end_date || "", Passcode: row.passcode || ""
+            }));
+        } catch(e) { console.log('Team leave refresh failed:', e.message); }
+        if (document.getElementById('dashboard')?.classList.contains('active')) renderDashboard();
+        if (document.getElementById('leave')?.classList.contains('active') && typeof renderLeaveHistory === 'function') renderLeaveHistory();
+    }, 400);
+}
+
+let handoverRealtimeDebounceTimer = null;
+function scheduleHandoverRealtimeRefresh() {
+    if (handoverRealtimeDebounceTimer) clearTimeout(handoverRealtimeDebounceTimer);
+    handoverRealtimeDebounceTimer = setTimeout(async () => {
+        handoverRealtimeDebounceTimer = null;
+        try {
+            const { data } = await supabaseClient.from('handover_logs').select('*');
+            if (data) globalHandovers = data;
+        } catch(e) { console.log('Handover refresh failed:', e.message); }
+        if (document.getElementById('leave')?.classList.contains('active') && typeof renderHandoverList === 'function') renderHandoverList();
+    }, 400);
+}
+
+let teamReviewRealtimeDebounceTimer = null;
+function scheduleTeamReviewRealtimeRefresh() {
+    if (teamReviewRealtimeDebounceTimer) clearTimeout(teamReviewRealtimeDebounceTimer);
+    teamReviewRealtimeDebounceTimer = setTimeout(async () => {
+        teamReviewRealtimeDebounceTimer = null;
+        // fetchTeamReviewData() already no-ops for non-admin viewers beyond trimming their own
+        // active assignment, so this is cheap for the common case.
+        if (typeof fetchTeamReviewData === 'function') await fetchTeamReviewData();
+        if (document.getElementById('team-review')?.classList.contains('active') && hasSuperAdminAccess()) renderTeamReviewPage();
+    }, 400);
+}
+
+// task_activity_logs / task_note_logs: history for a task loads on demand (see fetchTaskLogsForJob)
+// — a realtime event on these tables no longer triggers any fetch. If the affected task's detail
+// modal happens to be open right now, refresh just that task's history in place; otherwise just
+// keep the lightweight note-count badge roughly in sync (no query either way).
+function handleTaskLogRealtimeChange(table, payload) {
+    const row = payload.new || payload.old;
+    const jobId = String(row?.job_id || '');
+    if (!jobId) return;
+    const eventType = payload.eventType || payload.event;
+
+    if (table === 'task_note_logs') {
+        const current = noteCountByJobId.get(jobId) || 0;
+        if (eventType === 'INSERT') noteCountByJobId.set(jobId, current + 1);
+        else if (eventType === 'DELETE') noteCountByJobId.set(jobId, Math.max(0, current - 1));
+    }
+
+    const modal = document.getElementById('globalDetailModal');
+    const isOpenForThisJob = modal && modal.classList.contains('show') && modal.dataset.currentJobId === jobId;
+    if (isOpenForThisJob) {
+        fetchTaskLogsForJob(jobId).then(() => openDetailModal(jobId, true));
+    }
 }
 
 function setupRealtimeSubscription() {
@@ -3370,22 +3685,19 @@ function setupRealtimeSubscription() {
     supabaseClient
         .channel('adtech-live-sync')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'creative_requests' }, (payload) => {
-            console.log('Magik Real-Time: Perubahan dikesan pada tiket!', payload);
-            scheduleRealtimeRefresh();
+            applyCreativeRequestRealtimeChange(payload);
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_leaves' }, (payload) => {
-            console.log('Magik Real-Time: Perubahan cuti dikesan!', payload);
-            scheduleRealtimeRefresh();
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'handover_logs' }, (payload) => {
-            console.log('Magik Real-Time: Perubahan handover dikesan!', payload);
-            scheduleRealtimeRefresh();
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_cycles' }, () => scheduleRealtimeRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_assignments' }, () => scheduleRealtimeRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_responses' }, () => scheduleRealtimeRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_activity_logs' }, () => scheduleRealtimeRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_client_waiting_periods' }, () => scheduleRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_leaves' }, () => scheduleTeamLeaveRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'handover_logs' }, () => scheduleHandoverRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_cycles' }, () => scheduleTeamReviewRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_assignments' }, () => scheduleTeamReviewRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_review_responses' }, () => scheduleTeamReviewRealtimeRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_activity_logs' }, (payload) => handleTaskLogRealtimeChange('task_activity_logs', payload))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_note_logs' }, (payload) => handleTaskLogRealtimeChange('task_note_logs', payload))
+        // task_client_waiting_periods rows are always written alongside a creative_requests update
+        // in the same user action (see saveClientReviewMoveUndo / awaiting-client flows), so the
+        // creative_requests event above already patches and re-renders everything this table could
+        // affect — no separate fetch needed here.
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'task_notifications' }, (payload) => handleIncomingTaskNotification(payload))
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
@@ -3439,11 +3751,19 @@ function getInternalDueBackfillRows(tasks = []) {
     });
 }
 
+// Set for the rest of the session the moment we confirm creative_requests.internal_due_date
+// doesn't exist in this environment's schema — see the probe in maybeAutoBackfillInternalDueDates.
+// When true, every candidate task would silently no-op-write (see saveCreativeRequestStatusPayload's
+// fallback cascade) and get logged as "backfilled" anyway, forever, on every sync. That was the
+// actual root cause of the duplicate-log noise: not a race, but a schema gap the write path was
+// masking. Once known, there is nothing more to gain by retrying this session.
+let internalDueBackfillSchemaUnavailable = false;
+
 async function maybeAutoBackfillInternalDueDates({ silent = true, force = false } = {}) {
-    if (!hasDeadlineEditAccess() || internalDueBackfillInFlight) return { saved: 0, skipped: 0, errors: [] };
+    if (!hasDeadlineEditAccess() || internalDueBackfillInFlight || internalDueBackfillSchemaUnavailable) return { saved: 0, skipped: 0, errors: [] };
     const rows = getInternalDueBackfillRows(globalData || []);
     const canGenerate = rows.filter(row => row.can_generate).slice(0, INTERNAL_DUE_BACKFILL_BATCH_LIMIT);
-    const skipped = rows.length - canGenerate.length;
+    let skipped = rows.length - canGenerate.length;
     if (!canGenerate.length) return { saved: 0, skipped, errors: [] };
 
     const signature = canGenerate.map(row => `${row.job_id}:${row.suggested_internal_due}:${row.buffer_days}`).join('|');
@@ -3454,8 +3774,45 @@ async function maybeAutoBackfillInternalDueDates({ silent = true, force = false 
     const errors = [];
     let saved = 0;
 
+    // Close a staleness race that could otherwise write (and log) the same "backfill" repeatedly:
+    // globalData can be a few seconds to a few minutes old — a task this pass thinks is missing
+    // an internal due date may already have had one written by a concurrent sync, another open
+    // tab, or a manual edit. Re-check the actual current value for just these candidates
+    // immediately before writing. This function only ever exists to fill in genuinely missing
+    // dates — it must never re-stamp a date (or create an activity log entry) that's already there.
+    const currentValueByJobId = new Map();
+    try {
+        const { data: freshRows, error: freshError } = await supabaseClient
+            .from('creative_requests')
+            .select('job_id, internal_due_date')
+            .in('job_id', canGenerate.map(row => row.job_id));
+        if (freshError) throw freshError;
+        (freshRows || []).forEach(r => currentValueByJobId.set(String(r.job_id || ''), r.internal_due_date || ''));
+    } catch(e) {
+        if (/column|schema|cache/i.test(e.message || '') && /internal_due_date/i.test(e.message || '')) {
+            // The column itself doesn't exist here — this feature cannot persist anything in this
+            // environment. Disable it for the rest of the session instead of silently no-op-writing
+            // (and activity-logging) the same "backfill" on every sync forever.
+            internalDueBackfillSchemaUnavailable = true;
+            internalDueBackfillInFlight = false;
+            console.warn('Internal due date auto-backfill disabled: creative_requests.internal_due_date column is missing in this Supabase project (run the deadline/internal-due migration to enable it).');
+            return { saved: 0, skipped: rows.length, errors: [] };
+        }
+        // Some other, unrelated read failure — fall back to the in-memory value already known for
+        // each row. Still correct in the common case, just without the extra staleness guard.
+        canGenerate.forEach(row => currentValueByJobId.set(row.job_id, getTaskInternalDueDate(row.task)));
+    }
+
     for (const row of canGenerate) {
         const task = row.task;
+        const currentValue = currentValueByJobId.get(row.job_id) || '';
+        if (currentValue) {
+            // Already has a due date — leave it alone. No UPDATE, no activity log, no updated_at
+            // change, no realtime event.
+            skipped += 1;
+            task.internal_due_date = currentValue;
+            continue;
+        }
         const payload = {
             client_deadline: row.client_deadline || null,
             original_client_deadline: getTaskOriginalClientDeadline(task) || row.client_deadline || null,
@@ -3475,14 +3832,25 @@ async function maybeAutoBackfillInternalDueDates({ silent = true, force = false 
 
         try {
             const result = await saveCreativeRequestStatusPayload(row.job_id, payload, fallbackPayload);
-            Object.assign(task, result.savedFullPayload ? payload : fallbackPayload);
+            if (!result.savedFullPayload) {
+                // The write degraded to a fallback/minimal payload, which for this specific call
+                // means internal_due_date almost certainly did NOT actually persist (every field in
+                // this payload is deadline-related, so the degraded retry can end up updating
+                // nothing at all — see stripDeadlinePayloadFields). Claiming success here is exactly
+                // what caused the same task to get "backfilled" again on every subsequent sync
+                // forever: the in-memory task looked done, the database never agreed, and the next
+                // fresh fetch saw it as missing again. Treat this as skipped, not saved — no
+                // optimistic update, no activity log entry.
+                skipped += 1;
+                continue;
+            }
+            Object.assign(task, payload);
             saved += 1;
             logTaskActivity(row.job_id, 'internal_due_date_backfilled', 'Not set', row.suggested_internal_due, 'Generated from Client Deadline during admin sync', {
                 client_deadline: row.client_deadline,
                 buffer_working_days: row.buffer_days,
                 complexity: row.complexity,
-                lead_time_flag: row.status,
-                saved_full_payload: result.savedFullPayload
+                lead_time_flag: row.status
             });
         } catch(e) {
             errors.push(`${row.job_id}: ${e.message}`);
@@ -8944,6 +9312,10 @@ function getTaskNoteCount(item) {
     if (!item) return 0;
     const logs = getTaskNoteLogs(item.job_id);
     if (logs.length) return logs.length;
+    // Full history for this task hasn't been loaded yet (it loads on demand when the task is
+    // opened) — fall back to the lightweight bulk count fetched alongside the task list.
+    const bulk = (noteCountByJobId || new Map()).get(String(item.job_id || ''));
+    if (bulk != null) return bulk;
     return getTaskNoteValue(item) ? 1 : 0;
 }
 
@@ -10695,11 +11067,24 @@ function openDetailModal(jobID, isUpdate = false) {
             modal.style.display = 'flex';
             modal.offsetHeight;
             modal.classList.add('show');
+            // Notes/activity history for this task loads on demand instead of being kept resident
+            // for every task in memory — the panel above renders instantly from whatever's cached
+            // (often just this session's optimistic entries), then gets patched in place once the
+            // full per-task history lands.
+            loadTaskLogsThenRefreshModal(jobID);
         }
 
     } catch (err) {
         console.error("Ralat masa buka Modal:", err);
         showAppleAlert("Technical Error", "Ada ralat teknikal: " + err.message, { tone: "danger", icon: "alert-triangle" });
+    }
+}
+
+async function loadTaskLogsThenRefreshModal(jobID) {
+    await fetchTaskLogsForJob(jobID);
+    const modal = document.getElementById('globalDetailModal');
+    if (modal && modal.classList.contains('show') && modal.dataset.currentJobId === jobID) {
+        openDetailModal(jobID, true);
     }
 }
 // ========================================================
@@ -13114,13 +13499,17 @@ Use this data for capacity planning and process improvement, not individual blam
 `;
 }
 
-function exportReportPack() {
+async function exportReportPack() {
     if (!hasAdminAccess()) return showAppleAlert("Admin Only", "Please unlock Admin Access first.");
 
     const tasks = getReportingTasks();
     if (!tasks.length) return showAppleAlert("Export Failed", "No tasks available for the current region filter.");
 
     const taskIds = new Set(tasks.map(t => t.job_id));
+    // Full activity/note history is no longer kept resident for every task — load it just for the
+    // tasks in this report, on demand, right before building the CSVs.
+    showNotification('Preparing Export', 'Loading full task history…');
+    await fetchAndMergeTaskLogs([...taskIds]);
     const activityLogs = (globalActivityLogs || []).map(normalizeLogRow).filter(log => taskIds.has(log.job_id));
     const noteLogs = (globalNoteLogs || []).map(normalizeNoteRow).filter(log => taskIds.has(log.job_id));
     const date = new Date().toISOString().split('T')[0];
@@ -13564,6 +13953,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             const { data: teamData } = await supabaseClient.from('team_members').select('*').order('name', { ascending: true });
             if (teamData) {
                 hydrateTeamCollections(teamData);
+                lastTeamMembersFetchAt = Date.now();
             }
         } catch(e) { console.log("Gagal load pre-boot team data:", e.message); }
 
