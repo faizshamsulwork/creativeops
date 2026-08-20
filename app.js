@@ -670,22 +670,107 @@ function hydrateTeamCollections(teamData) {
     renderSettingsTeamList();
 }
 
+// Status codes worth retrying automatically — transport/infra-layer failures where the request
+// most likely never reached (or never got a real answer from) the script, as opposed to a genuine
+// application error the script itself reported.
+const GAS_RETRYABLE_STATUS_CODES = new Set([404, 429, 500, 502, 503, 504]);
+
+/**
+ * POSTs to a Google Apps Script Web App and returns its parsed JSON response.
+ *
+ * A GAS Web App executes doPost() server-side, then 302-redirects the client to a one-time
+ * script.googleusercontent.com/macros/echo?... URL that serves that execution's cached output —
+ * that redirect/echo hop is a separate, extra step from the actual script logic. Diagnosed
+ * 2026-08-20: intermittent "Server responded 404" in production traced to exactly this hop — Apps
+ * Script's own Executions log shows doPost completing normally, but the client still sees a
+ * transient failure fetching the result. Confirmed unrelated to payload content (this endpoint
+ * doesn't even receive a region field).
+ *
+ * Because the SERVER-SIDE execution can have already completed — and, for generate_playbook,
+ * already created a file — by the time the client sees a "failure", blindly retrying would risk
+ * duplicate side effects. Retrying here is only safe because generate_playbook on the Apps Script
+ * side is idempotent by job_id (see GOOGLE-APPS-SCRIPT-PLAYBOOK-SETUP.md) — a retry that lands on
+ * an execution which already created the file gets that existing file's URL back, not a new copy.
+ *
+ * options:
+ *   timeoutMs           — abort a single attempt after this long (default 120000)
+ *   maxRetries           — additional attempts after the first, only for the transient failures
+ *                          listed above (default 0 — no retries, safe default for any future
+ *                          caller that hasn't confirmed its own action is idempotent)
+ *   retryableStatusCodes — override the default transient-status set
+ *   label                — identifies this call in the console lifecycle log
+ */
 async function gasPost(payload, options = {}) {
     const timeoutMs = options.timeoutMs || 120000;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const maxRetries = options.maxRetries || 0;
+    const label = options.label || payload?.action || 'gas_request';
+    const retryableStatusCodes = options.retryableStatusCodes || GAS_RETRYABLE_STATUS_CODES;
 
-    try {
-        const res = await fetch(GAS_API, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload),
-            signal: controller.signal
-        });
-        if (!res.ok) throw new Error(`Server responded ${res.status}`);
-        return res.json();
-    } finally {
-        clearTimeout(timeout);
+    let attempt = 0;
+    while (true) {
+        attempt++;
+        const attemptStartedAt = performance.now();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const logCtx = { label, attempt, maxAttempts: maxRetries + 1 };
+
+        console.log(`[GAS] ${label} — attempt ${attempt}/${maxRetries + 1} started`, logCtx);
+
+        try {
+            const res = await fetch(GAS_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
+            clearTimeout(timeout);
+            const elapsedMs = Math.round(performance.now() - attemptStartedAt);
+
+            // res.url is the FINAL url after any redirect was followed — for a healthy response
+            // this is the script.googleusercontent.com/macros/echo?... address, confirming the
+            // redirect hop itself completed.
+            console.log(`[GAS] ${label} — attempt ${attempt} response`, {
+                ...logCtx, status: res.status, ok: res.ok, redirected: res.redirected, finalUrl: res.url, elapsedMs
+            });
+
+            if (!res.ok) {
+                let bodyPreview = '';
+                try { bodyPreview = (await res.text()).slice(0, 300); } catch(e) {}
+                console.warn(`[GAS] ${label} — attempt ${attempt} non-200 response body`, { ...logCtx, status: res.status, bodyPreview });
+
+                if (retryableStatusCodes.has(res.status) && attempt <= maxRetries) {
+                    const backoffMs = 500 * Math.pow(2, attempt - 1);
+                    console.log(`[GAS] ${label} — retrying after transient ${res.status} in ${backoffMs}ms`, logCtx);
+                    await new Promise(r => setTimeout(r, backoffMs));
+                    continue;
+                }
+                throw new Error(`Server responded ${res.status}`);
+            }
+
+            return await res.json();
+        } catch (e) {
+            clearTimeout(timeout);
+            const elapsedMs = Math.round(performance.now() - attemptStartedAt);
+            const isTimeout = e.name === 'AbortError';
+            // fetch() rejects with a TypeError for a genuine network-level failure (DNS, offline,
+            // connection reset, or — on the old broken deployment — a missing CORS header). Distinct
+            // from AbortError (our own timeout), which is deliberately NOT retried automatically:
+            // the server-side execution may still be running, and stacking a second attempt on top
+            // of one that hasn't actually failed yet is exactly the duplicate-risk case this whole
+            // fix exists to avoid — a timeout surfaces to the user instead (see generatePlaybook()).
+            const isNetworkFailure = !isTimeout && e instanceof TypeError;
+            const reason = isTimeout ? 'timeout' : (isNetworkFailure ? 'network_failure' : (e.message || 'unknown_error'));
+
+            console.warn(`[GAS] ${label} — attempt ${attempt} error`, { ...logCtx, reason, elapsedMs, errorName: e.name, errorMessage: e.message });
+
+            if (isNetworkFailure && attempt <= maxRetries) {
+                const backoffMs = 500 * Math.pow(2, attempt - 1);
+                console.log(`[GAS] ${label} — retrying after network failure in ${backoffMs}ms`, logCtx);
+                await new Promise(r => setTimeout(r, backoffMs));
+                continue;
+            }
+            throw e;
+        }
     }
 }
 
@@ -13866,12 +13951,17 @@ async function generatePlaybook(jobID, client, title, requester) {
 
     timers.push(setTimeout(() => setGeneratingState('Waking generator...', 'Google generator is warming up...'), 4000));
     timers.push(setTimeout(() => setGeneratingState('Copying template...', 'Copying Creative Playbook template...'), 12000));
-    timers.push(setTimeout(() => setGeneratingState('Still working...', 'Google Drive can take a little longer on first run...'), 25000));
+    timers.push(setTimeout(() => setGeneratingState('Still working...', 'Retrying automatically if Google is briefly unavailable...'), 22000));
 
     try {
+        // 30s per attempt, up to 2 retries on transient failures only (see gasPost) — total worst
+        // case ~1.5 minutes if Google is having a bad moment, but a real outage or a genuine
+        // application error still surfaces well before that. Safe to retry here specifically
+        // because generate_playbook is idempotent by job_id on the Apps Script side — see
+        // GOOGLE-APPS-SCRIPT-PLAYBOOK-SETUP.md.
         const res = await gasPost(
             { action: 'generate_playbook', data: { job_id: jobID, client_name: client, project_title: title, requester_name: requester } },
-            { timeoutMs: 90000 }
+            { timeoutMs: 30000, maxRetries: 2, label: `generate_playbook:${jobID}` }
         );
 
         if(res.status === "success") {
@@ -13882,7 +13972,7 @@ async function generatePlaybook(jobID, client, title, requester) {
             btn.style.background = 'var(--green)';
             btn.setAttribute('onclick', `window.open('${res.url}', '_blank')`);
             btn.disabled = false;
-            showNotification('Playbook Generated', `Ready in ${elapsed}s`);
+            showNotification('Playbook Generated', res.existing ? `Found an existing playbook for this job (${elapsed}s)` : `Ready in ${elapsed}s`);
         } else {
             throw new Error(res.message || 'Unknown generator error');
         }
@@ -13891,8 +13981,8 @@ async function generatePlaybook(jobID, client, title, requester) {
         showAppleAlert(
             "Playbook Error",
             isTimeout
-                ? "Generator took more than 90 seconds. Google Apps Script or Drive is likely busy. Please try again, or paste the Playbook link manually if you already created one."
-                : "Failed generating playbook: " + e.message
+                ? "Generator took more than 30 seconds (after retrying) and Google didn't respond in time. Please try again — if a playbook was already created, Auto-Generate will find and reuse it instead of making a duplicate."
+                : "Failed generating playbook after retrying: " + e.message
         );
         btn.innerHTML = originalHtml;
         btn.disabled = false;
