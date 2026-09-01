@@ -17,8 +17,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    <link rel="stylesheet" href="style.css?v=19">
-    <link rel="stylesheet" href="mobile.css" media="(max-width: 992px)">
+    <link rel="stylesheet" href="style.css?v=21">
+    <link rel="stylesheet" href="mobile.css?v=2" media="(max-width: 992px)">
 </head>
 <body>
 
@@ -374,7 +374,7 @@
                 <div class="controls-container">
                     <div class="search-box">
                         <i data-lucide="search"></i>
-                        <input type="text" id="searchWorkload" placeholder="Search Client Name, Job ID, or Assignee..." onkeyup="renderBoards()">
+                        <input type="text" id="searchWorkload" placeholder="Search client, Job ID, or assignee..." onkeyup="renderBoards()">
                     </div>
                 </div>
 
@@ -418,7 +418,7 @@
                 <div class="controls-container" style="flex-direction: column; align-items: stretch; gap: 15px;">
                     <div class="search-box">
                         <i data-lucide="search"></i>
-                        <input type="text" id="searchDone" placeholder="Search Client Name, Job ID, or Assignee..." onkeyup="renderBoards()">
+                        <input type="text" id="searchDone" placeholder="Search client, Job ID, or assignee..." onkeyup="renderBoards()">
                     </div>
 
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
@@ -689,6 +689,11 @@
                         <h3>Pitch Deck Proposal</h3>
                         <p>For high-priority deck beautification, mockups, or concept visuals.</p>
                     </div>
+                    <div class="gateway-card shooting" onclick="selectRequestType('shooting')">
+                        <div class="gateway-icon"><i data-lucide="camera" style="width: 30px; height: 30px;"></i></div>
+                        <h3>Shooting</h3>
+                        <p>For photo/video shoots — from a quick request to shoot-day coordination.</p>
+                    </div>
                 </div>
 
                 <div class="card-form" id="request-form-area" style="display:none; border-left: 1px solid var(--border-main); padding-top: 40px; margin-top: 20px;">
@@ -924,6 +929,230 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
                     </div>
 
                 </div>
+
+                <!-- 🌟 SHOOTING — dedicated single-scroll form (not the Ad-hoc/Monthly/Pitch step wizard above).
+                     Kept short by design: required fields get someone through in ~2-3 minutes, everything else
+                     (talent/props specifics, optional shoot-day details) only appears once it's relevant. -->
+                <div class="card-form shooting-form" id="shooting-form-area" style="display:none; border-left: 1px solid var(--border-main); padding-top: 40px; margin-top: 20px; position: relative;">
+
+                    <button onclick="resetRequestGateway()" style="position: absolute; top: 15px; left: 15px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 0.8rem; font-weight: 600; transition: 0.2s;"><i data-lucide="arrow-left" style="width: 14px;"></i> Back to Options</button>
+
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <span style="background: var(--bg-box); color: #6366f1; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; border: 1px solid var(--border-main); letter-spacing: 0.5px;">SHOOTING REQUEST</span>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 10px; margin-bottom: 0;">Takes about 2-3 minutes. Anything else can be added once the task is created.</p>
+                    </div>
+
+                    <div class="form-progress">
+                        <div class="step-indicator active" id="shoot-ind-1"><div class="step-dot"><i data-lucide="user"></i></div><span class="step-label">Requester</span></div>
+                        <div class="step-indicator" id="shoot-ind-2"><div class="step-dot"><i data-lucide="camera"></i></div><span class="step-label">Shoot</span></div>
+                        <div class="step-indicator" id="shoot-ind-3"><div class="step-dot"><i data-lucide="users"></i></div><span class="step-label">Prep</span></div>
+                    </div>
+
+                    <div class="form-step active" id="shoot-step1">
+                        <h3 class="section-title">1. Requester Information</h3>
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Office / Region</label>
+                                <select id="shootRegion" onchange="populateShootRequesterOptions(); syncShootIdentity();">
+                                    <option value="China">China</option>
+                                    <option value="Indonesia">Indonesia</option>
+                                    <option value="Japan">Japan</option>
+                                    <option value="Malaysia">Malaysia</option>
+                                    <option value="Singapore">Singapore</option>
+                                    <option value="South Korea">South Korea</option>
+                                    <option value="Thailand">Thailand</option>
+                                    <option value="Vietnam">Vietnam</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Requester Name</label>
+                                <!-- Same picker as the sign-in screen: your team's live name list, plus a
+                                     "Not in the list" fallback that reveals a free-text name below. -->
+                                <select id="shootRequesterName" onchange="toggleShootManualName(); syncShootIdentity();">
+                                    <option value="">-- Select Name --</option>
+                                    <option value="manual">Not in the list</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row" id="shootManualNameRow" style="display:none;">
+                            <div class="input-group"><label>Your Name</label><input type="text" id="shootManualName" placeholder="Type your name here..." onchange="syncShootIdentity()"></div>
+                        </div>
+                        <div class="form-navigation" style="justify-content: flex-end;">
+                            <button class="btn-nav btn-next" onclick="goToShootStep(2)">Next Step <i data-lucide="arrow-right"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="form-step" id="shoot-step2">
+                        <h3 class="section-title">2. Project &amp; Shoot Details</h3>
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label>Client</label>
+                                <input type="text" id="shootClient" list="shootClientList" placeholder="Select or type client name..." autocomplete="off">
+                                <datalist id="shootClientList"></datalist>
+                            </div>
+                            <div class="input-group"><label>Project / Campaign</label><input type="text" id="shootProject" placeholder="e.g. Ramadan Hero Video"></div>
+                        </div>
+                        <div class="input-group">
+                            <label>What are we shooting? <small style="color:var(--text-muted); font-weight:500;">(select all that apply)</small></label>
+                            <div class="selection-box" id="shootWhatBox">
+                                <label class="check-item"><input type="checkbox" value="Product Photography" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Product Photography</label>
+                                <label class="check-item"><input type="checkbox" value="Product Video" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Product Video</label>
+                                <label class="check-item"><input type="checkbox" value="Lifestyle / Model Shoot" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Lifestyle / Model Shoot</label>
+                                <label class="check-item"><input type="checkbox" value="Talent / Influencer Content" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Talent / Influencer Content</label>
+                                <label class="check-item"><input type="checkbox" value="Testimonial / UGC Style Video" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Testimonial / UGC Style Video</label>
+                                <label class="check-item"><input type="checkbox" value="Interview / Talking Head" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Interview / Talking Head</label>
+                                <label class="check-item"><input type="checkbox" value="Event Coverage" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Event Coverage</label>
+                                <label class="check-item"><input type="checkbox" value="Corporate / Office Photography" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Corporate / Office Photography</label>
+                                <label class="check-item"><input type="checkbox" value="Behind-the-Scenes (BTS)" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Behind-the-Scenes (BTS)</label>
+                                <label class="check-item"><input type="checkbox" value="Social Media Reel / TikTok" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Social Media Reel / TikTok</label>
+                                <label class="check-item"><input type="checkbox" value="Unboxing Video" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Unboxing Video</label>
+                                <label class="check-item"><input type="checkbox" value="other" onchange="toggleShootCheckboxOther('shootWhatBox','shootWhatOtherRow','shootWhatOther')"> Not in the list</label>
+                            </div>
+                        </div>
+                        <div class="input-group" id="shootWhatOtherRow" style="display:none;">
+                            <label>Please specify</label>
+                            <textarea id="shootWhatOther" rows="2" placeholder="Describe what you're shooting"></textarea>
+                        </div>
+                        <div class="input-group">
+                            <label>Deliverables required <small style="color:var(--text-muted); font-weight:500;">(optional)</small></label>
+                            <select id="shootDeliverables" onchange="toggleShootPresetOther('shootDeliverables')">
+                                <option value="">-- Select Deliverables --</option>
+                                <option value="Product Photos Only">Product Photos Only</option>
+                                <option value="Short-Form Video (Reel/TikTok, under 60s)">Short-Form Video (Reel/TikTok, under 60s)</option>
+                                <option value="Hero / Brand Video (60s+)">Hero / Brand Video (60s+)</option>
+                                <option value="Photos + Short-Form Video Bundle">Photos + Short-Form Video Bundle</option>
+                                <option value="Multiple Cutdowns (e.g. 30s + 15s + 6s)">Multiple Cutdowns (e.g. 30s + 15s + 6s)</option>
+                                <option value="Full Event Coverage (Photos + Video)">Full Event Coverage (Photos + Video)</option>
+                                <option value="Not sure yet - Creative team to advise">Not sure yet - Creative team to advise</option>
+                                <option value="other">Not in the list</option>
+                            </select>
+                        </div>
+                        <div class="input-group" id="shootDeliverablesOtherRow" style="display:none;">
+                            <label>Please specify</label>
+                            <textarea id="shootDeliverablesOther" rows="2" placeholder="Describe the deliverables you need"></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="input-group"><label>Shoot Date</label><input type="date" id="shootDate"></div>
+                            <div class="input-group"><label>Call Time <small style="color:var(--text-muted); font-weight:500;">(optional)</small></label><input type="time" id="shootCallTime"></div>
+                        </div>
+                        <div class="input-group">
+                            <label>Multi-day shoot?</label>
+                            <div class="settings-segmented" id="shootMultiDayToggle">
+                                <button type="button" data-value="no" class="active" onclick="setShootToggle('MultiDay','no')">No</button>
+                                <button type="button" data-value="yes" onclick="setShootToggle('MultiDay','yes'); ensureShootExtraDayRow('shootExtraDaysContainer');">Yes</button>
+                            </div>
+                            <input type="hidden" id="shootMultiDayValue" value="no">
+                        </div>
+                        <div class="input-group" id="shootMultiDayFields" style="display:none;">
+                            <label>Additional Shoot Days <small style="color:var(--text-muted); font-weight:500;">(the date above stays the primary day)</small></label>
+                            <div id="shootExtraDaysContainer"></div>
+                            <button type="button" onclick="addShootExtraDayRow('shootExtraDaysContainer')" class="shoot-add-day-btn"><i data-lucide="plus"></i> Add Another Day</button>
+                        </div>
+                        <div class="input-group">
+                            <label>Location</label>
+                            <select id="shootLocation" onchange="toggleShootPresetOther('shootLocation')">
+                                <option value="">-- Select Location Type --</option>
+                                <option value="In-house Studio">In-house Studio</option>
+                                <option value="Client Premises / Office">Client Premises / Office</option>
+                                <option value="Outdoor / On Location">Outdoor / On Location</option>
+                                <option value="Rented Studio or Venue">Rented Studio or Venue</option>
+                                <option value="Retail / Store Location">Retail / Store Location</option>
+                                <option value="Warehouse / Production Facility">Warehouse / Production Facility</option>
+                                <option value="other">Not in the list</option>
+                            </select>
+                        </div>
+                        <div class="input-group" id="shootLocationOtherRow" style="display:none;">
+                            <label>Please specify</label>
+                            <input type="text" id="shootLocationOther" placeholder="e.g. Studio 3, Bangsar South">
+                        </div>
+                        <div class="input-group"><label>Map Link <small style="color:var(--text-muted); font-weight:500;">(optional)</small></label><input type="text" id="shootMapLink" placeholder="Paste Google Maps link"></div>
+                        <div class="form-navigation">
+                            <button class="btn-nav btn-prev" onclick="goToShootStep(1)"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn-nav btn-next" onclick="goToShootStep(3)">Next Step <i data-lucide="arrow-right"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="form-step" id="shoot-step3">
+                        <h3 class="section-title">3. People &amp; Preparation</h3>
+                        <div class="input-group">
+                            <label>Talent required?</label>
+                            <div class="settings-segmented" id="shootTalentToggle">
+                                <button type="button" data-value="no" class="active" onclick="setShootToggle('Talent','no')">No</button>
+                                <button type="button" data-value="yes" onclick="setShootToggle('Talent','yes')">Yes</button>
+                            </div>
+                            <input type="hidden" id="shootTalentValue" value="no">
+                        </div>
+                        <div class="form-row" id="shootTalentFields" style="display:none;">
+                            <div class="input-group"><label>Talent Name</label><input type="text" id="shootTalentName" placeholder="e.g. Aisyah (influencer)"></div>
+                            <div class="input-group"><label>Talent Status</label><select id="shootTalentStatus"><option>Proposed</option><option>Pending Confirmation</option><option>Confirmed</option></select></div>
+                        </div>
+                        <div class="input-group"><label>On-site AM/SM PIC <small style="color:var(--text-muted); font-weight:500;">(optional — defaults to you)</small></label><input type="text" id="shootOnsitePic" placeholder="Leave blank to default to you"></div>
+
+                        <div class="input-group">
+                            <label>Product / Props required?</label>
+                            <div class="settings-segmented" id="shootPropsToggle">
+                                <button type="button" data-value="no" class="active" onclick="setShootToggle('Props','no')">No</button>
+                                <button type="button" data-value="yes" onclick="setShootToggle('Props','yes')">Yes</button>
+                            </div>
+                            <input type="hidden" id="shootPropsValue" value="no">
+                        </div>
+                        <div class="form-row" id="shootPropsFields" style="display:none;">
+                            <div class="input-group">
+                                <label>What is required?</label>
+                                <select id="shootPropsWhat" onchange="toggleShootPresetOther('shootPropsWhat')">
+                                    <option value="">-- Select Type --</option>
+                                    <option value="Product Samples">Product Samples</option>
+                                    <option value="Packaging / Mockups">Packaging / Mockups</option>
+                                    <option value="Branded Merchandise">Branded Merchandise</option>
+                                    <option value="Props / Set Decoration">Props / Set Decoration</option>
+                                    <option value="Signage / Banners">Signage / Banners</option>
+                                    <option value="Wardrobe / Styling Items">Wardrobe / Styling Items</option>
+                                    <option value="other">Not in the list</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Who is bringing it?</label>
+                                <select id="shootPropsWho" onchange="toggleShootPresetOther('shootPropsWho')">
+                                    <option value="">-- Select --</option>
+                                    <option value="AM / SM (Requester)">AM / SM (Requester)</option>
+                                    <option value="Client">Client</option>
+                                    <option value="Warehouse / Logistics Team">Warehouse / Logistics Team</option>
+                                    <option value="Creative Team">Creative Team</option>
+                                    <option value="Talent / Influencer">Talent / Influencer</option>
+                                    <option value="other">Not in the list</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="input-group" id="shootPropsWhatOtherRow" style="display:none;"><label>Please specify</label><input type="text" id="shootPropsWhatOther" placeholder="e.g. 3 product units, packaging mockup"></div>
+                            <div class="input-group" id="shootPropsWhoOtherRow" style="display:none;"><label>Please specify</label><input type="text" id="shootPropsWhoOther" placeholder="e.g. Regional office to courier over"></div>
+                        </div>
+                        <div class="input-group"><label>Reference / Moodboard / Deck link <small style="color:var(--text-muted); font-weight:500;">(optional)</small></label><input type="text" id="shootRef" placeholder="Paste Pinterest / Drive / Deck link"></div>
+                        <div class="input-group"><label>Important notes / requirements <small style="color:var(--text-muted); font-weight:500;">(optional)</small></label><textarea id="shootNotes" rows="2" placeholder="Anything the Creative team must know upfront"></textarea></div>
+                        <div class="input-group"><label>Client Deadline</label><input type="date" id="shootDeadline"></div>
+
+                        <button type="button" id="shootMoreDetailsBtn" onclick="toggleShootMoreDetails()" style="background: transparent; color: var(--link-color); border: 1px dashed var(--border-main); padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 5px; width: 100%; margin: 25px 0;"><i data-lucide="plus"></i> Add more shoot details</button>
+
+                        <div id="shootMoreDetails" style="display:none;">
+                            <div class="form-row">
+                                <div class="input-group"><label>Estimated End Time</label><input type="time" id="shootEndTime"></div>
+                                <div class="input-group"><label>Wardrobe / Styling</label><input type="text" id="shootWardrobe" placeholder="e.g. Smart casual, brand colours"></div>
+                            </div>
+                            <div class="input-group"><label>Detailed Shot List</label><textarea id="shootShotList" rows="3" placeholder="Shot-by-shot breakdown, if you have one"></textarea></div>
+                            <div class="input-group"><label>Equipment Notes</label><textarea id="shootEquipment" rows="2" placeholder="Anything special the Creative team needs to bring"></textarea></div>
+                            <div class="form-row">
+                                <div class="input-group"><label>Location Access / Parking</label><input type="text" id="shootLocationAccess" placeholder="e.g. Loading bay at back, ask for security"></div>
+                                <div class="input-group"><label>Additional Contacts</label><input type="text" id="shootAdditionalContacts" placeholder="e.g. Venue contact, on-site client contact"></div>
+                            </div>
+                            <div class="input-group"><label>Special Production Notes</label><textarea id="shootProductionNotes" rows="2" placeholder="Anything else worth flagging"></textarea></div>
+                        </div>
+
+                        <div class="form-navigation">
+                            <button class="btn-nav btn-prev" onclick="goToShootStep(2)"><i data-lucide="arrow-left"></i> Back</button>
+                            <button class="btn-nav btn-submit" id="shootSubmitBtn" onclick="submitShootingRequest()"><i data-lucide="send"></i> Submit Shooting Request</button>
+                        </div>
+                    </div>
+                </div>
                    </div>
                     </div> </div> </div> </div> </div>
 
@@ -961,6 +1190,156 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
         <div class="form-navigation" style="margin-top: 25px; border-top: 1px solid var(--border-light); padding-top: 20px;">
             <button class="btn-nav btn-prev" onclick="closeHandoverModal()"><i data-lucide="x"></i> Cancel Leave</button>
             <button class="btn-nav btn-submit" id="btnConfirmHandover" onclick="executeHandover()" style="background: var(--orange);"><i data-lucide="plane"></i> Confirm & Set Leave</button>
+        </div>
+    </div>
+</div>
+<div class="modal-overlay" id="shootEditModal" style="z-index: 8000;">
+    <div class="custom-modal" style="max-width: 640px;">
+        <div class="modal-header">
+            <h3 style="display: flex; align-items: center; gap: 10px;"><i data-lucide="camera" style="color: #6366f1;"></i> Edit Shoot Details</h3>
+            <button type="button" onclick="closeShootEditModal()" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer;"><i data-lucide="x"></i></button>
+        </div>
+        <input type="hidden" id="shootEditJobId">
+
+        <div class="input-group">
+            <label>What are we shooting? <small style="color:var(--text-muted); font-weight:500;">(select all that apply)</small></label>
+            <div class="selection-box" id="seditWhatBox">
+                <label class="check-item"><input type="checkbox" value="Product Photography" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Product Photography</label>
+                <label class="check-item"><input type="checkbox" value="Product Video" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Product Video</label>
+                <label class="check-item"><input type="checkbox" value="Lifestyle / Model Shoot" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Lifestyle / Model Shoot</label>
+                <label class="check-item"><input type="checkbox" value="Talent / Influencer Content" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Talent / Influencer Content</label>
+                <label class="check-item"><input type="checkbox" value="Testimonial / UGC Style Video" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Testimonial / UGC Style Video</label>
+                <label class="check-item"><input type="checkbox" value="Interview / Talking Head" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Interview / Talking Head</label>
+                <label class="check-item"><input type="checkbox" value="Event Coverage" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Event Coverage</label>
+                <label class="check-item"><input type="checkbox" value="Corporate / Office Photography" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Corporate / Office Photography</label>
+                <label class="check-item"><input type="checkbox" value="Behind-the-Scenes (BTS)" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Behind-the-Scenes (BTS)</label>
+                <label class="check-item"><input type="checkbox" value="Social Media Reel / TikTok" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Social Media Reel / TikTok</label>
+                <label class="check-item"><input type="checkbox" value="Unboxing Video" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Unboxing Video</label>
+                <label class="check-item"><input type="checkbox" value="other" onchange="toggleShootCheckboxOther('seditWhatBox','seditWhatOtherRow','seditWhatOther')"> Not in the list</label>
+            </div>
+        </div>
+        <div class="input-group" id="seditWhatOtherRow" style="display:none;">
+            <label>Please specify</label>
+            <textarea id="seditWhatOther" rows="2" placeholder="Describe what you're shooting"></textarea>
+        </div>
+
+        <div class="input-group">
+            <label>Deliverables required <small style="color:var(--text-muted); font-weight:500;">(optional)</small></label>
+            <select id="seditDeliverables" onchange="toggleShootPresetOther('seditDeliverables')">
+                <option value="">-- Select Deliverables --</option>
+                <option value="Product Photos Only">Product Photos Only</option>
+                <option value="Short-Form Video (Reel/TikTok, under 60s)">Short-Form Video (Reel/TikTok, under 60s)</option>
+                <option value="Hero / Brand Video (60s+)">Hero / Brand Video (60s+)</option>
+                <option value="Photos + Short-Form Video Bundle">Photos + Short-Form Video Bundle</option>
+                <option value="Multiple Cutdowns (e.g. 30s + 15s + 6s)">Multiple Cutdowns (e.g. 30s + 15s + 6s)</option>
+                <option value="Full Event Coverage (Photos + Video)">Full Event Coverage (Photos + Video)</option>
+                <option value="Not sure yet - Creative team to advise">Not sure yet - Creative team to advise</option>
+                <option value="other">Not in the list</option>
+            </select>
+        </div>
+        <div class="input-group" id="seditDeliverablesOtherRow" style="display:none;">
+            <label>Please specify</label>
+            <textarea id="seditDeliverablesOther" rows="2" placeholder="Describe the deliverables you need"></textarea>
+        </div>
+
+        <div class="form-row">
+            <div class="input-group"><label>Shoot Date</label><input type="date" id="seditDate"></div>
+            <div class="input-group"><label>Call Time</label><input type="time" id="seditCallTime"></div>
+        </div>
+        <div class="input-group">
+            <label>Multi-day shoot?</label>
+            <div class="settings-segmented" id="seditMultiDayToggle">
+                <button type="button" data-value="no" onclick="setShootEditToggle('MultiDay','no')">No</button>
+                <button type="button" data-value="yes" onclick="setShootEditToggle('MultiDay','yes'); ensureShootExtraDayRow('seditExtraDaysContainer');">Yes</button>
+            </div>
+            <input type="hidden" id="seditMultiDayReq" value="no">
+        </div>
+        <div class="input-group" id="seditMultiDayFields" style="display:none;">
+            <label>Additional Shoot Days <small style="color:var(--text-muted); font-weight:500;">(the date above stays the primary day)</small></label>
+            <div id="seditExtraDaysContainer"></div>
+            <button type="button" onclick="addShootExtraDayRow('seditExtraDaysContainer')" class="shoot-add-day-btn"><i data-lucide="plus"></i> Add Another Day</button>
+        </div>
+
+        <div class="input-group">
+            <label>Location</label>
+            <select id="seditLocation" onchange="toggleShootPresetOther('seditLocation')">
+                <option value="">-- Select Location Type --</option>
+                <option value="In-house Studio">In-house Studio</option>
+                <option value="Client Premises / Office">Client Premises / Office</option>
+                <option value="Outdoor / On Location">Outdoor / On Location</option>
+                <option value="Rented Studio or Venue">Rented Studio or Venue</option>
+                <option value="Retail / Store Location">Retail / Store Location</option>
+                <option value="Warehouse / Production Facility">Warehouse / Production Facility</option>
+                <option value="other">Not in the list</option>
+            </select>
+        </div>
+        <div class="input-group" id="seditLocationOtherRow" style="display:none;">
+            <label>Please specify</label>
+            <input type="text" id="seditLocationOther" placeholder="e.g. Studio 3, Bangsar South">
+        </div>
+        <div class="input-group"><label>Map Link <small style="color:var(--text-muted); font-weight:500;">(optional)</small></label><input type="text" id="seditMapLink" placeholder="Paste Google Maps link"></div>
+        <div class="input-group"><label>On-site AM/SM PIC</label><input type="text" id="seditOnsitePic"></div>
+
+        <div class="input-group">
+            <label>Talent required?</label>
+            <div class="settings-segmented" id="seditTalentToggle">
+                <button type="button" data-value="no" onclick="setShootEditToggle('Talent','no')">No</button>
+                <button type="button" data-value="yes" onclick="setShootEditToggle('Talent','yes')">Yes</button>
+            </div>
+            <input type="hidden" id="seditTalentReq" value="no">
+        </div>
+        <div class="form-row" id="seditTalentFields" style="display:none;">
+            <div class="input-group"><label>Talent Name</label><input type="text" id="seditTalentName"></div>
+            <div class="input-group"><label>Talent Status</label><select id="seditTalentStatus"><option>Proposed</option><option>Pending Confirmation</option><option>Confirmed</option></select></div>
+        </div>
+
+        <div class="input-group">
+            <label>Product / Props required?</label>
+            <div class="settings-segmented" id="seditPropsToggle">
+                <button type="button" data-value="no" onclick="setShootEditToggle('Props','no')">No</button>
+                <button type="button" data-value="yes" onclick="setShootEditToggle('Props','yes')">Yes</button>
+            </div>
+            <input type="hidden" id="seditPropsReq" value="no">
+        </div>
+        <div class="form-row" id="seditPropsFields" style="display:none;">
+            <div class="input-group">
+                <label>What is required?</label>
+                <select id="seditPropsWhat" onchange="toggleShootPresetOther('seditPropsWhat')">
+                    <option value="">-- Select Type --</option>
+                    <option value="Product Samples">Product Samples</option>
+                    <option value="Packaging / Mockups">Packaging / Mockups</option>
+                    <option value="Branded Merchandise">Branded Merchandise</option>
+                    <option value="Props / Set Decoration">Props / Set Decoration</option>
+                    <option value="Signage / Banners">Signage / Banners</option>
+                    <option value="Wardrobe / Styling Items">Wardrobe / Styling Items</option>
+                    <option value="other">Not in the list</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Who is bringing it?</label>
+                <select id="seditPropsWho" onchange="toggleShootPresetOther('seditPropsWho')">
+                    <option value="">-- Select --</option>
+                    <option value="AM / SM (Requester)">AM / SM (Requester)</option>
+                    <option value="Client">Client</option>
+                    <option value="Warehouse / Logistics Team">Warehouse / Logistics Team</option>
+                    <option value="Creative Team">Creative Team</option>
+                    <option value="Talent / Influencer">Talent / Influencer</option>
+                    <option value="other">Not in the list</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="input-group" id="seditPropsWhatOtherRow" style="display:none;"><label>Please specify</label><input type="text" id="seditPropsWhatOther" placeholder="e.g. 3 product units, packaging mockup"></div>
+            <div class="input-group" id="seditPropsWhoOtherRow" style="display:none;"><label>Please specify</label><input type="text" id="seditPropsWhoOther" placeholder="e.g. Regional office to courier over"></div>
+        </div>
+
+        <div class="input-group"><label>Reference / Moodboard / Deck link</label><input type="text" id="seditRef"></div>
+        <div class="input-group"><label>Important notes / requirements</label><textarea id="seditNotes" rows="2"></textarea></div>
+        <div class="input-group"><label>Client Deadline</label><input type="date" id="seditDeadline"></div>
+
+        <div class="form-navigation" style="margin-top: 20px; border-top: 1px solid var(--border-light); padding-top: 20px;">
+            <button class="btn-nav btn-prev" onclick="closeShootEditModal()"><i data-lucide="x"></i> Cancel</button>
+            <button class="btn-nav btn-submit" id="btnSaveShootEdit" onclick="saveShootEditModal()"><i data-lucide="save"></i> Save Changes</button>
         </div>
     </div>
 </div>
@@ -1004,7 +1383,7 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
      uses it — app.js falls back to the production project there. See local.config.example.js. -->
 <script src="local.config.js"></script>
 <script src="rate-card-data.js?v=2"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=21"></script>
 <script src="quote-builder.js?v=2"></script>
 </body>
 </html>

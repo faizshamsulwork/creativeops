@@ -102,6 +102,12 @@ const PRODUCTION_GAS_API = 'https://script.google.com/macros/s/AKfycbyplyMgXSxmb
 // different port.
 const LOCAL_GAS_API_DEFAULT = 'http://127.0.0.1:8787/exec';
 const GAS_API = IS_LOCAL_HOST ? (window.__ADTECH_LOCAL_GAS_API__ || LOCAL_GAS_API_DEFAULT) : PRODUCTION_GAS_API;
+// Session-local cache of already-generated playbook links, keyed by job_id — a defense-in-depth
+// guard in front of generate_playbook's own idempotency-by-job_id on the Apps Script side (see
+// GOOGLE-APPS-SCRIPT-PLAYBOOK-SETUP.md): GAS will never create a genuine duplicate deck, but this
+// avoids even making the round-trip if the pending modal gets closed and reopened before Approve
+// (the input has no other memory of a link generated earlier in the same session).
+const generatedPlaybookLinkCache = {};
 // TELEGRAM_API is a separate, differently-deployed script that Auto Generate Playbook never calls
 // (grep confirms: only submit/approve/status-change flows call it) — left untouched, real, and
 // unmocked. Those flows are unrelated to this fix and still hit the real Telegram bot from
@@ -148,6 +154,16 @@ let currentRegionFilter = 'all';
 let userRegion = '';
 let isSuperAdmin = false;
 let currentRequestType = 'adhoc';
+// Shooting workflow session state — checklist rows fetched per job (lazy, same pattern as task
+// notes/activity logs), and which of the 3 phase tabs is currently open per job.
+let shootChecklistByJob = {};
+let activeShootTab = {};
+// Board-wide readiness cache — job_id → computeShootReadiness() result. Separate from
+// shootChecklistByJob (which holds full per-item detail: owner/note/completed_by/at, and is only
+// ever populated for a task once its detail modal has actually been opened this session). This one
+// only needs `completed` booleans across every visible Shooting task, refreshed in the same pass as
+// note counts, so the Board can show a readiness chip without anyone opening a task first.
+let shootReadinessByJob = {};
 let requestBoardDeadlineFilter = 'all';
 let requestBoardSortMode = 'smart_priority';
 let pendingDeadlineChangeUpdate = null;
@@ -247,6 +263,47 @@ const TASK_EDIT_REQUEST_TYPES = [
 ];
 const TASK_EDIT_ADHOC_JOB_TYPES = ['Poster/Graphic', 'Video Production', 'Copywriting/Article', 'Presentation Deck'];
 const AWAITING_CLIENT_EXIT_STATUSES = ['Drafting', 'Partial Ready', 'Revision', 'Internal Review', 'Client Review', 'Done'];
+
+// ========================================================
+// 🌟 SHOOTING WORKFLOW — checklist definition
+// ========================================================
+// Item labels, "critical" flags and owner hints live here (static, code-defined) rather than in the
+// database — shoot_checklist_items only ever stores per-item STATE (completed/owner/note/who/when).
+// Same split the app already uses for job-type checkboxes vs their DB column. `critical` is only
+// meaningful on the 'before' phase — that's the only phase Shoot Readiness looks at. `when` gates a
+// conditional item so it only counts (and only renders) if the shoot actually needs it.
+const SHOOT_CHECKLIST_DEFS = {
+    before: [
+        { key: 'brief', label: 'Brief & deliverables confirmed', critical: true, ownerHint: 'AM/SM' },
+        { key: 'datetime_location', label: 'Date / time / location confirmed', critical: true, ownerHint: 'AM/SM' },
+        { key: 'talent', label: 'Talent confirmed', critical: true, ownerHint: 'AM/SM', when: d => Boolean(d?.talent?.required) },
+        { key: 'product_props', label: 'Product / props ready', critical: true, ownerHint: 'AM/SM', when: d => Boolean(d?.props?.required) },
+        { key: 'shot_list', label: 'Shot list / creative direction ready', critical: false, ownerHint: 'Creative' },
+        { key: 'client_requirements', label: 'Key client requirements confirmed', critical: true, ownerHint: 'AM/SM' },
+        { key: 'team_pic', label: 'Team / PIC confirmed', critical: true, ownerHint: 'AM/SM' }
+    ],
+    shoot_day: [
+        { key: 'ready_on_set', label: 'Talent / product / props ready on set', ownerHint: 'AM/SM' },
+        { key: 'direction_equipment', label: 'Creative direction & equipment checked', ownerHint: 'Creative' },
+        { key: 'required_shots', label: 'Required shots captured', ownerHint: 'Creative' },
+        { key: 'broll', label: 'Additional / B-roll captured', ownerHint: 'Creative' },
+        { key: 'content_confirmed', label: 'Team confirms required content captured', ownerHint: 'AM/SM' },
+        { key: 'backup', label: 'Footage backed up', ownerHint: 'Creative' }
+    ],
+    post: [
+        { key: 'uploaded', label: 'Footage uploaded', ownerHint: 'Creative' },
+        { key: 'editor_pic', label: 'Editor / Creative PIC confirmed', ownerHint: 'Creative' },
+        { key: 'editing_deadline', label: 'Editing deadline confirmed', ownerHint: 'Creative' },
+        { key: 'takes_handover', label: 'Notes / selected takes handed over', ownerHint: 'AM/SM' },
+        { key: 'deliverables_reconfirmed', label: 'Final deliverables reconfirmed', ownerHint: 'Creative' }
+    ]
+};
+const SHOOT_PHASE_LABELS = { before: 'Before Shoot', shoot_day: 'Shoot Day', post: 'Post Shoot' };
+
+// Items in a phase that actually apply to this shoot (conditional 'when' items excluded if not needed).
+function getApplicableShootChecklistDefs(phase, shootDetails) {
+    return (SHOOT_CHECKLIST_DEFS[phase] || []).filter(def => !def.when || def.when(shootDetails || {}));
+}
 const INTERNAL_PRODUCTION_STATUS_KEYS = ['pending', 'inbox', 'not started', 'drafting', 'partial ready', 'revision', 'internal review'];
 const INTERNAL_DUE_BACKFILL_BATCH_LIMIT = 75;
 const WORKSPACE_COUNTRIES = [
@@ -2499,7 +2556,36 @@ function filterTaskScopedRowsForCurrentAccess(rows = []) {
  * its own small slice (see fetchRecentActivityForSettings).
  */
 async function fetchTaskRelatedLogsForCurrentAccess() {
-    await fetchNoteCountsForCurrentAccess();
+    await Promise.all([
+        fetchNoteCountsForCurrentAccess(),
+        fetchShootReadinessSummaryForCurrentAccess()
+    ]);
+}
+
+// Lightweight bulk pull (job_id/phase/item_key/completed only — no owner/note/timestamps) so every
+// visible Shooting card can show a readiness chip on the Board without an N-query-per-card cost.
+// Scoped to job_ids already in globalData, which is itself already access-filtered, so this never
+// reads beyond what the current user could already see.
+async function fetchShootReadinessSummaryForCurrentAccess() {
+    const shootingJobs = (globalData || []).filter(task => getRequestTypeMeta(task).key === 'shooting' && String(task.status || '').toLowerCase() !== 'deleted');
+    const jobIds = [...new Set(shootingJobs.map(task => String(task.job_id || '')).filter(Boolean))];
+    if (!jobIds.length) { shootReadinessByJob = {}; return; }
+
+    try {
+        const { data, error } = await supabaseClient.from('shoot_checklist_items').select('job_id, phase, item_key, completed').in('job_id', jobIds);
+        if (error) throw error;
+
+        const rowsByJob = {};
+        (data || []).forEach(row => {
+            (rowsByJob[row.job_id] || (rowsByJob[row.job_id] = [])).push(row);
+        });
+
+        const next = {};
+        shootingJobs.forEach(task => { next[task.job_id] = computeShootReadiness(task, rowsByJob[task.job_id] || []); });
+        shootReadinessByJob = next;
+    } catch (e) {
+        console.log('Shoot readiness summary fetch failed:', e.message);
+    }
 }
 
 async function fetchNoteCountsForCurrentAccess() {
@@ -2900,6 +2986,16 @@ function selectRequestType(type) {
     currentRequestType = type;
     document.getElementById('request-gateway').style.display = 'none';
     document.getElementById('requestSubtitle').style.display = 'none';
+
+    // Shooting gets its own dedicated single-scroll form (see #shooting-form-area) instead of the
+    // shared Ad-hoc/Monthly/Pitch step wizard — its field set is different enough that threading it
+    // into the shared step containers would risk the other three request types, for no real benefit.
+    if (type === 'shooting') {
+        document.getElementById('request-form-area').style.display = 'none';
+        openShootingRequestForm();
+        return;
+    }
+
     document.getElementById('request-form-area').style.display = 'block';
 
     const badge = document.getElementById('formBadge');
@@ -2958,6 +3054,8 @@ function resetRequestGateway() {
         document.getElementById('request-form-area').style.display = 'none';
         document.querySelectorAll('.form-step').forEach(el => el.classList.remove('active'));
     }
+    const shootingArea = document.getElementById('shooting-form-area');
+    if (shootingArea) shootingArea.style.display = 'none';
 }
 
 function addSizeRow() {
@@ -3716,6 +3814,19 @@ function scheduleTeamLeaveRealtimeRefresh() {
     }, 400);
 }
 
+let shootReadinessRealtimeDebounceTimer = null;
+// A checklist toggle anywhere (this tab or someone else's) should update Board readiness chips
+// without needing a full task-data reload — same debounce-then-targeted-rerender shape as the other
+// realtime refresh helpers here.
+function scheduleShootReadinessRealtimeRefresh() {
+    if (shootReadinessRealtimeDebounceTimer) clearTimeout(shootReadinessRealtimeDebounceTimer);
+    shootReadinessRealtimeDebounceTimer = setTimeout(async () => {
+        shootReadinessRealtimeDebounceTimer = null;
+        await fetchShootReadinessSummaryForCurrentAccess();
+        renderActiveViewsAfterTaskDataChange();
+    }, 400);
+}
+
 let handoverRealtimeDebounceTimer = null;
 function scheduleHandoverRealtimeRefresh() {
     if (handoverRealtimeDebounceTimer) clearTimeout(handoverRealtimeDebounceTimer);
@@ -3784,6 +3895,7 @@ function setupRealtimeSubscription() {
         // creative_requests event above already patches and re-renders everything this table could
         // affect — no separate fetch needed here.
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'task_notifications' }, (payload) => handleIncomingTaskNotification(payload))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'shoot_checklist_items' }, () => scheduleShootReadinessRealtimeRefresh())
         .subscribe((status) => {
             if (status === 'SUBSCRIBED') {
                 console.log('🚀 Berjaya sambung ke Supabase Real-Time!');
@@ -4391,6 +4503,7 @@ function generateJobCard(item, isDoneTab = false, index = 0) {
             </div>
             <div class="kb-title">${item.client_name}: ${item.project_title}</div>
             ${renderMonthlyProgressChip(item)}
+            ${renderShootReadinessChip(item)}
             ${renderTaskNotePreview(item)}
             ${renderTaskDeadlineRow(item)}
             <div class="kb-footer">
@@ -4784,6 +4897,8 @@ function buildCompletionMessage(task = {}) {
     ];
     if (client) lines.push(`Client: ${client}`);
     lines.push(`Creative PIC: ${getTaskPICLine(task)}`);
+    const playbookLink = getTaskSafeHttpUrl(task.playbook_link);
+    if (playbookLink) lines.push(`Playbook: ${playbookLink}`);
     lines.push('', 'The task has been completed and moved to Done.', '', 'Thank you, team.');
     return lines.filter(line => !/\b(undefined|null)\b/i.test(line)).join('\n');
 }
@@ -5222,6 +5337,11 @@ function openEditModal(jobID) {
     const task = (globalData || []).find(d => d.job_id === jobID);
     if (!task) return showAppleAlert('Missing Task', 'This task could not be found.', { tone: 'warning', icon: 'search-x' });
 
+    // Shooting requests don't fit the Ad-hoc/Monthly/Pitch edit form (it doesn't know about
+    // shoot_details and would default job_type back to Ad-hoc on save) — send them to the
+    // dedicated Shoot Details editor instead.
+    if (getRequestTypeMeta(task).key === 'shooting') return openShootEditModal(jobID);
+
     const permission = canCurrentUserEditTask(task);
     if (!permission.canEdit) {
         return showAppleAlert('Admin Only', 'Only admins can edit request details. Team notes remain available inside the task.', { tone: 'warning', icon: 'lock' });
@@ -5440,6 +5560,21 @@ function escapeHtml(value) {
 
 function escapeJsString(value) {
     return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// Turns URLs inside already-escaped HTML text into clickable links. Must only ever run AFTER
+// escapeHtml() — operating on raw/unescaped input here would be an XSS hole. Used anywhere a task
+// note is displayed (notification preview, task note list, tracking log) so a pasted Drive/Slides
+// link is tappable straight from the notification instead of dead text someone has to copy out.
+function linkifyHtml(escapedText) {
+    return String(escapedText || '').replace(/(https?:\/\/[^\s<]+)/g, (url) => {
+        // Trim trailing punctuation that's almost always sentence punctuation, not part of the URL.
+        const trailingMatch = url.match(/[.,;:!?)\]]+$/);
+        const trailing = trailingMatch ? trailingMatch[0] : '';
+        const cleanUrl = trailing ? url.slice(0, -trailing.length) : url;
+        if (!cleanUrl) return url;
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="task-note-link" onclick="event.stopPropagation()">${cleanUrl}</a>${trailing}`;
+    });
 }
 
 let activeRateCardSearch = '';
@@ -9747,7 +9882,7 @@ function openNotificationsPanel() {
             <span class="notif-row-icon"><i data-lucide="${n.kind === 'mention' ? 'at-sign' : 'message-square-text'}"></i></span>
             <div class="notif-row-body">
                 <strong>${escapeHtml(n.actor_name || 'Someone')}</strong> ${n.kind === 'mention' ? 'mentioned you on' : 'added a note on'} <strong>${escapeHtml(n.client_name || '')}: ${escapeHtml(n.project_title || '')}</strong>
-                <p>${escapeHtml(n.note_preview || '')}</p>
+                <p>${linkifyHtml(escapeHtml(n.note_preview || ''))}</p>
                 <span class="notif-row-time">${formatDateTime(n.created_at)} · ${escapeHtml(n.job_id || '')}</span>
             </div>
         </div>
@@ -9864,7 +9999,7 @@ function renderAdminTrackingPanel(item) {
             <div class="tracking-main">
                 <div class="tracking-top"><strong>${escapeHtml(log.action_type.replace(/_/g, ' '))}</strong><span>${formatDateTime(log.created_at)}</span></div>
                 <div class="tracking-meta">${escapeHtml(log.actor_name)}${log.old_value || log.new_value ? ` · ${escapeHtml(log.old_value || '-')} → ${escapeHtml(log.new_value || '-')}` : ''}</div>
-                ${log.note_text ? `<div class="tracking-note">${escapeHtml(log.note_text)}</div>` : ''}
+                ${log.note_text ? `<div class="tracking-note">${linkifyHtml(escapeHtml(log.note_text))}</div>` : ''}
             </div>
         </div>
     `).join('') : `<div class="tracking-empty">No activity logs yet. New updates will start appearing here.</div>`;
@@ -9872,7 +10007,7 @@ function renderAdminTrackingPanel(item) {
     const noteRows = noteLogs.length ? noteLogs.slice(0, 5).map(log => `
         <div class="tracking-note-row">
             <div><strong>${escapeHtml(log.actor_name)}</strong><span>${formatDateTime(log.created_at)} · ${escapeHtml(log.status_at_time || 'No status')}</span></div>
-            <p>${escapeHtml(log.note_text)}</p>
+            <p>${linkifyHtml(escapeHtml(log.note_text))}</p>
         </div>
     `).join('') : `<div class="tracking-empty">No note history yet.</div>`;
 
@@ -9906,6 +10041,7 @@ function getRequestTypeMeta(item) {
     const jobType = String(item?.job_type || '').toLowerCase();
     if (jobType.includes('monthly')) return { key: 'monthly', label: 'Monthly Plan', shortLabel: 'Monthly', icon: 'calendar-days' };
     if (jobType.includes('pitch')) return { key: 'pitch', label: 'Pitch Deck', shortLabel: 'Pitch', icon: 'presentation' };
+    if (jobType.includes('shoot')) return { key: 'shooting', label: 'Shooting', shortLabel: 'Shoot', icon: 'camera' };
     return { key: 'adhoc', label: 'Ad-hoc / One-off', shortLabel: 'Ad-hoc', icon: 'zap' };
 }
 
@@ -10085,6 +10221,476 @@ function renderMonthlyProgressChip(item) {
     return `<div class="monthly-progress-mini"><div><span>${escapeHtml(label)}</span><strong>Use Partial Ready for partial handoff</strong></div><div class="monthly-progress-track"><i style="width:${pct}%;"></i></div></div>`;
 }
 
+// Board-card equivalent of the Shooting panel's readiness row — lets a Creative Lead scan the whole
+// board for "which shoots need attention" without opening each task. Reuses the exact same computed
+// result (shootReadinessByJob, populated by fetchShootReadinessSummaryForCurrentAccess) and the same
+// state colours already built for the Task Detail panel.
+const SHOOT_READINESS_CHIP_META = {
+    not_ready: { label: 'Not Ready', cls: 'not-ready' },
+    attention: { label: 'Needs Attention', cls: 'attention' },
+    ready: { label: 'Ready to Shoot', cls: 'ready' },
+    completed: { label: 'Shoot Completed', cls: 'completed' }
+};
+function renderShootReadinessChip(item) {
+    if (getRequestTypeMeta(item).key !== 'shooting') return '';
+    const readiness = shootReadinessByJob[item.job_id];
+    if (!readiness) return ''; // summary hasn't loaded yet this session — chip just doesn't show meanwhile
+    const meta = SHOOT_READINESS_CHIP_META[readiness.state];
+    return `<div class="shoot-readiness-chip"><span class="shoot-readiness-pill ${meta.cls}">${meta.label}</span><small>${readiness.doneCritical}/${readiness.totalCritical} ready</small></div>`;
+}
+
+// ========================================================
+// 🌟 SHOOTING WORKFLOW — task detail panel (readiness, checklist, brief)
+// ========================================================
+
+function findShootChecklistRow(rows, phase, key) {
+    return (rows || []).find(r => r.phase === phase && r.item_key === key) || null;
+}
+
+function isShootItemDone(rows, phase, key) {
+    const row = findShootChecklistRow(rows, phase, key);
+    return Boolean(row && row.completed);
+}
+
+// Readiness is entirely derived — nothing is stored except the optional admin override — so it can
+// never drift out of sync with the checklist. Only critical Before Shoot items (that actually apply
+// to this shoot) count; Shoot Day / Post Shoot never gate it, per the "can we confidently proceed"
+// framing.
+function computeShootReadiness(item, rows) {
+    const details = item.shoot_details || {};
+    const beforeDefs = getApplicableShootChecklistDefs('before', details);
+    const critical = beforeDefs.filter(d => d.critical);
+    const doneCritical = critical.filter(d => isShootItemDone(rows, 'before', d.key));
+    const missing = critical.filter(d => !isShootItemDone(rows, 'before', d.key));
+    const postDefs = SHOOT_CHECKLIST_DEFS.post;
+    const postDone = postDefs.length > 0 && postDefs.every(d => isShootItemDone(rows, 'post', d.key));
+    const override = details.readiness_override || null;
+    const overridden = Boolean(override && override.active);
+
+    let state;
+    if (postDone) state = 'completed';
+    else if (overridden || (critical.length > 0 && doneCritical.length === critical.length)) state = 'ready';
+    else if (doneCritical.length > 0) state = 'attention';
+    else state = 'not_ready';
+
+    return { state, doneCritical: doneCritical.length, totalCritical: critical.length, missing, overridden, override };
+}
+
+function getDefaultShootPhase(readiness) {
+    if (readiness.state === 'completed') return 'post';
+    if (readiness.state === 'ready') return 'shoot_day';
+    return 'before';
+}
+
+async function fetchShootChecklist(jobID) {
+    try {
+        const { data, error } = await supabaseClient.from('shoot_checklist_items').select('*').eq('job_id', jobID);
+        if (error) throw error;
+        shootChecklistByJob[jobID] = data || [];
+    } catch (e) {
+        console.error('Failed to load shoot checklist:', e.message);
+        shootChecklistByJob[jobID] = shootChecklistByJob[jobID] || [];
+    }
+}
+
+async function loadShootChecklistThenRefresh(jobID) {
+    await fetchShootChecklist(jobID);
+    refreshShootingPanel(jobID);
+}
+
+function refreshShootingPanel(jobID) {
+    const panel = document.getElementById(`shooting-panel-${jobID}`);
+    const item = globalData.find(d => d.job_id === jobID);
+    if (!panel || !item) return;
+    panel.outerHTML = renderShootingPanel(item);
+    refreshIcons();
+}
+
+function renderShootOwnerSuggestions(item) {
+    const details = item.shoot_details || {};
+    const names = new Set();
+    if (item.requester_name) names.add(item.requester_name);
+    if (details.onsite_pic) names.add(details.onsite_pic);
+    getAssignedPICNames(item.assignee).forEach(n => names.add(n));
+    return `<datalist id="shoot-owner-suggestions-${escapeHtml(item.job_id)}">${[...names].map(n => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>`;
+}
+
+function renderShootChecklistPhase(item, phase, rows, canEdit) {
+    const details = item.shoot_details || {};
+    const defs = getApplicableShootChecklistDefs(phase, details);
+    if (!defs.length) return `<div class="shoot-checklist-empty">Nothing to check here for this shoot.</div>`;
+
+    const itemsHtml = defs.map(def => {
+        const row = findShootChecklistRow(rows, phase, def.key) || {};
+        const done = Boolean(row.completed);
+        const ownerVal = row.owner || '';
+        const noteVal = row.note || '';
+        const metaLine = done && row.completed_by ? `<small>${escapeHtml(row.completed_by)} · ${formatDateTime(row.completed_at)}</small>` : '';
+        return `
+            <div class="shoot-check-item ${done ? 'done' : ''}">
+                <label class="shoot-check-main">
+                    <input type="checkbox" ${done ? 'checked' : ''} ${canEdit ? '' : 'disabled'} onchange="toggleShootChecklistItem('${escapeJsString(item.job_id)}', '${phase}', '${def.key}')">
+                    <span>${escapeHtml(def.label)}${def.critical ? '<i class="shoot-critical-dot" title="Critical for readiness"></i>' : ''}</span>
+                </label>
+                <div class="shoot-check-meta">
+                    <input type="text" class="shoot-owner-input" placeholder="Owner${def.ownerHint ? ` (${escapeHtml(def.ownerHint)})` : ''}" value="${escapeHtml(ownerVal)}" ${canEdit ? '' : 'disabled'}
+                        list="shoot-owner-suggestions-${escapeHtml(item.job_id)}"
+                        onchange="updateShootChecklistMeta('${escapeJsString(item.job_id)}', '${phase}', '${def.key}', 'owner', this.value)">
+                    ${metaLine}
+                </div>
+                <input type="text" class="shoot-note-input" placeholder="Short note (optional)" value="${escapeHtml(noteVal)}" ${canEdit ? '' : 'disabled'}
+                    onchange="updateShootChecklistMeta('${escapeJsString(item.job_id)}', '${phase}', '${def.key}', 'note', this.value)">
+            </div>
+        `;
+    }).join('');
+
+    return itemsHtml + renderShootOwnerSuggestions(item);
+}
+
+function renderShootingPanel(item) {
+    if (getRequestTypeMeta(item).key !== 'shooting') return '';
+
+    const jobID = item.job_id;
+    const details = item.shoot_details || {};
+    const rows = shootChecklistByJob[jobID] || null; // null = not fetched yet this session
+    const readiness = computeShootReadiness(item, rows || []);
+    const phase = activeShootTab[jobID] || getDefaultShootPhase(readiness);
+    // Checklist toggling follows the same lax "anyone who can see this task and has a name set"
+    // rule as task notes (canAddTaskNote) — owners are informational, not access control (per spec:
+    // "do not require ownership everywhere"). Editing the shoot's core details is admin-only, same
+    // tier as editing any other request type.
+    const canEdit = Boolean(getCurrentUserName());
+    const canEditDetails = canCurrentUserEditTask(item).canEdit;
+
+    const extraDays = details.additional_shoot_days || [];
+    const mapLink = getTaskSafeHttpUrl(details.map_link);
+    const factRows = [
+        item.shoot_date ? `<div class="shoot-fact"><span>Date${extraDays.length ? ` (+${extraDays.length} more)` : ''}</span><strong>${formatDate(item.shoot_date)}</strong></div>` : '',
+        details.call_time ? `<div class="shoot-fact"><span>Call Time</span><strong>${escapeHtml(details.call_time)}</strong></div>` : '',
+        details.location ? `<div class="shoot-fact"><span>Location</span><strong>${escapeHtml(details.location)}${mapLink ? ` <a href="${escapeHtml(mapLink)}" target="_blank" rel="noopener noreferrer" class="shoot-map-link" onclick="event.stopPropagation()" title="Open in Maps"><i data-lucide="map-pin"></i></a>` : ''}</strong></div>` : '',
+        details.what_shooting ? `<div class="shoot-fact"><span>What</span><strong>${escapeHtml(details.what_shooting)}</strong></div>` : '',
+        details.onsite_pic ? `<div class="shoot-fact"><span>On-site PIC</span><strong>${escapeHtml(details.onsite_pic)}</strong></div>` : '',
+        details.talent?.required ? `<div class="shoot-fact"><span>Talent</span><strong>${escapeHtml(details.talent.name || 'TBC')} · ${escapeHtml(details.talent.status || 'Proposed')}</strong></div>` : '',
+        details.props?.required ? `<div class="shoot-fact"><span>Product/Props</span><strong>${escapeHtml(details.props.what || 'TBC')}</strong></div>` : ''
+    ].filter(Boolean).join('');
+
+    const extraDaysHtml = extraDays.length
+        ? `<div class="shoot-extra-days-note"><i data-lucide="calendar-plus"></i> Also: ${extraDays.map(d => `${formatDate(d.date)}${d.label ? ` — ${escapeHtml(d.label)}` : ''}`).join(', ')}</div>`
+        : '';
+
+    const stateMeta = {
+        not_ready: { label: 'Not Ready', cls: 'not-ready' },
+        attention: { label: 'Needs Attention', cls: 'attention' },
+        ready: { label: 'Ready to Shoot', cls: 'ready' },
+        completed: { label: 'Shoot Completed', cls: 'completed' }
+    }[readiness.state];
+
+    const missingHtml = (readiness.state === 'not_ready' || readiness.state === 'attention') && readiness.missing.length
+        ? `<div class="shoot-readiness-missing">${readiness.missing.map(d => `<span>⚠ ${escapeHtml(d.label)} pending</span>`).join('')}</div>`
+        : '';
+
+    const tabsHtml = ['before', 'shoot_day', 'post'].map(p => {
+        const defs = getApplicableShootChecklistDefs(p, details);
+        const doneCount = defs.filter(d => isShootItemDone(rows, p, d.key)).length;
+        return `<button type="button" class="${phase === p ? 'active' : ''}" onclick="switchShootTab('${escapeJsString(jobID)}', '${p}')">${SHOOT_PHASE_LABELS[p]} <em>${doneCount}/${defs.length}</em></button>`;
+    }).join('');
+
+    const checklistHtml = rows === null
+        ? `<div class="shoot-checklist-loading"><i data-lucide="loader-2" class="spin"></i> Loading checklist…</div>`
+        : renderShootChecklistPhase(item, phase, rows, canEdit);
+
+    const readyActionHtml = (readiness.state === 'ready' || readiness.state === 'completed')
+        ? `<span class="shoot-ready-badge ${stateMeta.cls}"><i data-lucide="${readiness.state === 'completed' ? 'check-check' : 'check-circle-2'}"></i> ${stateMeta.label}${readiness.overridden ? ' · overridden' : ''}</span>`
+        : `<button type="button" class="shoot-ready-btn" onclick="openMarkReadyToShootDialog('${escapeJsString(jobID)}')"><i data-lucide="flag"></i> Mark Ready to Shoot</button>`;
+
+    return `
+        <div class="shooting-panel" id="shooting-panel-${escapeHtml(jobID)}">
+            <div class="shooting-panel-head">
+                <span class="shooting-panel-title"><i data-lucide="camera"></i> SHOOTING</span>
+                ${readyActionHtml}
+            </div>
+            ${factRows ? `<div class="shoot-facts">${factRows}</div>` : ''}
+            ${extraDaysHtml}
+            <div class="shoot-readiness-row">
+                <span>Shoot Readiness</span>
+                <strong>${readiness.doneCritical} / ${readiness.totalCritical} ready</strong>
+                <span class="shoot-readiness-pill ${stateMeta.cls}">${stateMeta.label}</span>
+            </div>
+            ${missingHtml}
+            <div class="shoot-tabs settings-segmented">${tabsHtml}</div>
+            <div class="shoot-checklist-body">${checklistHtml}</div>
+            <div class="shoot-panel-actions">
+                <button type="button" class="btn-action btn-copy" onclick="copyShootBrief('${escapeJsString(jobID)}')"><i data-lucide="copy"></i> Copy Shoot Brief</button>
+                ${canEditDetails ? `<button type="button" class="btn-action btn-copy" onclick="openShootEditModal('${escapeJsString(jobID)}')"><i data-lucide="pencil"></i> Edit Shoot Details</button>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+async function toggleShootChecklistItem(jobID, phase, key) {
+    const item = globalData.find(d => d.job_id === jobID);
+    if (!item) return;
+    const rows = shootChecklistByJob[jobID] || (shootChecklistByJob[jobID] = []);
+    const existing = findShootChecklistRow(rows, phase, key);
+    const nowDone = !(existing && existing.completed);
+    const who = getCurrentUserName() || 'Unknown';
+    const nowIso = new Date().toISOString();
+
+    const patch = {
+        job_id: jobID, phase, item_key: key,
+        completed: nowDone,
+        owner: existing?.owner || null,
+        note: existing?.note || null,
+        completed_by: nowDone ? who : null,
+        completed_at: nowDone ? nowIso : null,
+        updated_at: nowIso
+    };
+
+    // Optimistic local update, same pattern as the rest of the app's task actions.
+    if (existing) Object.assign(existing, patch);
+    else rows.push(patch);
+    refreshShootingPanel(jobID);
+
+    try {
+        const { error } = await supabaseClient.from('shoot_checklist_items').upsert(patch, { onConflict: 'job_id,phase,item_key' });
+        if (error) throw error;
+        const def = (SHOOT_CHECKLIST_DEFS[phase] || []).find(d => d.key === key);
+        if (def) logTaskActivity(jobID, 'shoot_checklist', '', nowDone ? 'done' : 'pending', `${nowDone ? 'Checked' : 'Unchecked'}: ${def.label} (${SHOOT_PHASE_LABELS[phase]})`, { phase, item_key: key });
+    } catch (e) {
+        console.error('Failed to save shoot checklist item:', e.message);
+        showAppleAlert('Could Not Save', 'This checklist update did not save — please try again.', { tone: 'danger' });
+    }
+}
+
+async function updateShootChecklistMeta(jobID, phase, key, field, value) {
+    const rows = shootChecklistByJob[jobID] || (shootChecklistByJob[jobID] = []);
+    let existing = findShootChecklistRow(rows, phase, key);
+    if (!existing) {
+        existing = { job_id: jobID, phase, item_key: key, completed: false, owner: null, note: null, completed_by: null, completed_at: null };
+        rows.push(existing);
+    }
+    existing[field] = value ? value.trim() : null;
+    existing.updated_at = new Date().toISOString();
+
+    try {
+        const { error } = await supabaseClient.from('shoot_checklist_items').upsert({
+            job_id: jobID, phase, item_key: key,
+            completed: existing.completed, owner: existing.owner, note: existing.note,
+            completed_by: existing.completed_by, completed_at: existing.completed_at, updated_at: existing.updated_at
+        }, { onConflict: 'job_id,phase,item_key' });
+        if (error) throw error;
+    } catch (e) {
+        console.error('Failed to save shoot checklist field:', e.message);
+    }
+}
+
+function switchShootTab(jobID, phase) {
+    activeShootTab[jobID] = phase;
+    refreshShootingPanel(jobID);
+}
+
+async function copyShootBrief(jobID) {
+    const item = globalData.find(d => d.job_id === jobID);
+    if (!item) return;
+    const d = item.shoot_details || {};
+    const extraDays = d.additional_shoot_days || [];
+    const lines = [
+        `SHOOT BRIEF — ${item.job_id}`,
+        `Client: ${item.client_name || '-'}`,
+        `Project: ${item.project_title || '-'}`,
+        `What: ${d.what_shooting || '-'}`,
+        `Shoot Date: ${item.shoot_date ? formatDate(item.shoot_date) : 'TBC'}`,
+        extraDays.length ? `Additional Shoot Days: ${extraDays.map(x => `${formatDate(x.date)}${x.label ? ` — ${x.label}` : ''}`).join('; ')}` : '',
+        `Call Time: ${d.call_time || 'TBC'}`,
+        `Location: ${d.location || 'TBC'}`,
+        getTaskSafeHttpUrl(d.map_link) ? `Map: ${getTaskSafeHttpUrl(d.map_link)}` : '',
+        `AM/SM PIC: ${d.onsite_pic || item.requester_name || '-'}`,
+        `Creative PIC: ${getAssigneeDisplay(item.assignee)}`,
+        getTaskSafeHttpUrl(item.playbook_link) ? `Playbook: ${getTaskSafeHttpUrl(item.playbook_link)}` : '',
+        `Talent: ${d.talent?.required ? `${d.talent.name || 'TBC'} (${d.talent.status || 'Proposed'})` : 'Not required'}`,
+        `Deliverables: ${d.deliverables || '-'}`,
+        `Product / Props: ${d.props?.required ? `${d.props.what || 'TBC'} — brought by ${d.props.who || 'TBC'}` : 'Not required'}`,
+        `Reference: ${d.reference_link || item.ref_link || '-'}`,
+        `Important Notes: ${d.important_notes || '-'}`
+    ].filter(Boolean);
+    const text = lines.join('\n');
+
+    try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+        await navigator.clipboard.writeText(text);
+        showNotification('Shoot Brief Copied', 'Paste it into Teams / WhatsApp.');
+    } catch (e) {
+        showAppleAlert('Copy Failed', `Could not copy automatically — copy manually:\n\n${text}`);
+    }
+}
+
+async function openMarkReadyToShootDialog(jobID) {
+    const item = globalData.find(d => d.job_id === jobID);
+    if (!item) return;
+    const rows = shootChecklistByJob[jobID] || [];
+    const readiness = computeShootReadiness(item, rows);
+
+    if (readiness.state === 'ready' || readiness.state === 'completed') {
+        return showAppleAlert('Already Ready', 'Every critical item is already confirmed for this shoot.', { icon: 'check-circle', tone: 'success' });
+    }
+
+    const missingText = readiness.missing.map(d => `• ${d.label}`).join('\n') || 'Nothing outstanding.';
+
+    if (!hasAdminAccess()) {
+        return showAppleAlert('Not Ready Yet', `Still outstanding before this shoot is ready:\n\n${missingText}`, { icon: 'alert-triangle', tone: 'danger' });
+    }
+
+    const confirmed = await showAppleConfirm('Not Ready Yet', `Still outstanding:\n\n${missingText}\n\nOverride and mark Ready to Shoot anyway?`, { icon: 'alert-triangle', confirmText: 'Override', cancelText: 'Cancel' });
+    if (!confirmed) return;
+    const reason = await showApplePrompt('Override Reason', 'Short reason for overriding readiness (required):');
+    if (!reason || !reason.trim()) return;
+    await submitShootReadinessOverride(jobID, reason.trim());
+}
+
+async function submitShootReadinessOverride(jobID, reason) {
+    const item = globalData.find(d => d.job_id === jobID);
+    if (!item) return;
+    const details = { ...(item.shoot_details || {}) };
+    details.readiness_override = { active: true, reason, by: getCurrentUserName() || 'Admin', at: new Date().toISOString() };
+    const previousDetails = item.shoot_details;
+    item.shoot_details = details;
+    refreshShootingPanel(jobID);
+
+    try {
+        const { error } = await supabaseClient.from('creative_requests').update({ shoot_details: details }).eq('job_id', jobID);
+        if (error) throw error;
+        logTaskActivity(jobID, 'shoot_readiness_override', '', 'ready', `Readiness overridden: ${reason}`, { reason });
+        showNotification('Marked Ready to Shoot', `Overridden by ${getCurrentUserName() || 'Admin'}.`);
+    } catch (e) {
+        item.shoot_details = previousDetails;
+        refreshShootingPanel(jobID);
+        showAppleAlert('Could Not Save Override', e.message, { tone: 'danger' });
+    }
+}
+
+// field: 'Talent' | 'Props' | 'MultiDay' — matches setShootEditToggle's sedit{field}Req/Fields ids.
+function toggleShootEditConditional(field) {
+    const show = document.getElementById(`sedit${field}Req`)?.value === 'yes';
+    const fieldsEl = document.getElementById(`sedit${field}Fields`);
+    if (fieldsEl) fieldsEl.style.display = show ? 'flex' : 'none';
+}
+
+function setShootEditToggle(field, value) {
+    document.getElementById(`sedit${field}Req`).value = value;
+    document.getElementById(`sedit${field}Toggle`).querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
+    toggleShootEditConditional(field);
+}
+
+function openShootEditModal(jobID) {
+    const item = globalData.find(d => d.job_id === jobID);
+    if (!item) return;
+    if (!canCurrentUserEditTask(item).canEdit) {
+        return showAppleAlert('Admin Only', 'Only admins can edit shoot details. Checklist updates remain available inside the task.', { tone: 'warning', icon: 'lock' });
+    }
+    const d = item.shoot_details || {};
+
+    document.getElementById('shootEditJobId').value = jobID;
+    setShootCheckboxValue('seditWhatBox', 'seditWhatOtherRow', 'seditWhatOther', d.what_shooting || '');
+    setShootPresetValue('seditDeliverables', d.deliverables || '');
+    document.getElementById('seditDate').value = item.shoot_date || '';
+    document.getElementById('seditCallTime').value = d.call_time || '';
+    setShootPresetValue('seditLocation', d.location || '');
+    document.getElementById('seditMapLink').value = d.map_link || '';
+    document.getElementById('seditDeadline').value = getTaskClientDeadline(item) || '';
+    document.getElementById('seditOnsitePic').value = d.onsite_pic || '';
+    document.getElementById('seditTalentName').value = d.talent?.name || '';
+    document.getElementById('seditTalentStatus').value = d.talent?.status || 'Proposed';
+    setShootPresetValue('seditPropsWhat', d.props?.what || '');
+    setShootPresetValue('seditPropsWho', d.props?.who || '');
+    document.getElementById('seditRef').value = d.reference_link || item.ref_link || '';
+    document.getElementById('seditNotes').value = d.important_notes || '';
+    setShootEditToggle('Talent', d.talent?.required ? 'yes' : 'no');
+    setShootEditToggle('Props', d.props?.required ? 'yes' : 'no');
+    renderShootExtraDaysInto('seditExtraDaysContainer', d.additional_shoot_days || []);
+    setShootEditToggle('MultiDay', (d.additional_shoot_days || []).length ? 'yes' : 'no');
+
+    const overlay = document.getElementById('shootEditModal');
+    document.body.classList.add('no-scroll');
+    overlay.style.display = 'flex';
+    overlay.offsetHeight;
+    overlay.classList.add('show');
+    refreshIcons();
+}
+
+function closeShootEditModal() {
+    const overlay = document.getElementById('shootEditModal');
+    if (!overlay) return;
+    overlay.classList.remove('show');
+    setTimeout(() => {
+        overlay.style.display = 'none';
+        document.body.classList.remove('no-scroll');
+    }, 200);
+}
+
+async function saveShootEditModal() {
+    const jobID = document.getElementById('shootEditJobId').value;
+    const item = globalData.find(d => d.job_id === jobID);
+    if (!item) return;
+
+    const shootDate = document.getElementById('seditDate').value;
+    const deadline = document.getElementById('seditDeadline').value;
+    const whatShooting = getShootCheckboxValue('seditWhatBox', 'seditWhatOther');
+    const location = getShootPresetValue('seditLocation');
+    if (!shootDate || !whatShooting || !location || !deadline) {
+        return showAppleAlert('Missing Info', 'What are we shooting, Shoot Date, Location and Client Deadline are required.');
+    }
+    const multiDay = document.getElementById('seditMultiDayReq').value === 'yes';
+    const extraShootDays = multiDay ? getShootExtraDays('seditExtraDaysContainer') : [];
+    if (multiDay && !extraShootDays.length) {
+        return showAppleAlert('Missing Shoot Days', 'Please add at least one additional shoot day, or set Multi-day shoot to No.');
+    }
+
+    const talentRequired = document.getElementById('seditTalentReq').value === 'yes';
+    const propsRequired = document.getElementById('seditPropsReq').value === 'yes';
+    const details = { ...(item.shoot_details || {}) };
+    details.what_shooting = whatShooting;
+    details.call_time = document.getElementById('seditCallTime').value || '';
+    details.location = location;
+    details.map_link = document.getElementById('seditMapLink').value.trim();
+    details.onsite_pic = document.getElementById('seditOnsitePic').value.trim();
+    details.talent = talentRequired
+        ? { required: true, name: document.getElementById('seditTalentName').value.trim(), status: document.getElementById('seditTalentStatus').value }
+        : { required: false };
+    details.props = propsRequired
+        ? { required: true, what: getShootPresetValue('seditPropsWhat'), who: getShootPresetValue('seditPropsWho') }
+        : { required: false };
+    details.additional_shoot_days = extraShootDays;
+    details.deliverables = getShootPresetValue('seditDeliverables');
+    details.reference_link = document.getElementById('seditRef').value.trim();
+    details.important_notes = document.getElementById('seditNotes').value.trim();
+
+    const btn = document.getElementById('btnSaveShootEdit');
+    const originalHtml = btn ? btn.innerHTML : '';
+    if (btn) { btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Saving...'; btn.disabled = true; refreshIcons(); }
+
+    try {
+        const { error } = await supabaseClient.from('creative_requests').update({
+            shoot_date: shootDate, shoot_details: details, client_deadline: deadline, deadline: deadline, ref_link: details.reference_link
+        }).eq('job_id', jobID);
+        if (error) throw error;
+
+        item.shoot_date = shootDate;
+        item.shoot_details = details;
+        item.client_deadline = deadline;
+        item.deadline = deadline;
+        item.ref_link = details.reference_link;
+
+        logTaskActivity(jobID, 'shoot_details_updated', '', '', 'Shoot details updated.', {});
+        closeShootEditModal();
+        showNotification('Shoot Details Updated');
+        if (document.getElementById('globalDetailModal')?.classList.contains('show')) openDetailModal(jobID, true);
+    } catch (e) {
+        showAppleAlert('Save Failed', e.message, { tone: 'danger' });
+    } finally {
+        if (btn) { btn.innerHTML = originalHtml; btn.disabled = false; refreshIcons(); }
+    }
+}
+
 function renderMonthlyFlowPanel(item) {
     const summary = getMonthlyDeliverableSummary(item);
     if (!summary || !summary.total) return '';
@@ -10246,7 +10852,7 @@ function renderTaskNoteRow(jobID, log) {
                 <strong>${escapeHtml(log.actor_name || 'Unknown')}</strong>
                 <span>${formatDateTime(log.created_at)} · ${escapeHtml(log.status_at_time || 'No status')}${log.edited_at ? ' · <em>edited</em>' : ''}</span>
             </div>
-            <p>${escapeHtml(log.note_text)}</p>
+            <p>${linkifyHtml(escapeHtml(log.note_text))}</p>
             ${canManage ? `
                 <div class="task-note-row-actions">
                     <button type="button" title="Edit note" onclick="startEditTaskNote('${jobID}', '${log.id}')"><i data-lucide="pencil"></i></button>
@@ -10268,7 +10874,7 @@ function renderTaskNotesBox(item) {
         : '<div class="task-note-empty">No notes yet. Add the first update for this task.</div>';
 
     const latestPreview = latest?.note_text
-        ? `<small>${escapeHtml(latest.note_text.length > 120 ? latest.note_text.slice(0, 117) + '...' : latest.note_text)}</small>`
+        ? `<small>${linkifyHtml(escapeHtml(latest.note_text.length > 120 ? latest.note_text.slice(0, 117) + '...' : latest.note_text))}</small>`
         : '<small>No notes yet</small>';
 
     // Stays open across re-renders (adding/editing/deleting a note all re-render this whole box)
@@ -11066,10 +11672,14 @@ function openDetailModal(jobID, isUpdate = false) {
         // --- MULA LOGIK FORMAT BRIEF BERBEZA ---
         const briefText = String(item.brief || '');
         const isPitchDeck = String(item.job_type || '').toLowerCase().includes('pitch deck');
+        const isShooting = getRequestTypeMeta(item).key === 'shooting';
 
         let formattedBriefHTML = '';
 
-        if (isPitchDeck) {
+        if (isShooting) {
+            // The Shooting panel below covers this ground (facts, talent/props, reference, notes) in
+            // a purpose-built layout — the generic brief/remarks box would just duplicate it.
+        } else if (isPitchDeck) {
             const formatPitchLinks = briefText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--orange); font-weight: 600; text-decoration:underline; word-break:break-all;"><i data-lucide="external-link" style="width:14px; height:14px; vertical-align:middle;"></i> Open Link</a>').replace(/\n/g, '<br>');
             formattedBriefHTML = `<div style="background: rgba(245, 158, 11, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(245, 158, 11, 0.2);"><h4 style="color: var(--orange); margin: 0 0 10px 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;"><i data-lucide="presentation" style="width:16px; height:16px; vertical-align:middle; margin-right:5px;"></i> Pitch Deck Details</h4><p style="margin:0;">${formatPitchLinks}</p></div>`;
         } else {
@@ -11111,14 +11721,17 @@ function openDetailModal(jobID, isUpdate = false) {
             ${renderClientReviewDetailPanel(item)}
             ${renderAwaitingClientDetailPanel(item)}
             ${renderMonthlyFlowPanel(item)}
+            ${renderShootingPanel(item)}
             ${renderTaskNotesBox(item)}
             ${renderAdminTrackingPanel(item)}
             ${renderTaskAccessCheckPanel(item)}
+            ${isShooting ? '' : `
             <div class="brief-box">
                 ${formattedBriefHTML}
                 ${safeReferenceUrl ? `<p style="margin-top: 15px;"><strong>Reference:</strong> <a href="${escapeHtml(safeReferenceUrl)}" target="_blank" rel="noopener noreferrer">Click to view reference</a></p>` : ''}
                 ${formattedRemarks ? `<p style="margin-top: 15px; line-height: 1.6;"><strong>Remarks:</strong><br>${formattedRemarks}</p>` : ''}
             </div>
+            `}
         `;
 
         let footerHtml = '';
@@ -11127,7 +11740,7 @@ function openDetailModal(jobID, isUpdate = false) {
         if (String(item.status).toLowerCase() === 'pending') {
             if (securePin) {
                 warmPlaybookGenerator();
-                bodyHtml += `<div class="assign-area"><label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block; color: var(--text-main);">1. Select Creative PIC (Multiple Allowed):</label>${renderCreativePicGroups(item.job_id)}<label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block; color: var(--text-main);">2. Generate Creative Playbook:</label><div style="display:flex; gap:10px; margin-bottom: 15px; flex-wrap:wrap;"><input type="text" id="playbook-${item.job_id}" placeholder="Click Auto-Generate or paste link..." style="flex:1; min-width:200px; border-style: dashed; padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-input); color: var(--text-main);"><button onclick="generatePlaybook('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeRequester}')" id="btn-gen-${item.job_id}" class="btn-action" style="background:var(--link-color); color:white; border:none; min-width:140px; margin:0;"><i data-lucide="sparkles"></i> Auto-Generate</button></div></div>`;
+                bodyHtml += `<div class="assign-area"><label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: block; color: var(--text-main);">1. Select Creative PIC (Multiple Allowed):</label>${renderCreativePicGroups(item.job_id)}<label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; margin-top: 20px; display: block; color: var(--text-main);">2. Generate Creative Playbook:</label><div style="display:flex; gap:10px; margin-bottom: 15px; flex-wrap:wrap;">${renderPlaybookGenerateField(item, safeClient, safeTitle, safeRequester)}</div></div>`;
                 footerHtml = handleHtml + `<div class="action-buttons"><button id="btn-approve-${item.job_id}" onclick="approveJob('${item.job_id}', '${safeClient}', '${safeTitle}')" class="btn-action btn-approve"><i data-lucide="check"></i> Approve & Assign</button><button onclick="openEditModal('${item.job_id}')" class="btn-action btn-copy"><i data-lucide="edit-2"></i> Edit Request</button><button onclick="deleteJob('${item.job_id}')" class="btn-action btn-delete"><i data-lucide="trash-2"></i> Delete</button></div>`;
             } else {
                 bodyHtml += `<div class="locked-msg"><i data-lucide="lock"></i> Status: Reviewing requirements. Awaiting Admin Assignment.</div>`;
@@ -11157,6 +11770,7 @@ function openDetailModal(jobID, isUpdate = false) {
             // (often just this session's optimistic entries), then gets patched in place once the
             // full per-task history lands.
             loadTaskLogsThenRefreshModal(jobID);
+            if (isShooting) loadShootChecklistThenRefresh(jobID);
         }
 
     } catch (err) {
@@ -11175,6 +11789,457 @@ async function loadTaskLogsThenRefreshModal(jobID) {
 // ========================================================
 // 🌟 10. PENGURUSAN DATA SUPABASE (SUBMIT / EDIT / DELETE)
 // ========================================================
+// ========================================================
+// 🌟 SHOOTING WORKFLOW — request creation (dedicated single-scroll form)
+// ========================================================
+
+function setShootToggle(field, value) {
+    const valueInput = document.getElementById(`shoot${field}Value`);
+    if (valueInput) valueInput.value = value;
+    const toggleWrap = document.getElementById(`shoot${field}Toggle`);
+    if (toggleWrap) toggleWrap.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
+    const fieldsWrap = document.getElementById(`shoot${field}Fields`);
+    if (fieldsWrap) fieldsWrap.style.display = value === 'yes' ? 'flex' : 'none';
+}
+
+// select.value is the literal string "manual" when "Not in the list" is chosen — resolve down to
+// the actual typed name in that case, same as the sign-in screen's startApp() does.
+function getShootRequesterName() {
+    const sel = document.getElementById('shootRequesterName')?.value || '';
+    if (sel === 'manual') return (document.getElementById('shootManualName')?.value || '').trim();
+    return sel;
+}
+
+// Preset-answer fields (What are we shooting, Deliverables, Location, Props what/who): each is a
+// <select id="X"> of industry-standard options ending in "Not in the list" (value="other"), paired
+// with a free-text fallback <input/textarea id="XOther"> inside a #XOtherRow wrapper that's only
+// shown once "Not in the list" is picked. Keeps the request fast for the common cases while never
+// blocking the uncommon one — same shape as the Requester Name picker.
+function toggleShootPresetOther(id) {
+    const select = document.getElementById(id);
+    const row = document.getElementById(id + 'OtherRow');
+    if (!select || !row) return;
+    const isOther = select.value === 'other';
+    row.style.display = isOther ? 'flex' : 'none';
+    if (isOther) document.getElementById(id + 'Other')?.focus();
+}
+
+function getShootPresetValue(id) {
+    const select = document.getElementById(id);
+    if (!select) return '';
+    if (select.value === 'other') return (document.getElementById(id + 'Other')?.value || '').trim();
+    return select.value;
+}
+
+// Multi-select variant of the preset-answer pattern, used for "What are we shooting?" — a shoot can
+// legitimately be more than one type (e.g. product photos + an interview on the same day).
+function toggleShootCheckboxOther(boxId, otherRowId, otherFieldId) {
+    const box = document.getElementById(boxId);
+    const row = document.getElementById(otherRowId);
+    if (!box || !row) return;
+    const isOther = Boolean(box.querySelector('input[value="other"]')?.checked);
+    row.style.display = isOther ? 'flex' : 'none';
+    if (isOther) document.getElementById(otherFieldId)?.focus();
+}
+
+function getShootCheckboxValue(boxId, otherFieldId) {
+    const box = document.getElementById(boxId);
+    if (!box) return '';
+    const parts = [];
+    box.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+        if (cb.value === 'other') {
+            const otherVal = (document.getElementById(otherFieldId)?.value || '').trim();
+            if (otherVal) parts.push(otherVal);
+        } else {
+            parts.push(cb.value);
+        }
+    });
+    return parts.join(', ');
+}
+
+// Reverse of getShootPresetValue() — prefills a preset <select> from a stored string. Exact preset
+// match selects it; anything else (including free text saved via an earlier "Not in the list") falls
+// into "other" with the value carried into the paired free-text field. Used by the Edit Shoot
+// Details modal, which unlike the create form starts from an already-saved value.
+function setShootPresetValue(id, storedValue) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const val = String(storedValue || '');
+    const hasOption = val && Array.from(select.options).some(o => o.value === val);
+    if (hasOption) {
+        select.value = val;
+    } else if (val) {
+        select.value = 'other';
+        const otherField = document.getElementById(id + 'Other');
+        if (otherField) otherField.value = val;
+    } else {
+        select.value = '';
+    }
+    toggleShootPresetOther(id);
+}
+
+// Reverse of getShootCheckboxValue() — prefills a preset checkbox group from a stored comma-joined
+// string. Parts that match a known preset get checked directly; anything left over gets bundled into
+// "Not in the list" so it's never silently dropped.
+function setShootCheckboxValue(boxId, otherRowId, otherFieldId, storedValue) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    const checkboxes = Array.from(box.querySelectorAll('input[type="checkbox"]'));
+    const presetValues = new Set(checkboxes.map(cb => cb.value).filter(v => v !== 'other'));
+    const parts = String(storedValue || '').split(',').map(s => s.trim()).filter(Boolean);
+    const matched = parts.filter(p => presetValues.has(p));
+    const unmatched = parts.filter(p => !presetValues.has(p));
+
+    checkboxes.forEach(cb => { cb.checked = cb.value !== 'other' && matched.includes(cb.value); });
+    const otherCb = box.querySelector('input[value="other"]');
+    if (otherCb) otherCb.checked = unmatched.length > 0;
+    const otherField = document.getElementById(otherFieldId);
+    if (otherField) otherField.value = unmatched.join(', ');
+
+    toggleShootCheckboxOther(boxId, otherRowId, otherFieldId);
+}
+
+// Multi-day shoots: the primary Shoot Date/checklist stays single — these are purely informational
+// extra dates shown on the Shooting panel and Copy Shoot Brief, editable from both the create form
+// and the Edit Shoot Details modal via the same container-scoped row functions.
+function addShootExtraDayRow(containerId, prefill = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'shoot-extra-day-row';
+    row.innerHTML = `
+        <input type="date" class="shoot-extra-day-date" value="${escapeHtml(prefill.date || '')}">
+        <input type="text" class="shoot-extra-day-label" placeholder="e.g. Day 2 - Talent shoot" value="${escapeHtml(prefill.label || '')}">
+        <button type="button" onclick="this.parentElement.remove()" aria-label="Remove day"><i data-lucide="x"></i></button>
+    `;
+    container.appendChild(row);
+    refreshIcons();
+}
+
+function ensureShootExtraDayRow(containerId) {
+    const container = document.getElementById(containerId);
+    if (container && !container.children.length) addShootExtraDayRow(containerId);
+}
+
+function getShootExtraDays(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} .shoot-extra-day-row`))
+        .map(row => ({
+            date: row.querySelector('.shoot-extra-day-date')?.value || '',
+            label: (row.querySelector('.shoot-extra-day-label')?.value || '').trim()
+        }))
+        .filter(d => d.date || d.label);
+}
+
+function renderShootExtraDaysInto(containerId, days) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    (days || []).forEach(d => addShootExtraDayRow(containerId, d));
+}
+
+// Scoped to #shooting-form-area (not the plain global .form-step selector used by goToStep()) —
+// both wizards' step containers share the .form-step class and live in the DOM at the same time, so
+// an unscoped query would also toggle the Ad-hoc/Monthly/Pitch wizard's steps.
+function goToShootStep(step) {
+    if (step === 2) {
+        if (!getShootRequesterName()) return showAppleAlert("Incomplete Info", "Please tell us your name before proceeding.");
+        syncShootIdentity(); // safety net — the field's own onchange only fires on blur
+    }
+    if (step === 3) {
+        const client = document.getElementById('shootClient').value.trim();
+        const project = document.getElementById('shootProject').value.trim();
+        const what = getShootCheckboxValue('shootWhatBox', 'shootWhatOther');
+        const date = document.getElementById('shootDate').value;
+        const location = getShootPresetValue('shootLocation');
+        if (!client || !project || !what || !date || !location) {
+            return showAppleAlert("Incomplete Info", "Please fill in Client, Project, What are we shooting, Shoot Date and Location before proceeding.");
+        }
+        if (document.getElementById('shootMultiDayValue').value === 'yes' && !getShootExtraDays('shootExtraDaysContainer').length) {
+            return showAppleAlert("Incomplete Info", "Please add at least one additional shoot day, or set Multi-day shoot to No.");
+        }
+    }
+    document.querySelectorAll('#shooting-form-area .form-step').forEach(el => el.classList.remove('active'));
+    document.getElementById('shoot-step' + step).classList.add('active');
+    document.getElementById('shoot-ind-1').className = 'step-indicator ' + (step >= 1 ? (step > 1 ? 'completed' : 'active') : '');
+    document.getElementById('shoot-ind-2').className = 'step-indicator ' + (step >= 2 ? (step > 2 ? 'completed' : 'active') : '');
+    document.getElementById('shoot-ind-3').className = 'step-indicator ' + (step >= 3 ? 'active' : '');
+    refreshIcons();
+}
+
+function toggleShootMoreDetails() {
+    const box = document.getElementById('shootMoreDetails');
+    const btn = document.getElementById('shootMoreDetailsBtn');
+    if (!box) return;
+    const isOpen = box.style.display === 'block';
+    box.style.display = isOpen ? 'none' : 'block';
+    if (btn) btn.innerHTML = isOpen ? '<i data-lucide="plus"></i> Add more shoot details' : '<i data-lucide="minus"></i> Hide extra details';
+    refreshIcons();
+}
+
+function populateShootClientDatalist() {
+    const dl = document.getElementById('shootClientList');
+    if (!dl) return;
+    dl.innerHTML = (window.allClients || []).map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+}
+
+// Same picker as the sign-in screen (chooseCountry()): live team list for the selected region, plus
+// a trailing "Not in the list" option that reveals the free-text field. Only Malaysia/Indonesia have
+// a seeded team list today — other regions just show "Not in the list", same as everywhere else.
+function populateShootRequesterOptions() {
+    const region = document.getElementById('shootRegion')?.value;
+    const select = document.getElementById('shootRequesterName');
+    if (!select) return;
+
+    let names = [];
+    if (region === 'Malaysia') names = allStaffMY;
+    else if (region === 'Indonesia') names = allStaffID;
+
+    const previousVal = select.value;
+    const savedName = localStorage.getItem('adtech_user_name');
+
+    select.innerHTML = `<option value="">-- Select Name --</option>`
+        + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')
+        + `<option value="manual">Not in the list</option>`;
+
+    if (savedName && names.includes(savedName)) select.value = savedName;
+    else if (previousVal && Array.from(select.options).some(o => o.value === previousVal)) select.value = previousVal;
+
+    toggleShootManualName();
+}
+
+function toggleShootManualName() {
+    const select = document.getElementById('shootRequesterName');
+    const row = document.getElementById('shootManualNameRow');
+    const manual = document.getElementById('shootManualName');
+    if (!select || !row || !manual) return;
+    if (select.value === 'manual') {
+        row.style.display = 'flex';
+        manual.focus();
+    } else {
+        row.style.display = 'none';
+    }
+}
+
+// Mirrors startApp()'s sign-in write: whoever this step resolves to becomes this browser's
+// platform-wide identity too (same as signing in), so it's remembered everywhere else in the app —
+// notifications, "completed by" on checklists, etc. — without asking again next time.
+function syncShootIdentity() {
+    const select = document.getElementById('shootRequesterName');
+    const manual = document.getElementById('shootManualName');
+    const region = document.getElementById('shootRegion')?.value;
+    if (!select) return;
+
+    const finalName = select.value === 'manual' ? (manual?.value || '').trim() : select.value;
+    if (finalName) {
+        localStorage.setItem('adtech_user_name', finalName);
+        if (region) userRegion = region;
+    }
+    if (region) localStorage.setItem('adtech_region', region);
+}
+
+function openShootingRequestForm() {
+    const area = document.getElementById('shooting-form-area');
+    if (!area) return;
+    area.style.display = 'block';
+    populateShootClientDatalist();
+
+    const savedRegion = localStorage.getItem('adtech_region');
+    const regionSelect = document.getElementById('shootRegion');
+    if (regionSelect) {
+        const validSavedRegion = savedRegion && Array.from(regionSelect.options).some(o => o.value === savedRegion);
+        const validUserRegion = userRegion && Array.from(regionSelect.options).some(o => o.value === userRegion);
+        regionSelect.value = validSavedRegion ? savedRegion : (validUserRegion ? userRegion : regionSelect.options[0].value);
+    }
+    populateShootRequesterOptions();
+
+    const savedName = localStorage.getItem('adtech_user_name');
+    const nameSelect = document.getElementById('shootRequesterName');
+    if (savedName && nameSelect && !Array.from(nameSelect.options).some(o => o.value === savedName)) {
+        // Signed-in identity isn't in this region's live list (region has no seeded team, or it was a
+        // manually-entered name at sign-in) — go straight to "Not in the list", pre-filled with it.
+        nameSelect.value = 'manual';
+        document.getElementById('shootManualName').value = savedName;
+    }
+    toggleShootManualName();
+
+    setShootToggle('Talent', 'no');
+    setShootToggle('Props', 'no');
+    setShootToggle('MultiDay', 'no');
+    // Guard against stray state left over from an abandoned session (opened, filled some of the
+    // form, hit "Back to Options" without submitting, then reopened) — Back to Options only hides
+    // the form, it doesn't clear it.
+    document.querySelectorAll('#shootWhatBox input[type="checkbox"]').forEach(cb => cb.checked = false);
+    const extraDays = document.getElementById('shootExtraDaysContainer');
+    if (extraDays) extraDays.innerHTML = '';
+    area.querySelectorAll('[id$="OtherRow"]').forEach(el => el.style.display = 'none');
+    const moreBox = document.getElementById('shootMoreDetails');
+    if (moreBox) moreBox.style.display = 'none';
+    goToShootStep(1);
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    refreshIcons();
+}
+
+function resetShootingFormUI() {
+    const area = document.getElementById('shooting-form-area');
+    if (!area) return;
+    area.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]), textarea').forEach(el => el.value = '');
+    area.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+    area.querySelectorAll('select').forEach(el => el.selectedIndex = 0);
+    setShootToggle('Talent', 'no');
+    setShootToggle('Props', 'no');
+    setShootToggle('MultiDay', 'no');
+    const extraDays = document.getElementById('shootExtraDaysContainer');
+    if (extraDays) extraDays.innerHTML = '';
+    const moreBox = document.getElementById('shootMoreDetails');
+    if (moreBox) moreBox.style.display = 'none';
+    area.querySelectorAll('[id$="OtherRow"]').forEach(el => el.style.display = 'none');
+    const manualRow = document.getElementById('shootManualNameRow');
+    if (manualRow) manualRow.style.display = 'none';
+    goToShootStep(1);
+    resetRequestGateway();
+}
+
+async function submitShootingRequest() {
+    const name = getShootRequesterName();
+    const region = document.getElementById('shootRegion').value || userRegion;
+    const client = document.getElementById('shootClient').value.trim();
+    const project = document.getElementById('shootProject').value.trim();
+    const whatShooting = getShootCheckboxValue('shootWhatBox', 'shootWhatOther');
+    const shootDate = document.getElementById('shootDate').value;
+    const location = getShootPresetValue('shootLocation');
+    const deadline = document.getElementById('shootDeadline').value;
+
+    if (!name || !client || !project || !whatShooting || !shootDate || !location || !deadline) {
+        return showAppleAlert('Incomplete Fields', 'Please fill in Name, Client, Project, What are we shooting, Shoot Date, Location and Client Deadline.');
+    }
+
+    const talentRequired = document.getElementById('shootTalentValue').value === 'yes';
+    const talentName = document.getElementById('shootTalentName').value.trim();
+    const talentStatus = document.getElementById('shootTalentStatus').value;
+    const propsRequired = document.getElementById('shootPropsValue').value === 'yes';
+    const propsWhat = getShootPresetValue('shootPropsWhat');
+    const propsWho = getShootPresetValue('shootPropsWho');
+
+    if (talentRequired && !talentName) {
+        return showAppleAlert('Missing Talent Info', 'Please add the talent name, or set Talent Required to No.');
+    }
+    if (propsRequired && !propsWhat) {
+        return showAppleAlert('Missing Product/Props Info', 'Please describe what is required, or set Product/Props Required to No.');
+    }
+    if (document.getElementById('shootMultiDayValue').value === 'yes' && !getShootExtraDays('shootExtraDaysContainer').length) {
+        return showAppleAlert('Missing Shoot Days', 'Please add at least one additional shoot day, or set Multi-day shoot to No.');
+    }
+
+    const callTime = document.getElementById('shootCallTime').value;
+    const multiDay = document.getElementById('shootMultiDayValue').value === 'yes';
+    const extraShootDays = multiDay ? getShootExtraDays('shootExtraDaysContainer') : [];
+    const deliverables = getShootPresetValue('shootDeliverables');
+    const mapLink = document.getElementById('shootMapLink').value.trim();
+    const onsitePic = document.getElementById('shootOnsitePic').value.trim();
+    const referenceLink = document.getElementById('shootRef').value.trim();
+    const importantNotes = document.getElementById('shootNotes').value.trim();
+
+    // Optional / collapsed "+ Add more shoot details" fields — none of these block submission.
+    const endTime = document.getElementById('shootEndTime').value;
+    const wardrobe = document.getElementById('shootWardrobe').value.trim();
+    const shotList = document.getElementById('shootShotList').value.trim();
+    const equipmentNotes = document.getElementById('shootEquipment').value.trim();
+    const locationAccess = document.getElementById('shootLocationAccess').value.trim();
+    const additionalContacts = document.getElementById('shootAdditionalContacts').value.trim();
+    const productionNotes = document.getElementById('shootProductionNotes').value.trim();
+
+    const submitBtn = document.getElementById('shootSubmitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Submitting...';
+    refreshIcons();
+    submitBtn.disabled = true;
+
+    try {
+        await supabaseClient.from('clients').upsert([{ name: client, region }], { onConflict: 'name', ignoreDuplicates: true });
+        fetchClientsList();
+    } catch (e) {
+        console.log('Silent error saving new client:', e.message);
+    }
+
+    try {
+        const { data: existingJobs } = await supabaseClient.from('creative_requests').select('job_id');
+        const finalJobID = generateNextJobID(client, existingJobs || []);
+
+        const shootDetails = {
+            call_time: callTime || '',
+            location,
+            map_link: mapLink,
+            what_shooting: whatShooting,
+            deliverables,
+            onsite_pic: onsitePic,
+            talent: talentRequired ? { required: true, name: talentName, status: talentStatus } : { required: false },
+            props: propsRequired ? { required: true, what: propsWhat, who: propsWho } : { required: false },
+            additional_shoot_days: extraShootDays,
+            reference_link: referenceLink,
+            important_notes: importantNotes,
+            optional: {
+                end_time: endTime || '', wardrobe, shot_list: shotList, equipment_notes: equipmentNotes,
+                location_access: locationAccess, additional_contacts: additionalContacts, production_notes: productionNotes
+            }
+        };
+
+        // Plain-text fallback so search/CSV export/older reporting that reads `brief` still sees
+        // something sensible — the real UI reads shoot_details (structured) via the Shooting panel.
+        const briefLines = [
+            '[SHOOTING REQUEST]',
+            `What: ${whatShooting}`,
+            deliverables ? `Deliverables: ${deliverables}` : '',
+            `Shoot Date: ${formatDate(shootDate)}${callTime ? ' ' + callTime : ''}`,
+            extraShootDays.length ? `Additional Shoot Days: ${extraShootDays.map(d => `${formatDate(d.date)}${d.label ? ' - ' + d.label : ''}`).join('; ')}` : '',
+            `Location: ${location}`,
+            talentRequired ? `Talent: ${talentName} (${talentStatus})` : 'Talent: Not required',
+            propsRequired ? `Product/Props: ${propsWhat} (brought by ${propsWho || 'TBC'})` : 'Product/Props: Not required',
+            importantNotes ? `Notes: ${importantNotes}` : ''
+        ].filter(Boolean);
+
+        const payload = {
+            job_id: finalJobID, requester_name: name, region, client_name: client, project_title: project,
+            job_type: 'Shooting', objective: 'Shooting', brief: briefLines.join('\n'),
+            deadline, client_deadline: deadline, original_client_deadline: deadline,
+            ref_link: referenceLink, remarks: '', status: 'pending', assignee: 'Unassigned',
+            playbook_link: '', work_status: 'Not started', revision: 0, approver: '',
+            shoot_date: shootDate, shoot_details: shootDetails
+        };
+
+        const { error } = await supabaseClient.from('creative_requests').insert([payload]);
+        if (error) throw new Error(error.message);
+
+        globalData.unshift(payload);
+        logTaskActivity(finalJobID, 'submitted', '', 'pending', `Shooting request submitted by ${name}`, { region, job_type: 'Shooting', client_deadline: deadline, shoot_date: shootDate });
+
+        // Without this, the new job has no entry in shootReadinessByJob (it only gets populated on
+        // the next full Supabase fetch/realtime tick), so its Board/Kanban readiness chip would be
+        // silently missing until something else happens to refresh the page.
+        await fetchShootReadinessSummaryForCurrentAccess();
+        renderActiveViewsAfterTaskDataChange();
+
+        // Deliberately NO Telegram notification here in this MVP: the existing submitRequest() fires
+        // an ungated fetch() straight to the PRODUCTION Telegram bot regardless of IS_LOCAL_HOST (a
+        // pre-existing, already-flagged behaviour — see PRODUCTION_GAS_API's comment block). Wiring
+        // Shooting into that during local development would mean every local test sends a real
+        // message to production Telegram, which this task explicitly must not do. Add it the same
+        // way the other request types do before a production rollout, if wanted.
+
+        document.getElementById('successSubText').innerText = `Job ID: ${finalJobID}`;
+        document.getElementById('successOverlay').classList.add('show');
+        playSuccessSound();
+
+        resetShootingFormUI();
+    } catch (err) {
+        showAppleAlert('Submission Failed', err.message || 'Something went wrong. Please try again.', { tone: 'danger' });
+    } finally {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+        refreshIcons();
+    }
+}
+
 async function submitRequest() {
     const name = document.getElementById('requesterName').value || document.getElementById('manualName').value;
     const client = document.getElementById('pClient').value.trim();
@@ -12458,7 +13523,7 @@ function openClientReviewAuditDialog() {
                             <strong>${escapeHtml(task.job_id)} · ${escapeHtml(task.client_name || '')}</strong>
                             <span>${escapeHtml(task.project_title || '')}</span>
                             <small>${age.workingDays ?? '-'} working day(s) · ${escapeHtml(task.requester_name || 'No requester')} · ${escapeHtml(getAssigneeDisplay(task.assignee))}</small>
-                            ${latestNote?.note_text ? `<em>${escapeHtml(latestNote.note_text.slice(0, 110))}${latestNote.note_text.length > 110 ? '...' : ''}</em>` : ''}
+                            ${latestNote?.note_text ? `<em>${linkifyHtml(escapeHtml(latestNote.note_text.slice(0, 110)))}${latestNote.note_text.length > 110 ? '...' : ''}</em>` : ''}
                         </div>
                         <div class="client-review-audit-actions">
                             <button type="button" class="settings-link-btn" onclick="closeSettingsDialog(); openDetailModal('${escapeJsString(task.job_id)}')">Review</button>
@@ -13115,7 +14180,7 @@ async function updateRevisionOptimistic(event, jobID, currentRev, change) {
 
 async function deleteJob(jobID) {
     await showApplePrompt("Delete Record", "Enter passcode to remove this record:", true, async (val) => {
-        if(val !== "3030300" && val !== "1234") return false;
+        if(val !== SUPER_ADMIN_LOGIN_PASSCODE) return false;
         try {
             // LOGIK BARU: Kita guna Update, bukan Delete. (Sesuai dengan polisi RLS kita)
             const { error } = await supabaseClient.from('creative_requests').update({ status: 'deleted' }).eq('job_id', jobID);
@@ -13928,10 +14993,36 @@ async function processSaveLeave(name, passcode, finalStatus, finalStart, finalEn
 // ========================================================
 // 🌟 12. PLAYBOOK & COPY TEXT UTILITIES
 // ========================================================
+// Renders the "Generate Creative Playbook" input+button pair for the pending-approval modal.
+// Searches for an already-known link (this session's cache, or the task's own playbook_link) BEFORE
+// ever offering to generate — reopening the modal never re-triggers a GAS call for a job that
+// already has one; it just shows "Open Playbook" straight away.
+function renderPlaybookGenerateField(item, safeClient, safeTitle, safeRequester) {
+    const known = generatedPlaybookLinkCache[item.job_id] || getTaskSafeHttpUrl(item.playbook_link);
+    if (known) {
+        return `<input type="text" id="playbook-${item.job_id}" value="${escapeHtml(known)}" readonly style="flex:1; min-width:200px; padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-input); color: var(--text-main);"><button onclick="window.open('${escapeJsString(known)}', '_blank')" id="btn-gen-${item.job_id}" class="btn-action" style="background:var(--green); color:white; border:none; min-width:140px; margin:0;"><i data-lucide="external-link"></i> Open Playbook</button>`;
+    }
+    return `<input type="text" id="playbook-${item.job_id}" placeholder="Click Auto-Generate or paste link..." style="flex:1; min-width:200px; border-style: dashed; padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-input); color: var(--text-main);"><button onclick="generatePlaybook('${item.job_id}', '${safeClient}', '${safeTitle}', '${safeRequester}')" id="btn-gen-${item.job_id}" class="btn-action" style="background:var(--link-color); color:white; border:none; min-width:140px; margin:0;"><i data-lucide="sparkles"></i> Auto-Generate</button>`;
+}
+
 async function generatePlaybook(jobID, client, title, requester) {
     const btn = document.getElementById(`btn-gen-${jobID}`);
     const input = document.getElementById(`playbook-${jobID}`);
     if (!btn || !input || btn.dataset.generating === 'true') return;
+
+    // Search-before-generate: a link may already exist for this job (cached from earlier this
+    // session, or the task somehow already carries one) — reuse it instead of calling GAS again.
+    const item = globalData.find(d => d.job_id === jobID);
+    const known = generatedPlaybookLinkCache[jobID] || getTaskSafeHttpUrl(item?.playbook_link);
+    if (known) {
+        input.value = known;
+        btn.innerHTML = '<i data-lucide="external-link"></i> Open Playbook';
+        btn.style.background = 'var(--green)';
+        btn.setAttribute('onclick', `window.open('${escapeJsString(known)}', '_blank')`);
+        btn.disabled = false;
+        refreshIcons();
+        return;
+    }
 
     const originalHtml = btn.innerHTML;
     const originalPlaceholder = input.placeholder;
@@ -13966,6 +15057,7 @@ async function generatePlaybook(jobID, client, title, requester) {
 
         if(res.status === "success") {
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+            generatedPlaybookLinkCache[jobID] = res.url;
             input.value = res.url;
             input.placeholder = originalPlaceholder;
             btn.innerHTML = '<i data-lucide="external-link"></i> Open Playbook';
@@ -14378,6 +15470,7 @@ function renderKanbanBoard() {
                     </div>
                     <div class="kd-title">${t.client_name}: ${t.project_title}</div>
                     ${renderMonthlyProgressChip(t)}
+                    ${renderShootReadinessChip(t)}
                     ${renderTaskDeadlineRow(t)}
                     ${renderTaskNotePreview(t)}
                     <div class="kd-footer">
