@@ -36,6 +36,21 @@ alter table public.creative_requests
     add column if not exists shoot_date date,
     add column if not exists shoot_details jsonb not null default '{}'::jsonb;
 
+-- Local Supabase already has job_id declared `unique` from its base schema, but production's
+-- creative_requests table predates this migrations folder and was never confirmed to have that
+-- constraint — the shoot_checklist_items foreign key below needs it, so add it defensively here.
+-- If this fails with a duplicate-key/unique-violation error (not "already exists"), it means
+-- production actually has duplicate job_id rows somewhere and that needs fixing first — that
+-- would be a separate, real data-quality issue unrelated to Shooting.
+do $$
+begin
+    begin
+        alter table public.creative_requests add constraint creative_requests_job_id_key unique (job_id);
+    exception
+        when duplicate_object then null; -- constraint (by this name) already exists — fine
+    end;
+end $$;
+
 create table if not exists public.shoot_checklist_items (
     id bigint generated always as identity primary key,
     job_id text not null references public.creative_requests(job_id) on delete cascade,
