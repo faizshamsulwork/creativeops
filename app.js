@@ -12207,7 +12207,18 @@ async function submitShootingRequest() {
             shoot_date: shootDate, shoot_details: shootDetails
         };
 
-        const { error } = await supabaseClient.from('creative_requests').insert([payload]);
+        // Production's PostgREST schema cache is known to reject client_deadline/original_client_deadline
+        // on some tables even though the migration adding them has run (same gap the Ad-hoc/Pitch
+        // submit path and Task Edit already work around — see isTaskEditSchemaFallbackError) — strip
+        // them and retry with `deadline` alone rather than hard-failing the whole Shooting submission.
+        let { error } = await supabaseClient.from('creative_requests').insert([payload]);
+        if (error && /column|schema|cache|client_deadline|original_client_deadline|internal_due/i.test(error.message || '')) {
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.client_deadline;
+            delete fallbackPayload.original_client_deadline;
+            const retry = await supabaseClient.from('creative_requests').insert([fallbackPayload]);
+            error = retry.error;
+        }
         if (error) throw new Error(error.message);
 
         globalData.unshift(payload);
