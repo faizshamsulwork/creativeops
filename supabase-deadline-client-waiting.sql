@@ -1,5 +1,12 @@
 -- Creative OS deadline and client-waiting upgrade
 -- Run this in Supabase SQL Editor once before relying on the new reporting fields.
+--
+-- UPDATE (2026-09-06): added the `notify pgrst, 'reload schema';` at the very end. Without it,
+-- PostgREST can keep serving requests against its cached (pre-migration) view of `creative_requests`
+-- even after the columns above exist on the table — which is exactly what caused Shooting request
+-- submissions to fail with "Could not find the 'client_deadline' column ... in the schema cache".
+-- The whole script is still idempotent (if not exists / create if not exists), so re-running it
+-- against a production DB that already has these columns is a safe no-op except for that reload.
 
 alter table public.creative_requests
     add column if not exists original_client_deadline date,
@@ -154,3 +161,5 @@ create policy "Creative OS can update client waiting periods"
     to anon, authenticated
     using (true)
     with check (true);
+
+notify pgrst, 'reload schema';
