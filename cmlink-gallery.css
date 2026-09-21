@@ -1,0 +1,575 @@
+/* ============================================================================
+   CMLink Style Gallery — design system
+   ============================================================================
+   Deliberately NOT its own palette. Every color here is aliased straight from the
+   platform's own tokens (style.css :root / [data-theme="dark"]) so this module reads as a
+   native part of Adtechinno, not a separate branded block — same accent (sky blue), same
+   glass-card recipe (translucent bg + backdrop blur), same font (Inter), same light/dark
+   switch (the host's own toggle; nothing here needs its own theme control, the variables
+   just inherit and update automatically). Only the --cml-* names are local — every value
+   traces back to an existing var(--...) from style.css. */
+
+.cmlink-gallery-root {
+    --cml-bg: var(--bg-main);
+    --cml-surface: var(--bg-card);
+    --cml-surface-soft: var(--bg-box);
+    --cml-border: var(--border-main);
+    --cml-heading: var(--text-strong);
+    --cml-body: var(--text-main);
+    --cml-muted: var(--text-muted);
+    --cml-accent: var(--link-color);
+    --cml-accent-soft: rgba(56, 189, 248, 0.1);
+    --cml-success: var(--green);
+    --cml-success-soft: rgba(16, 185, 129, 0.12);
+    --cml-danger: var(--red);
+    --cml-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 2px 8px rgba(15, 23, 42, 0.05);
+    --cml-shadow: var(--shadow);
+    --cml-shadow-lg: 0 22px 60px -14px rgba(15, 23, 42, 0.28);
+    --cml-blur: blur(18px) saturate(1.18);
+    /* iOS/macOS-flavoured easings: expo-out for reveals, a gentle overshoot spring for taps. */
+    --cml-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --cml-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    /* Mirrors .shortcut-btn's convention elsewhere in the app (dark navy on light, soft box on dark). */
+    --cml-btn-bg: var(--text-strong);
+    --cml-btn-text: var(--bg-main);
+    --cml-btn-hover-bg: var(--link-color);
+    --cml-btn-hover-text: #ffffff;
+
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: transparent;
+    color: var(--cml-body);
+    min-height: 100%;
+    padding: clamp(16px, 3vw, 32px) clamp(16px, 3vw, 32px) 60px;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="dark"] .cmlink-gallery-root {
+    --cml-btn-bg: var(--bg-box);
+    --cml-btn-text: var(--text-strong);
+    --cml-btn-hover-bg: var(--accent);
+    --cml-btn-hover-text: var(--accent-text);
+    --cml-shadow-lg: 0 26px 70px -14px rgba(0, 0, 0, 0.55);
+}
+
+.cmlink-gallery-root * { box-sizing: border-box; }
+.cmlink-gallery-root h1, .cmlink-gallery-root h2, .cmlink-gallery-root h3, .cmlink-gallery-root h4 {
+    color: var(--cml-heading);
+    font-weight: 700;
+    margin: 0;
+}
+.cmlink-gallery-root button, .cmlink-gallery-root input, .cmlink-gallery-root select, .cmlink-gallery-root textarea {
+    font-family: inherit;
+}
+.cmlink-gallery-root a { color: var(--cml-accent); }
+
+/* Shared "glass card" surface — same recipe as .success-toast-card / .bg-card elsewhere. */
+.cml-glass {
+    background: var(--cml-surface);
+    border: 1px solid var(--cml-border);
+    backdrop-filter: var(--cml-blur);
+    -webkit-backdrop-filter: var(--cml-blur);
+    box-shadow: var(--cml-shadow-sm);
+}
+
+/* ---- Masthead ---- */
+.cml-masthead {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+.cml-masthead-title span.cml-eyebrow {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--cml-accent);
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.cml-masthead-title h1 { font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.02em; }
+.cml-masthead-title p { color: var(--cml-muted); margin: 6px 0 0; font-size: 14px; max-width: 60ch; }
+
+.cml-masthead-actions { display: flex; align-items: center; gap: 10px; }
+.cml-usage-badge {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--cml-muted);
+    border-radius: 999px;
+    padding: 7px 14px;
+    white-space: nowrap;
+}
+.cml-usage-badge.cml-glass {}
+
+/* ---- How-to + combo line panel (collapsed by default — click to reveal) ---- */
+.cml-howto-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid var(--cml-border);
+    background: var(--cml-surface-soft);
+    color: var(--cml-body);
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 13px;
+    border-radius: 9px;
+    cursor: pointer;
+    margin-bottom: 14px;
+    transition: background 0.2s ease, transform 0.15s var(--cml-ease-spring);
+}
+.cml-howto-toggle-btn:hover { background: var(--cml-accent-soft); color: var(--cml-heading); }
+.cml-howto-toggle-btn:active { transform: scale(0.97); }
+.cml-howto-toggle-btn i:first-child { width: 14px; height: 14px; }
+.cml-howto-toggle-btn .cml-chevron { width: 14px; height: 14px; }
+.cml-howto-body { max-height: 0; overflow: hidden; transition: max-height 0.38s var(--cml-ease); }
+.cml-howto-panel {
+    border-radius: 18px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    margin-top: 2px;
+}
+.cml-howto-panel h3 { font-size: 14px; margin-bottom: 6px; }
+.cml-howto-panel p { font-size: 13px; color: var(--cml-muted); margin: 0 0 12px; line-height: 1.6; }
+.cml-combo-line-box {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: var(--cml-surface-soft);
+    border: 1px dashed var(--cml-accent);
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+.cml-combo-line-box p { font-size: 12.5px; color: var(--cml-body); margin: 0; line-height: 1.6; flex: 1; }
+.cml-copy-btn {
+    flex-shrink: 0;
+    border: 1px solid var(--cml-accent);
+    background: transparent;
+    color: var(--cml-accent);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.15s var(--cml-ease-spring), box-shadow 0.2s ease;
+    white-space: nowrap;
+}
+.cml-copy-btn:hover { background: var(--cml-accent-soft); box-shadow: var(--cml-shadow-sm); }
+.cml-copy-btn:active { transform: scale(0.93); }
+
+/* ---- Tabs (underlined, with a sliding indicator bar rather than each tab drawing its own) ---- */
+.cml-tabs {
+    display: flex;
+    gap: 24px;
+    border-bottom: 1px solid var(--cml-border);
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+    position: relative;
+}
+.cml-tab-btn {
+    background: none;
+    border: none;
+    padding: 10px 2px 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--cml-muted);
+    cursor: pointer;
+    position: relative;
+    margin-bottom: -1px;
+    transition: color 0.2s ease;
+}
+.cml-tab-btn:hover { color: var(--cml-heading); }
+.cml-tab-btn.active { color: var(--cml-accent); }
+.cml-tab-indicator {
+    position: absolute;
+    bottom: -1px;
+    height: 2px;
+    background: var(--cml-accent);
+    border-radius: 2px;
+    transition: left 0.32s var(--cml-ease), width 0.32s var(--cml-ease);
+    pointer-events: none;
+}
+
+/* ---- Add-image form ---- */
+.cml-add-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: var(--cml-btn-bg);
+    color: var(--cml-btn-text);
+    font-weight: 700;
+    font-size: 13px;
+    padding: 9px 16px;
+    border-radius: 9px;
+    cursor: pointer;
+    margin-bottom: 16px;
+    transition: transform 0.18s var(--cml-ease-spring), background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+.cml-add-toggle-btn:hover { background: var(--cml-btn-hover-bg); color: var(--cml-btn-hover-text); box-shadow: var(--cml-shadow); }
+.cml-add-toggle-btn:active { transform: scale(0.96); }
+.cml-add-toggle-btn i { width: 15px; height: 15px; }
+
+.cml-add-form {
+    border-radius: 18px;
+    padding: 18px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    align-items: end;
+    animation: cml-rise-in 0.3s var(--cml-ease);
+}
+.cml-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.cml-field label { font-size: 11px; font-weight: 600; color: var(--cml-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.cml-field select, .cml-field input[type="text"], .cml-field input[type="password"] {
+    width: 100%;
+    border: 1px solid var(--cml-border);
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 13px;
+    color: var(--cml-body);
+    background: var(--cml-surface-soft);
+}
+.cml-field select:focus, .cml-field input[type="text"]:focus, .cml-field input[type="password"]:focus { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.cml-dropzone {
+    border: 1.5px dashed var(--cml-border);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--cml-muted);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cml-dropzone:hover, .cml-dropzone.dragover { border-color: var(--cml-accent); background: var(--cml-accent-soft); }
+.cml-dropzone.has-file { color: var(--cml-accent); font-weight: 600; border-color: var(--cml-accent); }
+.cml-submit-btn {
+    grid-column: 1 / -1;
+    justify-self: start;
+    border: none;
+    background: var(--cml-btn-bg);
+    color: var(--cml-btn-text);
+    font-weight: 700;
+    font-size: 13px;
+    padding: 10px 20px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: transform 0.18s var(--cml-ease-spring), background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+.cml-submit-btn:hover:not(:disabled) { background: var(--cml-btn-hover-bg); color: var(--cml-btn-hover-text); box-shadow: var(--cml-shadow); }
+.cml-submit-btn:active:not(:disabled) { transform: scale(0.96); }
+.cml-submit-btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+
+/* ---- Accordion ----
+   Uses the grid-template-rows 0fr/1fr trick instead of max-height: a fixed max-height forces the
+   transition to always run across the same guessed distance (e.g. 0 -> 6000px), so a section whose
+   real content is much shorter finishes almost instantly and looks like a snap, not a reveal. Grid
+   animates to the content's actual height, so the motion duration always matches what's visible. */
+.cml-accordion-section {
+    border-radius: 16px;
+    margin-bottom: 14px;
+    overflow: hidden;
+    transition: box-shadow 0.25s ease;
+}
+.cml-accordion-section.open { box-shadow: var(--cml-shadow); }
+.cml-accordion-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease;
+}
+.cml-accordion-header:hover { background: var(--cml-accent-soft); }
+.cml-accordion-header-left { display: flex; align-items: center; gap: 10px; }
+.cml-accordion-header h3 { font-size: 15px; }
+.cml-accordion-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cml-accent);
+    background: var(--cml-accent-soft);
+    border-radius: 999px;
+    padding: 2px 9px;
+}
+.cml-chevron { width: 17px; height: 17px; color: var(--cml-muted); transition: transform 0.32s var(--cml-ease); }
+.cml-accordion-section.open .cml-chevron { transform: rotate(180deg); }
+
+.cml-accordion-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.38s var(--cml-ease);
+}
+.cml-accordion-body-inner {
+    padding: 0 18px 20px;
+    border-top: 1px solid var(--cml-border);
+    padding-top: 16px;
+}
+
+/* ---- Filter chips (underlined text, not filled pills) ----
+   Stacked (chips row, then view toggle below) rather than side-by-side — with up to 12 chips this
+   wraps onto its own line cleanly at any width instead of colliding with the Grid/Slide toggle
+   when both try to share one row. */
+.cml-filter-row { display: flex; flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 16px; }
+.cml-filter-chips { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.cml-filter-row .cml-view-toggle { align-self: flex-end; }
+.cml-filter-chip {
+    background: none;
+    border: none;
+    padding: 2px 0;
+    font-size: 12.5px;
+    color: var(--cml-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s ease, border-color 0.25s var(--cml-ease);
+}
+.cml-filter-chip:hover { color: var(--cml-heading); }
+.cml-filter-chip.active { color: var(--cml-accent); font-weight: 700; border-bottom-color: var(--cml-accent); }
+
+.cml-view-toggle { display: flex; border: 1px solid var(--cml-border); border-radius: 9px; overflow: hidden; flex-shrink: 0; background: var(--cml-surface-soft); }
+.cml-view-toggle button {
+    background: transparent;
+    border: none;
+    padding: 6px 11px;
+    font-size: 12px;
+    color: var(--cml-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.25s var(--cml-ease), color 0.25s ease;
+}
+.cml-view-toggle button.active { background: var(--cml-accent); color: #fff; }
+.cml-view-toggle button i { width: 13px; height: 13px; }
+
+/* ---- Grid + cards ---- */
+.cml-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+.cml-card {
+    border-radius: 16px;
+    overflow: hidden;
+    animation: cml-rise-in 0.35s var(--cml-ease) backwards;
+    transition: transform 0.28s var(--cml-ease), box-shadow 0.28s var(--cml-ease);
+}
+.cml-card:hover { transform: translateY(-5px); box-shadow: var(--cml-shadow-lg); }
+/* object-fit: contain (not cover) deliberately — these are casting reference photos where the
+   whole head-to-toe frame matters; cover would crop the top/bottom to fill the box since most
+   uploads are tall 9:16 portraits against this shorter 3:4 card. Never crop a talent photo. */
+.cml-card.selected-for-download { outline: 2px solid var(--cml-accent); outline-offset: 2px; }
+.cml-select-checkbox {
+    position: absolute;
+    top: 8px; left: 8px;
+    z-index: 2;
+    width: 24px; height: 24px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(6px);
+    border: 1.5px solid rgba(255, 255, 255, 0.75);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s var(--cml-ease-spring), background 0.2s ease, border-color 0.2s ease;
+}
+.cml-select-checkbox:hover { transform: scale(1.1); }
+.cml-select-checkbox.selected { background: var(--cml-accent); border-color: var(--cml-accent); }
+.cml-select-checkbox i { width: 14px; height: 14px; color: #fff; opacity: 0; transition: opacity 0.15s ease; }
+.cml-select-checkbox.selected i { opacity: 1; }
+.cml-card-img-wrap { position: relative; aspect-ratio: 3 / 4; overflow: hidden; cursor: zoom-in; background: var(--cml-surface-soft); }
+.cml-card-img-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; transition: transform 0.5s var(--cml-ease); }
+.cml-card:hover .cml-card-img-wrap img { transform: scale(1.04); }
+.cml-card-body { padding: 10px 11px 12px; }
+.cml-card-meta { font-size: 11px; color: var(--cml-muted); margin-bottom: 3px; }
+.cml-card-note { font-size: 12px; color: var(--cml-body); margin-bottom: 9px; min-height: 15px; line-height: 1.4; }
+.cml-card-actions { display: flex; gap: 6px; }
+.cml-remove-btn {
+    border: 1px solid var(--cml-border);
+    background: var(--cml-surface-soft);
+    color: var(--cml-danger);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 7px 6px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: transform 0.15s var(--cml-ease-spring), background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.cml-remove-btn:active { transform: scale(0.92); }
+.cml-remove-btn:hover { border-color: var(--cml-danger); background: rgba(239, 68, 68, 0.08); }
+.cml-remove-btn-full { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.cml-remove-btn-full i { width: 14px; height: 14px; }
+
+.cml-empty-note { font-size: 13px; color: var(--cml-muted); padding: 10px 2px; }
+
+@keyframes cml-rise-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes cml-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.cml-fade-in { animation: cml-fade-in 0.28s var(--cml-ease); }
+
+/* ---- Slide view — a real carousel: draggable/swipeable track, arrows just nudge the same
+   animated transform rather than re-rendering the DOM, so navigation always feels like a slide,
+   not a jump-cut. ---- */
+.cml-slide { display: flex; align-items: center; gap: 12px; }
+.cml-slide-arrow {
+    border: 1px solid var(--cml-border);
+    background: var(--cml-surface-soft);
+    border-radius: 999px;
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.15s var(--cml-ease-spring), background 0.2s ease;
+}
+.cml-slide-arrow:hover:not(:disabled) { background: var(--cml-accent-soft); }
+.cml-slide-arrow:active:not(:disabled) { transform: scale(0.9); }
+.cml-slide-arrow:disabled { opacity: 0.28; cursor: not-allowed; }
+.cml-slide-arrow i { width: 16px; height: 16px; }
+/* Fills the full width between the two arrows (not a narrow fixed column) so the coverflow has
+   real room to show peeking neighbors either side, instead of being squeezed into a tunnel. */
+.cml-slide-viewport { flex: 1 1 auto; min-width: 0; overflow: hidden; touch-action: pan-y; }
+.cml-slide-track { display: flex; align-items: center; gap: 20px; will-change: transform; }
+.cml-slide-item {
+    /* A fixed-ish comfortable portrait width, not a % of the viewport — so it stays a sane size
+       on a wide panel (letting several neighbors peek) and still fits on narrow screens (clamped). */
+    flex: 0 0 min(360px, 72vw);
+    min-width: 0;
+    cursor: grab;
+    user-select: none;
+    /* opacity/filter/scale are driven live by JS (continuous during drag, eased on settle) so the
+       un-focused neighbors dim and blur smoothly as they slide past-center, not in discrete steps. */
+}
+.cml-slide-item:active { cursor: grabbing; }
+.cml-slide-item .cml-card-img-wrap { cursor: grab; }
+.cml-slide-item img { -webkit-user-drag: none; }
+.cml-slide-counter { text-align: center; font-size: 12px; color: var(--cml-muted); margin-top: 8px; }
+.cml-slide-dots { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
+.cml-slide-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--cml-border); transition: background 0.25s ease, transform 0.25s var(--cml-ease-spring); cursor: pointer; border: none; padding: 0; }
+.cml-slide-dot.active { background: var(--cml-accent); transform: scale(1.3); }
+
+/* ---- Lightbox ---- */
+.cml-lightbox-overlay {
+    position: fixed; inset: 0; background: var(--modal-bg);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999; padding: 24px;
+    animation: cml-fade-in 0.22s var(--cml-ease);
+}
+.cml-lightbox-box {
+    max-width: 560px; width: 100%; background: var(--cml-surface); border-radius: 20px; overflow: hidden;
+    box-shadow: var(--cml-shadow-lg);
+    animation: cml-modal-in 0.32s var(--cml-ease);
+}
+.cml-lightbox-box img { width: 100%; display: block; max-height: 60vh; object-fit: contain; background: #000; }
+.cml-lightbox-footer { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.cml-lightbox-close {
+    position: absolute; top: 18px; right: 18px; background: rgba(255,255,255,0.14);
+    backdrop-filter: blur(8px);
+    border: none; color: #fff; width: 34px; height: 34px; border-radius: 999px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s var(--cml-ease-spring), background 0.2s ease;
+}
+.cml-lightbox-close:hover { background: rgba(255,255,255,0.24); }
+.cml-lightbox-close:active { transform: scale(0.88); }
+
+@keyframes cml-modal-in {
+    from { opacity: 0; transform: scale(0.94) translateY(6px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ---- Confirm dialog ---- */
+.cml-confirm-box {
+    max-width: 340px; width: 100%; background: var(--cml-surface); border-radius: 20px; padding: 22px;
+    text-align: center; box-shadow: var(--cml-shadow-lg);
+    animation: cml-modal-in 0.3s var(--cml-ease-spring);
+}
+.cml-confirm-box h4 { font-size: 15px; margin-bottom: 6px; }
+.cml-confirm-box p { font-size: 13px; color: var(--cml-muted); margin: 0 0 16px; }
+.cml-confirm-actions { display: flex; gap: 8px; }
+.cml-confirm-actions button {
+    flex: 1; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: transform 0.15s var(--cml-ease-spring), opacity 0.2s ease;
+}
+.cml-confirm-actions button:active { transform: scale(0.95); }
+.cml-confirm-cancel { border: 1px solid var(--cml-border); background: var(--cml-surface-soft); color: var(--cml-body); }
+.cml-confirm-delete { border: none; background: var(--cml-danger); color: #fff; }
+.cml-confirm-delete:hover { opacity: 0.9; }
+.cml-confirm-box.cml-shake { animation: cml-shake 0.4s var(--cml-ease); }
+@keyframes cml-shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-4px); }
+    40%, 60% { transform: translateX(4px); }
+}
+
+/* ---- Prompts tab ---- */
+.cml-prompt-step { display: flex; gap: 12px; padding: 14px 0; border-top: 1px solid var(--cml-border); }
+.cml-prompt-step:first-child { border-top: none; padding-top: 0; }
+.cml-prompt-step-num {
+    flex-shrink: 0; width: 26px; height: 26px; border-radius: 999px;
+    background: var(--cml-accent); color: #fff; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+}
+.cml-prompt-step-body { flex: 1; min-width: 0; }
+.cml-prompt-step-title { font-size: 13.5px; font-weight: 700; color: var(--cml-heading); margin-bottom: 2px; }
+.cml-prompt-step-desc { font-size: 12px; color: var(--cml-muted); margin: 0 0 8px; line-height: 1.5; }
+.cml-prompt-card { border: 1px solid var(--cml-border); border-radius: 14px; padding: 10px 12px; background: var(--cml-surface-soft); }
+.cml-prompt-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cml-prompt-card-head strong { font-size: 12.5px; color: var(--cml-body); }
+.cml-prompt-card-actions { display: flex; gap: 6px; }
+.cml-toggle-btn {
+    border: 1px solid var(--cml-border); background: var(--cml-surface); color: var(--cml-body);
+    font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 8px; cursor: pointer;
+    transition: transform 0.15s var(--cml-ease-spring), background 0.2s ease;
+}
+.cml-toggle-btn:hover { background: var(--cml-accent-soft); }
+.cml-toggle-btn:active { transform: scale(0.93); }
+.cml-prompt-card textarea {
+    width: 100%; margin-top: 8px; border: 1px solid var(--cml-border); border-radius: 8px;
+    padding: 10px; font-size: 11.5px; line-height: 1.6; color: var(--cml-body); background: var(--cml-surface);
+    font-family: 'Inter', sans-serif; min-height: 220px;
+}
+
+/* ---- Bulk selection bar ---- */
+.cml-selection-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 16px;
+    border-radius: 14px;
+    margin-bottom: 16px;
+    animation: cml-rise-in 0.25s var(--cml-ease);
+}
+.cml-selection-bar span { font-size: 13px; font-weight: 600; color: var(--cml-body); }
+.cml-selection-bar-actions { display: flex; gap: 8px; }
+
+/* ---- Toasts ---- */
+.cml-toast-container {
+    position: fixed; bottom: 20px; right: 20px; z-index: 10000;
+    display: flex; flex-direction: column; gap: 8px;
+}
+.cml-toast {
+    background: var(--text-strong); color: var(--bg-main); font-size: 13px; font-weight: 600;
+    padding: 11px 16px; border-radius: 12px; box-shadow: var(--cml-shadow-lg);
+    backdrop-filter: blur(12px);
+    display: flex; align-items: center; gap: 8px;
+    animation: cml-toast-in 0.4s var(--cml-ease-spring);
+}
+.cml-toast.error { background: var(--cml-danger); color: #fff; }
+@keyframes cml-toast-in { from { opacity: 0; transform: translateY(16px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.cml-toast.leaving { animation: cml-toast-out 0.2s var(--cml-ease) forwards; }
+@keyframes cml-toast-out { to { opacity: 0; transform: translateY(8px) scale(0.96); } }
+
+/* ---- Skeleton loading ---- */
+.cml-skeleton { display: flex; flex-direction: column; gap: 10px; }
+.cml-skeleton-bar {
+    height: 52px; border-radius: 16px;
+    background: linear-gradient(90deg, var(--cml-surface-soft) 25%, var(--cml-accent-soft) 50%, var(--cml-surface-soft) 75%);
+    background-size: 200% 100%;
+    animation: cml-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes cml-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+@media (max-width: 640px) {
+    .cml-build-shot-ref img { width: 90px; }
+    .cml-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
