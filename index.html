@@ -16,8 +16,10 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <link rel="stylesheet" href="style.css?v=21">
+    <link rel="stylesheet" href="cmlink-gallery.css?v=1">
     <link rel="stylesheet" href="mobile.css?v=2" media="(max-width: 992px)">
 </head>
 <body>
@@ -242,6 +244,7 @@
                 <div class="nav-item" id="btn-team-review" onclick="showPage('team-review')"><i data-lucide="clipboard-check"></i> <span>Team Review</span></div>
                 <div class="nav-item" id="btn-rate-card" onclick="showPage('rate-card')"><i data-lucide="badge-dollar-sign"></i> <span>Rate Card</span></div>
                 <div class="nav-item" id="btn-quote-builder" onclick="showPage('quote-builder')"><i data-lucide="file-spreadsheet"></i> <span>Quote Builder</span></div>
+                <div class="nav-item" id="btn-cmlink-gallery" onclick="showPage('cmlink-gallery')"><i data-lucide="images"></i> <span>Style Gallery</span></div>
                 <div class="nav-item" id="btn-settings" onclick="showPage('settings')"><i data-lucide="settings"></i> <span>Settings</span></div>
             </div>
             <div class="bottom-actions">
@@ -575,6 +578,10 @@
 
             <div id="quote-builder" class="page">
                 <div id="quoteBuilderRoot"></div>
+            </div>
+
+            <div id="cmlink-gallery" class="page">
+                <div id="cmlinkGalleryRoot"></div>
             </div>
 
             <div id="settings" class="page">
@@ -1383,7 +1390,9 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
      uses it — app.js falls back to the production project there. See local.config.example.js. -->
 <script src="local.config.js"></script>
 <script src="rate-card-data.js?v=2"></script>
+<script src="cmlink-gallery-data.js?v=1"></script>
 <script src="app.js?v=21"></script>
 <script src="quote-builder.js?v=2"></script>
+<script src="cmlink-gallery.js?v=1"></script>
 </body>
 </html>

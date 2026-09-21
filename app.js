@@ -3126,6 +3126,7 @@ function showPage(id) {
     else if(id === 'team-review') navItem = document.getElementById('btn-team-review');
     else if(id === 'rate-card') navItem = document.getElementById('btn-rate-card');
     else if(id === 'quote-builder') navItem = document.getElementById('btn-quote-builder');
+    else if(id === 'cmlink-gallery') navItem = document.getElementById('btn-cmlink-gallery');
     else if(id === 'settings') navItem = document.getElementById('btn-settings');
 
     if(navItem) navItem.classList.add('active');
@@ -3154,6 +3155,7 @@ function showPage(id) {
     }
     if (id === 'rate-card') renderRateCardPage();
     if (id === 'quote-builder' && typeof renderQuoteBuilderPage === 'function') renderQuoteBuilderPage();
+    if (id === 'cmlink-gallery' && typeof renderCmlinkGalleryPage === 'function') renderCmlinkGalleryPage();
 
     if(globalData && globalData.length > 0) {
         if(id === 'dashboard') renderDashboard();
