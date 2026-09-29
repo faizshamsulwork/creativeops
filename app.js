@@ -3471,18 +3471,6 @@ async function startApp() {
         if (typeof scheduleDailySignOut === 'function') scheduleDailySignOut();
         setGreetingAndDate(userName);
 
-        // 🌟 LOGIK BARU: SPECIAL WELCOME MESSAGE UNTUK SEMUA STAF (First Time Login)
-        const cleanUserKey = userName.replace(/\s+/g, '').toLowerCase();
-        if (!localStorage.getItem(`adtech_welcomed_${cleanUserKey}`)) {
-            setTimeout(() => {
-                showAppleAlert(
-                    "🎉 Welcome to AdTechinno!",
-                    `Hi ${extractFirstName(userName)}! We are thrilled to have you onboard. Let's make some magic together! ✨`
-                );
-                localStorage.setItem(`adtech_welcomed_${cleanUserKey}`, 'true');
-            }, 1500);
-        }
-
         // Pastikan fungsi ini wujud di bahagian 4 nanti
         if(typeof checkLeaveAccess === 'function') checkLeaveAccess(userName);
 
@@ -3497,7 +3485,7 @@ async function startApp() {
         const firstName = extractFirstName(userName); document.getElementById('syncMsg').innerText = `Welcome back, ${firstName}.`;
 
         await fetchSupabaseData(true);
-        fetchTaskNotifications();
+        showUnreadNotificationsOnOpen(900); // after the intro fade-out below finishes
         ensureNotificationPermission(); // runs inside the "Start Now" click gesture, so the browser permission prompt is allowed to show
 
         const intro = document.getElementById('introPage'); const app = document.getElementById('app-wrapper');
@@ -3536,7 +3524,7 @@ function checkSavedName() {
 
         // 🌟 FIX: Sistem akan tarik data dengan betul masa mula-mula masuk
         fetchSupabaseData(true);
-        fetchTaskNotifications();
+        showUnreadNotificationsOnOpen(600);
     } else {
         showPage('dashboard'); document.getElementById('introPage').style.display = 'flex'; document.body.classList.add('no-scroll');
         setTimeout(() => { const overlay = document.getElementById('soft-refresh-overlay'); if (overlay) overlay.classList.remove('show'); }, 500);
@@ -9806,6 +9794,19 @@ async function fetchTaskNotifications() {
     updateNotifBadge();
 }
 
+// On sign-in / app open, surface unread @mentions first so people see them before anything else.
+// Once per browser-tab session, so closing the panel without reading doesn't re-open it on every refresh.
+async function showUnreadNotificationsOnOpen(delayMs = 0) {
+    await fetchTaskNotifications();
+    if (!(globalNotifications || []).some(n => !n.read_at && n.kind === 'mention')) return;
+    const sessionKey = `adtech_notif_autoshown_${normalizeNameKey(getCurrentUserName())}`;
+    try {
+        if (sessionStorage.getItem(sessionKey)) return;
+        sessionStorage.setItem(sessionKey, '1');
+    } catch(e) { /* storage blocked — just show it */ }
+    setTimeout(openNotificationsPanel, delayMs);
+}
+
 function updateNotifBadge() {
     const unread = (globalNotifications || []).filter(n => !n.read_at).length;
     const badge = document.getElementById('notif-badge');
@@ -11639,6 +11640,28 @@ function setupSwipeToClose(modalEl, bodyId, closeFn) {
     }, {passive: true});
 }
 
+// 🌟 FIX 1: Auto-convert tiket lama (Detail: ... Size: ...) jadi bullet point kemas
+function cleanTaskBriefText(briefText) {
+    return String(briefText || '').replace(/- Detail: (.*?), Size: (.*?), Notes: (.*?)(?=\n|$)/g, (match, detail, size, notes) => {
+        let noteStr = (notes && notes.trim() !== '-' && notes.trim() !== '') ? ` (Note: ${notes.trim()})` : '';
+        let sizeStr = (size && size.trim() !== 'N/A' && size.trim() !== '') ? ` — ${size.trim()}` : '';
+        return `• ${detail.trim()}${sizeStr}${noteStr}`;
+    });
+}
+
+async function copyTaskBrief(jobID) {
+    const item = globalData.find(d => d.job_id === jobID);
+    const text = cleanTaskBriefText(item?.brief).trim();
+    if (!text) return;
+    try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+        await navigator.clipboard.writeText(text);
+        showNotification('Brief Copied', 'Paste it into the Playbook.');
+    } catch (e) {
+        showAppleAlert('Copy Failed', `Could not copy automatically — copy manually:\n\n${text}`);
+    }
+}
+
 function openDetailModal(jobID, isUpdate = false) {
     try {
         const item = globalData.find(d => d.job_id === jobID);
@@ -11685,15 +11708,11 @@ function openDetailModal(jobID, isUpdate = false) {
             const formatPitchLinks = briefText.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--orange); font-weight: 600; text-decoration:underline; word-break:break-all;"><i data-lucide="external-link" style="width:14px; height:14px; vertical-align:middle;"></i> Open Link</a>').replace(/\n/g, '<br>');
             formattedBriefHTML = `<div style="background: rgba(245, 158, 11, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(245, 158, 11, 0.2);"><h4 style="color: var(--orange); margin: 0 0 10px 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;"><i data-lucide="presentation" style="width:16px; height:16px; vertical-align:middle; margin-right:5px;"></i> Pitch Deck Details</h4><p style="margin:0;">${formatPitchLinks}</p></div>`;
         } else {
-            // 🌟 FIX 1: Auto-convert tiket lama (Detail: ... Size: ...) jadi bullet point kemas
-            let cleanedBrief = briefText.replace(/- Detail: (.*?), Size: (.*?), Notes: (.*?)(?=\n|$)/g, (match, detail, size, notes) => {
-                let noteStr = (notes && notes.trim() !== '-' && notes.trim() !== '') ? ` *(Note: ${notes.trim()})*` : '';
-                let sizeStr = (size && size.trim() !== 'N/A' && size.trim() !== '') ? ` — ${size.trim()}` : '';
-                return `• ${detail.trim()}${sizeStr}${noteStr}`;
-            });
+            const cleanedBrief = cleanTaskBriefText(briefText);
 
             const formattedBrief = cleanedBrief ? cleanedBrief.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--link-color); text-decoration:underline; word-break:break-all;">$1</a>').replace(/\n/g, '<br>') : 'No brief provided.';
-            formattedBriefHTML = `<p><strong>Creative Brief & Plan:</strong><br>${formattedBrief}</p>`;
+            const copyBriefBtn = cleanedBrief.trim() ? `<button type="button" class="brief-copy-btn" onclick="copyTaskBrief('${escapeJsString(item.job_id)}')" title="Copy brief"><i data-lucide="copy"></i> Copy</button>` : '';
+            formattedBriefHTML = `<div class="brief-box-head"><strong>Creative Brief & Plan:</strong>${copyBriefBtn}</div><p>${formattedBrief}</p>`;
         }
         // --- TAMAT LOGIK FORMAT BRIEF ---
 

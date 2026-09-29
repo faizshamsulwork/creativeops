@@ -4706,3 +4706,9 @@ html::before { top: 20%; left: 30%; width: 40vw; height: 40vh; background: var(-
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* Creative Brief header + copy button */
+.brief-box-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.brief-copy-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border-light); background: transparent; color: var(--text-main); font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: 0.2s; flex-shrink: 0; }
+.brief-copy-btn:hover { background: var(--border-light); }
+.brief-copy-btn svg { width: 14px; height: 14px; }
