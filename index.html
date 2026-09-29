@@ -18,7 +18,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-    <link rel="stylesheet" href="style.css?v=21">
+    <link rel="stylesheet" href="style.css?v=23">
     <link rel="stylesheet" href="cmlink-gallery.css?v=1">
     <link rel="stylesheet" href="mobile.css?v=2" media="(max-width: 992px)">
 </head>
@@ -927,6 +927,17 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
                             </div>
                             <input type="hidden" id="pRefLink">
                         </div>
+                        <!-- Content that needs a shoot: pick Yes and submitting chains straight into the Shooting
+                             form (client/project/requester carried over), creating a linked Shooting ticket. -->
+                        <div class="input-group" id="needsShootGroup" style="margin-bottom: 20px;">
+                            <label>Does this content need a shoot?</label>
+                            <div class="settings-segmented" id="needsShootToggle">
+                                <button type="button" data-value="no" class="active" onclick="setNeedsShoot('no')">No</button>
+                                <button type="button" data-value="yes" onclick="setNeedsShoot('yes')">Yes</button>
+                            </div>
+                            <input type="hidden" id="needsShootValue" value="no">
+                            <small id="needsShootHint" style="display:none; color: var(--text-muted); margin-top: 6px; font-size: 0.78rem; line-height: 1.4;">After you submit, a short Shooting form opens with client, project and requester already filled in — both tickets are linked to each other.</small>
+                        </div>
                         <div class="input-group" style="margin-bottom: 25px;"><label>Remarks</label><textarea id="pRemarks" rows="2" placeholder="Additional notes..."></textarea></div>
 
                         <div class="form-navigation">
@@ -948,6 +959,7 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
                         <span style="background: var(--bg-box); color: #6366f1; padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; border: 1px solid var(--border-main); letter-spacing: 0.5px;">SHOOTING REQUEST</span>
                         <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 10px; margin-bottom: 0;">Takes about 2-3 minutes. Anything else can be added once the task is created.</p>
                     </div>
+                    <div id="shootLinkedBanner" class="shoot-linked-banner" style="display:none;"></div>
 
                     <div class="form-progress">
                         <div class="step-indicator active" id="shoot-ind-1"><div class="step-dot"><i data-lucide="user"></i></div><span class="step-label">Requester</span></div>
@@ -994,10 +1006,17 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
                         <div class="form-row">
                             <div class="input-group">
                                 <label>Client</label>
-                                <input type="text" id="shootClient" list="shootClientList" placeholder="Select or type client name..." autocomplete="off">
+                                <input type="text" id="shootClient" list="shootClientList" oninput="populateShootParentOptions()" placeholder="Select or type client name..." autocomplete="off">
                                 <datalist id="shootClientList"></datalist>
                             </div>
                             <div class="input-group"><label>Project / Campaign</label><input type="text" id="shootProject" placeholder="e.g. Ramadan Hero Video"></div>
+                        </div>
+                        <div class="input-group" id="shootParentGroup">
+                            <label>Part of a content plan? <small style="color:var(--text-muted); font-weight:500;">(links this shoot to its Monthly / Ad-hoc ticket)</small></label>
+                            <select id="shootParentJob" onchange="updateShootParentWarning()">
+                                <option value="">Standalone shoot</option>
+                            </select>
+                            <small id="shootParentWarning" class="shoot-parent-warning" style="display:none;"></small>
                         </div>
                         <div class="input-group">
                             <label>What are we shooting? <small style="color:var(--text-muted); font-weight:500;">(select all that apply)</small></label>
@@ -1039,7 +1058,7 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
                             <textarea id="shootDeliverablesOther" rows="2" placeholder="Describe the deliverables you need"></textarea>
                         </div>
                         <div class="form-row">
-                            <div class="input-group"><label>Shoot Date</label><input type="date" id="shootDate"></div>
+                            <div class="input-group"><label>Shoot Date</label><input type="date" id="shootDate" onchange="updateShootParentWarning()"></div>
                             <div class="input-group"><label>Call Time <small style="color:var(--text-muted); font-weight:500;">(optional)</small></label><input type="time" id="shootCallTime"></div>
                         </div>
                         <div class="input-group">
@@ -1391,7 +1410,7 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
 <script src="local.config.js"></script>
 <script src="rate-card-data.js?v=2"></script>
 <script src="cmlink-gallery-data.js?v=1"></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=24"></script>
 <script src="quote-builder.js?v=2"></script>
 <script src="cmlink-gallery.js?v=1"></script>
 </body>

@@ -4706,3 +4706,29 @@ html::before { top: 20%; left: 30%; width: 40vw; height: 40vh; background: var(-
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* Creative Brief header + copy button */
+.brief-box-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.brief-copy-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border-light); background: transparent; color: var(--text-main); font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: 0.2s; flex-shrink: 0; }
+.brief-copy-btn:hover { background: var(--border-light); }
+.brief-copy-btn svg { width: 14px; height: 14px; }
+
+/* Linked shoot: content plan ⇄ Shooting ticket */
+.shoot-linked-banner { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 24px; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(99, 102, 241, 0.35); background: rgba(99, 102, 241, 0.08); color: var(--text-main); font-size: 0.85rem; line-height: 1.45; }
+.shoot-linked-banner > svg { width: 18px; height: 18px; color: #6366f1; flex-shrink: 0; margin-top: 2px; }
+.shoot-linked-banner strong { display: block; color: var(--text-strong); }
+.shoot-linked-banner span { color: var(--text-muted); }
+.shoot-parent-warning { display: block; margin-top: 6px; font-size: 0.78rem; line-height: 1.4; color: var(--text-muted); }
+.shoot-parent-warning.warn { color: var(--orange); font-weight: 600; }
+.shoot-parent-warning.danger { color: var(--red); font-weight: 600; }
+.linked-tickets-panel { margin: 16px 0; padding: 14px; border-radius: 10px; border: 1px solid var(--border-light); background: var(--bg-box); }
+.linked-tickets-panel h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); }
+.linked-tickets-panel h4 svg { width: 15px; height: 15px; }
+.linked-ticket-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; margin-bottom: 6px; border-radius: 8px; border: 1px solid var(--border-light); background: transparent; color: var(--text-main); font: inherit; font-size: 0.85rem; text-align: left; cursor: pointer; transition: 0.2s; }
+.linked-ticket-row:hover:not(:disabled) { background: var(--border-light); }
+.linked-ticket-row:disabled { cursor: default; opacity: 0.75; }
+.linked-ticket-row > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.linked-ticket-row > span { flex: 1; min-width: 0; }
+.linked-ticket-row small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 0.75rem; }
+.linked-ticket-add { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; border: 1px dashed var(--border-main); background: transparent; color: var(--link-color); font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+.linked-ticket-add svg { width: 14px; height: 14px; }
