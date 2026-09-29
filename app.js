@@ -2998,6 +2998,10 @@ function selectRequestType(type) {
 
     document.getElementById('request-form-area').style.display = 'block';
 
+    const needsShootGroup = document.getElementById('needsShootGroup');
+    if (needsShootGroup) needsShootGroup.style.display = type === 'pitch' ? 'none' : 'block';
+    setNeedsShoot('no');
+
     const badge = document.getElementById('formBadge');
 
     const jobTypesCont = document.getElementById('jobTypesContainer');
@@ -3081,6 +3085,7 @@ function resetFormUI() {
     } else if (document.getElementById('pBrief')) {
         document.getElementById('pBrief').value = '';
     }
+    setNeedsShoot('no');
 
     resetRequestGateway();
 }
@@ -11739,6 +11744,7 @@ function openDetailModal(jobID, isUpdate = false) {
                 <div class="detail-item"><span>Revision Count</span>${securePin && !isDoneTab ? `<div style="display:flex; align-items:center; gap:8px; margin-top:2px;"><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, -1)">-</button><strong style="min-width:15px; text-align:center;">${item.revision || 0}</strong><button class="rev-btn" onclick="updateRevisionOptimistic(event, '${item.job_id}', ${item.revision || 0}, 1)">+</button></div>` : `<strong>${item.revision || 0}</strong>`}</div>
                 ${(item.approver) ? `<div class="detail-item"><span>Approved By</span><strong>${item.approver}</strong></div>` : ''}
             </div>
+            ${renderLinkedTicketsPanel(item, !isDoneTab && isLinkableContentPlan(item))}
             ${renderClientReviewDetailPanel(item)}
             ${renderAwaitingClientDetailPanel(item)}
             ${renderMonthlyFlowPanel(item)}
@@ -12095,6 +12101,8 @@ function openShootingRequestForm() {
     area.querySelectorAll('[id$="OtherRow"]').forEach(el => el.style.display = 'none');
     const moreBox = document.getElementById('shootMoreDetails');
     if (moreBox) moreBox.style.display = 'none';
+    setShootLinkedBanner(null);
+    populateShootParentOptions('');
     goToShootStep(1);
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -12117,8 +12125,182 @@ function resetShootingFormUI() {
     area.querySelectorAll('[id$="OtherRow"]').forEach(el => el.style.display = 'none');
     const manualRow = document.getElementById('shootManualNameRow');
     if (manualRow) manualRow.style.display = 'none';
+    setShootLinkedBanner(null);
+    populateShootParentOptions('');
     goToShootStep(1);
     resetRequestGateway();
+}
+
+// ========================================================
+// 🌟 LINKED SHOOT — Monthly / Ad-hoc content plan ⇄ its Shooting ticket(s)
+// ========================================================
+// A content plan that needs a shoot stays two tickets (the shoot has its own date, PIC, checklist and
+// status), linked via creative_requests.parent_job_id on the Shooting row. Requesters get there by:
+//   1. answering "Does this content need a shoot? → Yes" on the Monthly/Ad-hoc form, which chains
+//      straight into the Shooting form pre-filled and pre-linked after submit, or
+//   2. picking the plan in the Shooting form's "Part of a content plan?" dropdown, or
+//   3. "+ Add shoot request" on the content plan's detail modal.
+
+function setNeedsShoot(value) {
+    const input = document.getElementById('needsShootValue');
+    if (input) input.value = value;
+    document.querySelectorAll('#needsShootToggle button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
+    const hint = document.getElementById('needsShootHint');
+    if (hint) hint.style.display = value === 'yes' ? 'block' : 'none';
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn && !submitBtn.disabled) {
+        submitBtn.innerHTML = value === 'yes'
+            ? '<i data-lucide="camera"></i> Submit &amp; Add Shoot'
+            : '<i data-lucide="send"></i> Submit Request';
+        refreshIcons();
+    }
+}
+
+function isLinkableContentPlan(task) {
+    if (!task) return false;
+    const typeKey = getRequestTypeMeta(task).key;
+    if (typeKey !== 'monthly' && typeKey !== 'adhoc') return false;
+    const status = String(task.status || '').toLowerCase();
+    if (['rejected', 'deleted', 'cancelled', 'test'].includes(status)) return false;
+    return normalizeWorkStatus(task.work_status || '') !== 'done';
+}
+
+function getLinkedShoots(jobID) {
+    return (globalData || []).filter(d => d.parent_job_id && d.parent_job_id === jobID);
+}
+
+function populateShootParentOptions(preselectJobID) {
+    const select = document.getElementById('shootParentJob');
+    if (!select) return;
+    const keep = preselectJobID || select.value;
+    const clientKey = normalizeNameKey(document.getElementById('shootClient')?.value || '');
+
+    const candidates = clientKey
+        ? (globalData || []).filter(d => isLinkableContentPlan(d) && normalizeNameKey(d.client_name) === clientKey)
+        : [];
+    // A preselected parent (chained flow / modal button) must stay pickable even if it's filtered out
+    // above, e.g. the requester retyped the client name slightly differently.
+    const keepTask = keep && (globalData || []).find(d => d.job_id === keep);
+    if (keepTask && !candidates.includes(keepTask)) candidates.unshift(keepTask);
+
+    select.innerHTML = `<option value="">Standalone shoot</option>` + candidates.map(d => {
+        const meta = getRequestTypeMeta(d);
+        const due = getTaskClientDeadline(d);
+        const label = `[${d.job_id}] ${d.project_title || 'Untitled'} — ${meta.shortLabel}${due ? ' · due ' + formatDate(due) : ''}`;
+        return `<option value="${escapeHtml(d.job_id)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    select.value = keepTask ? keep : '';
+    updateShootParentWarning();
+}
+
+// Warns (never blocks) when the shoot lands after — or too close to — the content plan's client
+// deadline, since the design work can't start until the footage exists.
+function updateShootParentWarning() {
+    const el = document.getElementById('shootParentWarning');
+    if (!el) return;
+    const parent = (globalData || []).find(d => d.job_id === document.getElementById('shootParentJob')?.value);
+    const parentDue = parent ? getTaskClientDeadline(parent) : '';
+    const shootDate = document.getElementById('shootDate')?.value || '';
+    el.className = 'shoot-parent-warning';
+
+    if (!parent || !parentDue) { el.style.display = 'none'; return; }
+    if (!shootDate) {
+        el.innerText = `Content plan deadline: ${formatDate(parentDue)}. Leave enough time after the shoot for editing.`;
+    } else {
+        const gapDays = Math.round((new Date(parentDue) - new Date(shootDate)) / 86400000);
+        if (gapDays < 0) {
+            el.classList.add('danger');
+            el.innerText = `Shoot date is AFTER the content plan's client deadline (${formatDate(parentDue)}). Move the shoot earlier or ask to extend the deadline.`;
+        } else if (gapDays <= 3) {
+            el.classList.add('warn');
+            el.innerText = `Only ${gapDays} day${gapDays === 1 ? '' : 's'} between the shoot and the content plan deadline (${formatDate(parentDue)}) — very tight for editing.`;
+        } else {
+            el.innerText = `${gapDays} days between the shoot and the content plan deadline (${formatDate(parentDue)}).`;
+        }
+    }
+    el.style.display = 'block';
+}
+
+function setShootLinkedBanner(parent) {
+    const banner = document.getElementById('shootLinkedBanner');
+    if (!banner) return;
+    if (!parent) { banner.style.display = 'none'; banner.innerHTML = ''; return; }
+    banner.innerHTML = `<i data-lucide="link-2"></i><div><strong>Step 2 of 2 — Shoot for ${escapeHtml(parent.job_id)}</strong><span>${escapeHtml(parent.client_name || '')}: ${escapeHtml(parent.project_title || '')}. Client, project and requester are filled in; this shoot will be linked to that ticket.</span></div>`;
+    banner.style.display = 'flex';
+    refreshIcons();
+}
+
+// Opens the Shooting form pre-filled from a content plan and pre-linked to it.
+function openLinkedShootForm(parent) {
+    if (!parent) return;
+    showPage('request');
+    selectRequestType('shooting');
+
+    const regionSelect = document.getElementById('shootRegion');
+    if (regionSelect && parent.region && Array.from(regionSelect.options).some(o => o.value === parent.region)) {
+        regionSelect.value = parent.region;
+        populateShootRequesterOptions();
+    }
+    const requester = parent.requester_name || localStorage.getItem('adtech_user_name') || '';
+    const nameSelect = document.getElementById('shootRequesterName');
+    if (nameSelect && requester) {
+        if (Array.from(nameSelect.options).some(o => o.value === requester)) {
+            nameSelect.value = requester;
+        } else {
+            nameSelect.value = 'manual';
+            document.getElementById('shootManualName').value = requester;
+        }
+        toggleShootManualName();
+    }
+    document.getElementById('shootClient').value = parent.client_name || '';
+    document.getElementById('shootProject').value = parent.project_title || '';
+    const parentDue = getTaskClientDeadline(parent);
+    if (parentDue) document.getElementById('shootDeadline').value = parentDue;
+
+    populateShootParentOptions(parent.job_id);
+    setShootLinkedBanner(parent);
+    if (getShootRequesterName()) goToShootStep(2);
+}
+
+function startLinkedShootRequest(jobID) {
+    const parent = (globalData || []).find(d => d.job_id === jobID);
+    if (!parent) return;
+    closeDetailModal();
+    setTimeout(() => openLinkedShootForm(parent), 250);
+}
+
+function openLinkedTicket(jobID) {
+    if (!(globalData || []).some(d => d.job_id === jobID)) {
+        return showAppleAlert('Not Available', `${jobID} isn't visible to you — ask its requester or an admin.`);
+    }
+    openDetailModal(jobID);
+}
+
+function renderLinkedTicketsPanel(item, canAddShoot) {
+    const typeKey = getRequestTypeMeta(item).key;
+    const linkRow = (task, icon, prefix, detail) => {
+        const visible = (globalData || []).some(d => d.job_id === task.job_id);
+        return `<button type="button" class="linked-ticket-row" onclick="openLinkedTicket('${escapeJsString(task.job_id)}')" ${visible ? '' : 'disabled'}>
+            <i data-lucide="${icon}"></i>
+            <span><strong>${prefix} [${escapeHtml(task.job_id)}]</strong> ${escapeHtml(task.project_title || '')}${detail ? `<small>${detail}</small>` : ''}</span>
+            ${visible ? '<i data-lucide="chevron-right"></i>' : ''}
+        </button>`;
+    };
+
+    if (typeKey === 'shooting') {
+        if (!item.parent_job_id) return '';
+        const parent = (globalData || []).find(d => d.job_id === item.parent_job_id) || { job_id: item.parent_job_id };
+        const due = parent.client_name ? getTaskClientDeadline(parent) : '';
+        return `<div class="linked-tickets-panel"><h4><i data-lucide="link-2"></i> Linked Content Plan</h4>
+            ${linkRow(parent, 'calendar-days', 'Part of', due ? `Content deadline ${formatDate(due)}` : '')}</div>`;
+    }
+
+    if (typeKey !== 'monthly' && typeKey !== 'adhoc') return '';
+    const shoots = getLinkedShoots(item.job_id);
+    if (!shoots.length && !canAddShoot) return '';
+    const rows = shoots.map(s => linkRow(s, 'camera', 'Shoot', `${s.shoot_date ? 'Shoot date ' + formatDate(s.shoot_date) + ' · ' : ''}${escapeHtml(getWorkStatusLabel(s.work_status || 'Not started'))}`)).join('');
+    const addBtn = canAddShoot ? `<button type="button" class="linked-ticket-add" onclick="startLinkedShootRequest('${escapeJsString(item.job_id)}')"><i data-lucide="plus"></i> Add shoot request</button>` : '';
+    return `<div class="linked-tickets-panel"><h4><i data-lucide="camera"></i> Shooting${shoots.length ? ` (${shoots.length})` : ''}</h4>${rows}${addBtn}</div>`;
 }
 
 async function submitShootingRequest() {
@@ -12225,7 +12407,8 @@ async function submitShootingRequest() {
             deadline, client_deadline: deadline, original_client_deadline: deadline,
             ref_link: referenceLink, remarks: '', status: 'pending', assignee: 'Unassigned',
             playbook_link: '', work_status: 'Not started', revision: 0, approver: '',
-            shoot_date: shootDate, shoot_details: shootDetails
+            shoot_date: shootDate, shoot_details: shootDetails,
+            parent_job_id: document.getElementById('shootParentJob')?.value || null
         };
 
         // Production's PostgREST schema cache is known to reject client_deadline/original_client_deadline
@@ -12233,6 +12416,12 @@ async function submitShootingRequest() {
         // submit path and Task Edit already work around — see isTaskEditSchemaFallbackError) — strip
         // them and retry with `deadline` alone rather than hard-failing the whole Shooting submission.
         let { error } = await supabaseClient.from('creative_requests').insert([payload]);
+        // parent_job_id only exists once supabase-linked-shoot-PRODUCTION.sql has run — until then,
+        // still create the shoot, just without the link.
+        if (error && /parent_job_id/i.test(error.message || '')) {
+            delete payload.parent_job_id;
+            ({ error } = await supabaseClient.from('creative_requests').insert([payload]));
+        }
         if (error && /column|schema|cache|client_deadline|original_client_deadline|internal_due/i.test(error.message || '')) {
             const fallbackPayload = { ...payload };
             delete fallbackPayload.client_deadline;
@@ -12243,7 +12432,7 @@ async function submitShootingRequest() {
         if (error) throw new Error(error.message);
 
         globalData.unshift(payload);
-        logTaskActivity(finalJobID, 'submitted', '', 'pending', `Shooting request submitted by ${name}`, { region, job_type: 'Shooting', client_deadline: deadline, shoot_date: shootDate });
+        logTaskActivity(finalJobID, 'submitted', '', 'pending', `Shooting request submitted by ${name}`, { region, job_type: 'Shooting', client_deadline: deadline, shoot_date: shootDate, parent_job_id: payload.parent_job_id || null });
 
         // Without this, the new job has no entry in shootReadinessByJob (it only gets populated on
         // the next full Supabase fetch/realtime tick), so its Board/Kanban readiness chip would be
@@ -12305,8 +12494,10 @@ async function submitRequest() {
         }
     }
 
+    const needsShoot = currentRequestType !== 'pitch' && document.getElementById('needsShootValue')?.value === 'yes';
+
     const submitBtn = document.getElementById('submitBtn');
-    const originalText = submitBtn.innerHTML;
+    const originalText = '<i data-lucide="send"></i> Submit Request';
     submitBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Submitting...';
     refreshIcons();
     submitBtn.disabled = true;
@@ -12434,7 +12625,7 @@ async function submitRequest() {
         const tgMsg = `[NEW REQUEST] ${flag}\n\n*ID:* ${finalJobID}\n*Client:* ${client}\n*By:* ${name}\n\n🔗 [Open Adtechinno App](https://adtechinno-creativeengine.vercel.app/)`;
         fetch(TELEGRAM_API, { method: 'POST', body: JSON.stringify({ action: 'send_telegram', text: tgMsg }) });
 
-        document.getElementById('successSubText').innerText = `Job ID: ${finalJobID}`;
+        document.getElementById('successSubText').innerText = needsShoot ? `Job ID: ${finalJobID} — now add the shoot details` : `Job ID: ${finalJobID}`;
         const overlay = document.getElementById('successOverlay');
         overlay.classList.add('show');
         playSuccessSound();
@@ -12481,18 +12672,20 @@ async function submitRequest() {
         setTimeout(() => {
             overlay.classList.remove('show');
             setTimeout(() => {
-                showPage('dashboard');
                 submitBtn.innerHTML = originalText;
                 submitBtn.disabled = false;
                 renderDashboard();
                 renderBoards();
+                // "Does this content need a shoot? → Yes": continue straight into the linked Shooting form.
+                if (needsShoot) openLinkedShootForm(payload);
+                else showPage('dashboard');
             }, 400);
-        }, 2500);
+        }, needsShoot ? 1500 : 2500);
 
     } catch(e) {
         showAppleAlert("Submission Failed", e.message);
-        submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
+        setNeedsShoot(needsShoot ? 'yes' : 'no'); // restores the matching button label
     }
 }
 
