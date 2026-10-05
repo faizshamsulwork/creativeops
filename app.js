@@ -15222,8 +15222,26 @@ async function processSaveLeave(name, passcode, finalStatus, finalStart, finalEn
 // Searches for an already-known link (this session's cache, or the task's own playbook_link) BEFORE
 // ever offering to generate — reopening the modal never re-triggers a GAS call for a job that
 // already has one; it just shows "Open Playbook" straight away.
+// Pre-warm: Apps Script spends ~18s on cold start after idling (diagnosed 2026-10-05). When the
+// Auto-Generate button is about to be shown, fire a no-op "ping" so that cold start happens while
+// the approver is still picking a PIC — by the time they click Generate, the script is warm.
+// "ping" hits doPost's unsupported-action branch: no Drive/Slides work, no Supabase call (zero
+// egress). Throttled to once per 5 minutes per tab so reopening modals never spams GAS.
+const PLAYBOOK_WARM_INTERVAL_MS = 5 * 60 * 1000;
+let lastPlaybookWarmAt = 0;
+function warmPlaybookGenerator() {
+    const now = Date.now();
+    if (now - lastPlaybookWarmAt < PLAYBOOK_WARM_INTERVAL_MS) return;
+    lastPlaybookWarmAt = now;
+    // no-cors: we never read the response. (no-cors requires the default redirect: 'follow' —
+    // 'manual' makes fetch reject instantly without ever reaching GAS.)
+    fetch(GAS_API, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ping' }) })
+        .catch(() => {}); // best-effort only
+}
+
 function renderPlaybookGenerateField(item, safeClient, safeTitle, safeRequester) {
     const known = generatedPlaybookLinkCache[item.job_id] || getTaskSafeHttpUrl(item.playbook_link);
+    if (!known) warmPlaybookGenerator();
     if (known) {
         return `<input type="text" id="playbook-${item.job_id}" value="${escapeHtml(known)}" readonly style="flex:1; min-width:200px; padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-main); background: var(--bg-input); color: var(--text-main);"><button onclick="window.open('${escapeJsString(known)}', '_blank')" id="btn-gen-${item.job_id}" class="btn-action" style="background:var(--green); color:white; border:none; min-width:140px; margin:0;"><i data-lucide="external-link"></i> Open Playbook</button>`;
     }
