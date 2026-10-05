@@ -15297,10 +15297,25 @@ async function generatePlaybook(jobID, client, title, requester) {
         // stacks extra executions. Safe to retry here specifically
         // because generate_playbook is idempotent by job_id on the Apps Script side — see
         // GOOGLE-APPS-SCRIPT-PLAYBOOK-SETUP.md.
-        const res = await gasPost(
-            { action: 'generate_playbook', data: { job_id: jobID, client_name: client, project_title: title, requester_name: requester } },
-            { timeoutMs: 90000, maxRetries: 2, label: `generate_playbook:${jobID}` }
-        );
+        let res;
+        try {
+            res = await gasPost(
+                { action: 'generate_playbook', data: { job_id: jobID, client_name: client, project_title: title, requester_name: requester } },
+                { timeoutMs: 90000, maxRetries: 2, label: `generate_playbook:${jobID}` }
+            );
+        } catch (genErr) {
+            // The deck may already exist even though we never got the reply (GAS keeps running after
+            // our timeout, or the echo hop 404'd). Ask find_playbook — lookup only, never creates —
+            // before showing an error. Older script versions answer "Unsupported action", which
+            // just falls through to the original error below.
+            setGeneratingState('Checking...', 'Checking whether the playbook was already created...');
+            const found = await gasPost(
+                { action: 'find_playbook', data: { job_id: jobID } },
+                { timeoutMs: 30000, maxRetries: 1, label: `find_playbook:${jobID}` }
+            ).catch(() => null);
+            if (found?.status === 'success' && found.found && found.url) res = found;
+            else throw genErr;
+        }
 
         if(res.status === "success") {
             const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
