@@ -15268,16 +15268,20 @@ async function generatePlaybook(jobID, client, title, requester) {
     timers.push(setTimeout(() => setGeneratingState('Waking generator...', 'Google generator is warming up...'), 4000));
     timers.push(setTimeout(() => setGeneratingState('Copying template...', 'Copying Creative Playbook template...'), 12000));
     timers.push(setTimeout(() => setGeneratingState('Still working...', 'Retrying automatically if Google is briefly unavailable...'), 22000));
+    timers.push(setTimeout(() => setGeneratingState('Almost there...', 'Google is slow right now — hang tight, no need to click again...'), 45000));
 
     try {
-        // 30s per attempt, up to 2 retries on transient failures only (see gasPost) — total worst
-        // case ~1.5 minutes if Google is having a bad moment, but a real outage or a genuine
-        // application error still surfaces well before that. Safe to retry here specifically
+        // 90s per attempt, up to 2 retries on transient failures only (see gasPost). Was 30s, but
+        // diagnosed 2026-10-05: the first call after Apps Script goes idle spends ~18s on cold start
+        // alone, before doPost even begins its Drive lookup + Slides template copy — so a retry
+        // after the known transient echo-404 regularly blew past 30s and surfaced as an error.
+        // A timeout is still NOT auto-retried (see gasPost), so this only waits longer, never
+        // stacks extra executions. Safe to retry here specifically
         // because generate_playbook is idempotent by job_id on the Apps Script side — see
         // GOOGLE-APPS-SCRIPT-PLAYBOOK-SETUP.md.
         const res = await gasPost(
             { action: 'generate_playbook', data: { job_id: jobID, client_name: client, project_title: title, requester_name: requester } },
-            { timeoutMs: 30000, maxRetries: 2, label: `generate_playbook:${jobID}` }
+            { timeoutMs: 90000, maxRetries: 2, label: `generate_playbook:${jobID}` }
         );
 
         if(res.status === "success") {
@@ -15298,7 +15302,7 @@ async function generatePlaybook(jobID, client, title, requester) {
         showAppleAlert(
             "Playbook Error",
             isTimeout
-                ? "Generator took more than 30 seconds (after retrying) and Google didn't respond in time. Please try again — if a playbook was already created, Auto-Generate will find and reuse it instead of making a duplicate."
+                ? "Google's generator didn't respond within 90 seconds. Please try again — if a playbook was already created, Auto-Generate will find and reuse it instead of making a duplicate."
                 : "Failed generating playbook after retrying: " + e.message
         );
         btn.innerHTML = originalHtml;
