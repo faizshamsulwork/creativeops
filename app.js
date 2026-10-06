@@ -7202,7 +7202,7 @@ function renderSettingsWorkspaceTab() {
                 </div>
                 <div class="settings-actions settings-actions-row">
                     <button type="button" onclick="fetchSupabaseData(true)" class="settings-action-btn"><i data-lucide="refresh-cw"></i><span>Refresh Workspace Data</span></button>
-                    <button type="button" onclick="exportReportPack()" class="settings-action-btn settings-admin-only"><i data-lucide="file-down"></i><span>Export Workspace Data</span></button>
+                    <button type="button" onclick="exportReportPack()" class="settings-action-btn settings-admin-only"><i data-lucide="file-archive"></i><span>Export All Tasks (ZIP)</span></button>
                     <button type="button" id="btnRunClientReviewAging" onclick="runClientReviewAgingCheck()" class="settings-action-btn settings-admin-only"><i data-lucide="play"></i><span>Run Aging Check</span></button>
                     <button type="button" onclick="openClientReviewAuditDialog()" class="settings-action-btn settings-admin-only"><i data-lucide="search-check"></i><span>Client Review Audit</span></button>
                     <button type="button" onclick="exportSettingsRoster()" class="settings-action-btn"><i data-lucide="download"></i><span>Export Member Roster</span></button>
@@ -14846,6 +14846,48 @@ function buildStatusAgingRows(tasks) {
     return rows;
 }
 
+// One plain-English lifecycle bucket per task, so a reader (or ChatGPT) doesn't have to combine
+// status + work_status themselves to tell pending vs ongoing vs done.
+function getReportStage(task) {
+    const status = String(task.status || '').toLowerCase();
+    if (status === 'pending') return 'Pending Approval';
+    if (status === 'rejected') return 'Rejected';
+    if (isTaskDone(task)) return 'Done';
+    if (isTaskAwaitingClient(task)) return 'Awaiting Client';
+    if (isTaskClientReview(task)) return 'Client Review';
+    return 'In Progress';
+}
+
+function buildReportSnapshot(tasks) {
+    const countBy = (keyFn) => {
+        const map = {};
+        tasks.forEach(t => { const k = keyFn(t) || 'Unknown'; map[k] = (map[k] || 0) + 1; });
+        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([k, v]) => `- ${k}: ${v}`).join('\n');
+    };
+    const open = tasks.filter(t => !['Done', 'Rejected'].includes(getReportStage(t)));
+    const openByPic = {};
+    open.forEach(t => String(getAssigneeDisplay(t.assignee) || 'Unassigned').split(',').map(n => n.trim()).filter(Boolean)
+        .forEach(n => { openByPic[n] = (openByPic[n] || 0) + 1; }));
+    const picLines = Object.entries(openByPic).sort((a, b) => b[1] - a[1]).map(([k, v]) => `- ${k}: ${v}`).join('\n');
+    const overdueOpen = open.filter(t => { const d = getDateOnlyDiffDays(getTaskClientDeadline(t)); return d !== null && d < 0; }).length;
+
+    return `## Snapshot (at export time)
+By stage:
+${countBy(getReportStage)}
+
+Open (not done/rejected): ${open.length} — of which past client deadline: ${overdueOpen}
+
+By region:
+${countBy(t => t.region)}
+
+By request type:
+${countBy(t => getRequestTypeMeta(t).label)}
+
+Open tasks per PIC:
+${picLines || '- None'}
+`;
+}
+
 function buildReportContext(tasks) {
     const region = isSuperAdmin ? currentRegionFilter : userRegion;
     const generatedAt = new Date().toLocaleString('en-MY');
@@ -14853,16 +14895,20 @@ function buildReportContext(tasks) {
 
 Generated: ${generatedAt}
 Region filter: ${region}
-Total tasks exported: ${tasks.length}
+Total tasks exported: ${tasks.length} (ALL stages — pending approval, in progress, client review, awaiting client, and done)
 
+${buildReportSnapshot(tasks)}
 ## How To Use With ChatGPT
-Upload all CSV files together and ask ChatGPT to analyze capacity, bottlenecks, productivity, and hiring justification.
+Unzip and upload all files together (or upload the .zip directly if your ChatGPT plan accepts it).
 
-Suggested prompt:
+Prompt for a management / boss summary:
+"You are a creative operations analyst preparing a one-page update for senior management. Using these files from our creative request system, write: (1) a headline summary of the period — volume, completion, and anything at risk; (2) current workload — what's pending approval, in progress, in client review and awaiting client (use the 'stage' column in tasks.csv), and which open tasks are past the client deadline; (3) team capacity — open tasks per PIC and who is overloaded; (4) main bottlenecks, separating creative-side delays from client/requester-side delays; (5) top 3 recommendations. Use tables where helpful, keep it concise, and back every claim with numbers from the data."
+
+Prompt for a deeper capacity / hiring analysis:
 "You are a creative operations analyst. Analyze these exported files from our creative request system. Identify workload trends, bottlenecks by status, internal due date risks, client waiting delays, overdue patterns, revision causes, team capacity issues, and recommendations to improve speed, productivity, and efficiency. Separate creative execution delays from client/requester-blocked delays. Then propose whether team expansion is justified, which roles/regions need support, and what workflow changes would give the highest impact."
 
 ## Files
-- tasks.csv: One row per task with lifecycle, status, client deadline, internal due date, Client Review aging, Awaiting Client follow-up, assignee, revision, latest note, monthly progress, and completion metrics.
+- tasks.csv: One row per task (every stage, not just done) with a plain 'stage' column, lifecycle, status, client deadline, internal due date, Client Review aging, Awaiting Client follow-up, assignee, revision, latest note, monthly progress, and completion metrics.
 - activity_logs.csv: Admin/system tracking timeline of actions.
 - notes_history.csv: Full public task notes thread with author/status/time.
 - team_summary.csv: Workload, completion, internal overdue, client-blocked, and missing-internal-due summary by PIC.
@@ -14904,6 +14950,7 @@ async function exportReportPack() {
             requester_name: task.requester_name,
             region: task.region,
             job_type: task.job_type,
+            stage: getReportStage(task),
             status: task.status,
             work_status: getWorkStatusLabel(task.work_status || 'Not started'),
             work_status_key: normalizeWorkStatus(task.work_status || 'Not started').replace(/\s+/g, '_'),
@@ -15004,15 +15051,35 @@ async function exportReportPack() {
     const agingRows = buildStatusAgingRows(tasks);
     const dataGapRows = getReportingDataGapRows(tasks);
 
-    downloadTextFile(`${base}_tasks.csv`, rowsToCSV(Object.keys(taskRows[0]), taskRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_activity_logs.csv`, rowsToCSV(['job_id', 'action_type', 'actor_name', 'old_value', 'new_value', 'note_text', 'meta', 'created_at'], activityRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_notes_history.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'assignee', 'actor_name', 'status_at_time', 'note_text', 'created_at'], noteRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_team_summary.csv`, rowsToCSV(['pic', 'active_tasks', 'completed_tasks', 'overdue_tasks', 'client_blocked_tasks', 'client_review_aging_tasks', 'missing_internal_due_tasks', 'total_revisions', 'avg_completion_hours', 'job_types', 'regions'], teamRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_status_aging.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'started_at', 'ended_at', 'duration_hours', 'duration_working_days', 'source'], agingRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_data_gaps.csv`, rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'work_status', 'missing_fields', 'recommendation'], dataGapRows), 'text/csv;charset=utf-8;');
-    downloadTextFile(`${base}_report_context.md`, buildReportContext(tasks), 'text/markdown;charset=utf-8;');
+    const files = {
+        'tasks.csv': rowsToCSV(Object.keys(taskRows[0]), taskRows),
+        'activity_logs.csv': rowsToCSV(['job_id', 'action_type', 'actor_name', 'old_value', 'new_value', 'note_text', 'meta', 'created_at'], activityRows),
+        'notes_history.csv': rowsToCSV(['job_id', 'client_name', 'project_title', 'assignee', 'actor_name', 'status_at_time', 'note_text', 'created_at'], noteRows),
+        'team_summary.csv': rowsToCSV(['pic', 'active_tasks', 'completed_tasks', 'overdue_tasks', 'client_blocked_tasks', 'client_review_aging_tasks', 'missing_internal_due_tasks', 'total_revisions', 'avg_completion_hours', 'job_types', 'regions'], teamRows),
+        'status_aging.csv': rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'started_at', 'ended_at', 'duration_hours', 'duration_working_days', 'source'], agingRows),
+        'data_gaps.csv': rowsToCSV(['job_id', 'client_name', 'project_title', 'status', 'work_status', 'missing_fields', 'recommendation'], dataGapRows),
+        'report_context.md': buildReportContext(tasks)
+    };
 
-    showNotification('Report Pack Exported', 'Upload the files to ChatGPT');
+    // One .zip instead of seven separate downloads. Falls back to individual files if JSZip
+    // (loaded from cdnjs in index.html) didn't load.
+    if (typeof JSZip !== 'undefined') {
+        const zip = new JSZip();
+        // BOM so Excel opens the CSVs as UTF-8 (names/notes with non-Latin characters).
+        Object.entries(files).forEach(([name, content]) => zip.file(name, name.endsWith('.csv') ? '\uFEFF' + content : content));
+        const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${base}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    } else {
+        Object.entries(files).forEach(([name, content]) => downloadTextFile(`${base}_${name}`, content, name.endsWith('.md') ? 'text/markdown;charset=utf-8;' : 'text/csv;charset=utf-8;'));
+    }
+
+    showNotification('Report Pack Exported', `All ${tasks.length} tasks (every stage) — upload to ChatGPT`);
 }
 
 // ========================================================
