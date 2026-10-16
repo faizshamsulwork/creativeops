@@ -3211,24 +3211,68 @@ function addSizePack(packKey) {
     card.dataset.pack = packKey;
     card.innerHTML = `
         <div class="size-pack-card-head">
-            <strong>${escapeHtml(pack.label)}</strong>
+            <div class="size-pack-title"><strong>${escapeHtml(pack.label)}</strong><span class="size-pack-count">Pick the sizes you need</span></div>
             <div class="size-pack-card-actions">
                 <button type="button" onclick="setSizePackSelection('${packKey}', true)">Select all</button>
                 <button type="button" onclick="setSizePackSelection('${packKey}', false)">Clear</button>
                 <button type="button" class="size-pack-remove" onclick="removeSizePack('${packKey}')" title="Remove ${escapeHtml(pack.label)}" aria-label="Remove ${escapeHtml(pack.label)}"><i data-lucide="x"></i></button>
             </div>
         </div>
-        <div class="size-pack-hint">Choose the sizes you need:</div>
         <div class="size-chip-list">
-            ${pack.sizes.map(([value, short]) => `<label class="size-chip"><input type="checkbox" value="${escapeHtml(value)}" onchange="this.parentElement.classList.toggle('selected', this.checked)"><span>${escapeHtml(short)}</span></label>`).join('')}
+            ${pack.sizes.map(([value, short]) => `<label class="size-chip"><input type="checkbox" value="${escapeHtml(value)}" onchange="this.parentElement.classList.toggle('selected', this.checked); updateSizePackCount('${packKey}')"><span>${escapeHtml(short)}</span></label>`).join('')}
         </div>
-        <input type="text" class="size-pack-extra" list="sizeOptions" placeholder="Other ${escapeHtml(pack.label)} sizes (optional, comma separated)">
-        <div class="size-pack-fields">
-            <input type="text" class="size-pack-detail" placeholder="Detail (blank = main detail)">
-            <input type="text" class="size-pack-notes" placeholder="Notes (e.g. 2 variations each)">
+        <input type="text" class="size-pack-notes" placeholder="Notes for ${escapeHtml(pack.label)} (optional, e.g. 2 variations each)">
+        <button type="button" class="size-pack-more-toggle" onclick="toggleSizePackMore(this)" aria-expanded="false"><i data-lucide="chevron-down"></i> More options</button>
+        <div class="size-pack-more" hidden>
+            <input type="text" class="size-pack-extra" list="sizeOptions" placeholder="Other ${escapeHtml(pack.label)} sizes, comma separated">
+            <input type="text" class="size-pack-detail" placeholder="Different detail for ${escapeHtml(pack.label)} only">
         </div>`;
     container.appendChild(card);
+    refreshCustomSizeSection();
     refreshIcons();
+}
+
+function updateSizePackCount(packKey) {
+    const card = getSizePackCard(packKey);
+    if (!card) return;
+    const total = card.querySelectorAll('.size-chip input').length;
+    const picked = card.querySelectorAll('.size-chip input:checked').length;
+    const count = card.querySelector('.size-pack-count');
+    count.textContent = picked ? `${picked} of ${total} selected` : 'Pick the sizes you need';
+    count.classList.toggle('has-selection', picked > 0);
+}
+
+function toggleSizePackMore(button) {
+    const panel = button.nextElementSibling;
+    const open = panel.hidden;
+    panel.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    button.classList.toggle('open', open);
+}
+
+// Once a platform card is in use, the free-form size rows fold away behind one button unless
+// someone has already typed into them — keeps the deliverables area from looking like a wall of inputs.
+let customSizeExpanded = false;
+function refreshCustomSizeSection() {
+    const section = document.getElementById('customSizeSection');
+    if (!section) return;
+    const hasPacks = Boolean(document.querySelector('#sizePackCards .size-pack-card'));
+    const rowsInUse = [...document.querySelectorAll('#dynamicSizeContainer input')].some(input => input.value.trim());
+    const collapsed = hasPacks && !rowsInUse && !customSizeExpanded;
+    section.style.display = collapsed ? 'none' : '';
+    document.getElementById('customSizeLabel').textContent = hasPacks ? 'Other sizes' : 'Sizes';
+    document.getElementById('addCustomSizeLabel').textContent = collapsed ? 'Add a custom size' : 'Add Another Deliverable';
+}
+
+function handleAddCustomSize() {
+    const section = document.getElementById('customSizeSection');
+    if (section && section.style.display === 'none') {
+        customSizeExpanded = true;
+        refreshCustomSizeSection();
+        section.querySelector('.dyn-size-input')?.focus();
+        return;
+    }
+    addSizeRow();
 }
 
 function setSizePackSelection(packKey, selected) {
@@ -3236,11 +3280,13 @@ function setSizePackSelection(packKey, selected) {
         input.checked = selected;
         input.parentElement.classList.toggle('selected', selected);
     });
+    updateSizePackCount(packKey);
 }
 
 function removeSizePack(packKey) {
     getSizePackCard(packKey)?.remove();
     setSizePackJobType(packKey, false);
+    refreshCustomSizeSection();
 }
 
 function handleSizePackJobType(checkbox, packKey) {
@@ -3250,6 +3296,7 @@ function handleSizePackJobType(checkbox, packKey) {
     const touched = card && ([...card.querySelectorAll('.size-chip input')].some(input => input.checked)
         || [...card.querySelectorAll('input[type="text"]')].some(input => input.value.trim()));
     if (card && !touched) card.remove();
+    refreshCustomSizeSection();
 }
 
 function getSizePackSelections() {
@@ -3279,8 +3326,11 @@ function resetFormUI() {
     const sizeContainer = document.getElementById('dynamicSizeContainer');
     if (document.getElementById('sizeMainDetail')) document.getElementById('sizeMainDetail').value = '';
     if (document.getElementById('sizePackCards')) document.getElementById('sizePackCards').innerHTML = '';
+    customSizeExpanded = false;
     if (document.getElementById('pRefLink')) document.getElementById('pRefLink').value = '';
     sizeContainer.innerHTML = `<div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;"><input type="text" class="dyn-size-detail" placeholder="Detail (blank = main detail)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"></div>`;
+
+    refreshCustomSizeSection();
 
     // 🌟 LOGIK BARU: Kosongkan 4 Kotak Brief Berstruktur + Copywriting Style
     if (document.getElementById('briefHook')) {

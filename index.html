@@ -842,15 +842,19 @@
                             </div>
                             <div class="input-group" id="deliverablesContainer" style="margin-bottom: 20px;">
                                 <label>Deliverables (Details, Size & Format)</label>
-                                <input type="text" id="sizeMainDetail" class="size-main-detail" placeholder="Main detail — applies to every pack and size (e.g. Raya Sale 50% Key Visual)">
+                                <div class="size-main-field">
+                                    <label for="sizeMainDetail">Main detail <small>— used for every size unless you change it</small></label>
+                                    <input type="text" id="sizeMainDetail" class="size-main-detail" placeholder="e.g. Raya Sale 50% Key Visual">
+                                </div>
                                 <div class="size-pack-bar">
-                                    <span>Add platform:</span>
+                                    <span>Ad platform sizes</span>
                                     <button type="button" class="size-pack-btn" onclick="addSizePack('pmax')"><i data-lucide="plus"></i> PMAX</button>
                                     <button type="button" class="size-pack-btn" onclick="addSizePack('meta')"><i data-lucide="plus"></i> Meta</button>
                                     <button type="button" class="size-pack-btn" onclick="addSizePack('gdn')"><i data-lucide="plus"></i> GDN</button>
                                 </div>
                                 <div id="sizePackCards"></div>
-                                <div class="size-custom-label">Other / custom sizes</div>
+                                <div id="customSizeSection">
+                                <div class="size-custom-label" id="customSizeLabel">Sizes</div>
                                 <div id="dynamicSizeContainer">
                                     <div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
                                         <input type="text" class="dyn-size-detail" placeholder="Detail (blank = main detail)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
@@ -858,7 +862,8 @@
                                         <input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                                     </div>
                                 </div>
-                                <button type="button" onclick="addSizeRow()" style="background: transparent; color: var(--link-color); border: 1px dashed var(--border-main); padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 5px; width: 100%; transition: 0.2s;"><i data-lucide="plus" style="width: 16px;"></i> Add Another Deliverable</button>
+                                </div>
+                                <button type="button" id="addCustomSizeBtn" onclick="handleAddCustomSize()" style="background: transparent; color: var(--link-color); border: 1px dashed var(--border-main); padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; display: flex; justify-content: center; align-items: center; gap: 5px; width: 100%; transition: 0.2s;"><i data-lucide="plus" style="width: 16px;"></i> <span id="addCustomSizeLabel">Add Another Deliverable</span></button>
                                 <datalist id="sizeOptions">
                                     <option value="1080 x 1080px (Square Feed / Carousel)"></option><option value="1080 x 1350px (IG Portrait)"></option><option value="1080 x 1920px (IG Story / Reels / TikTok)"></option><option value="1200 x 628px (FB Link / LinkedIn Post)"></option><option value="1920 x 1080px (YouTube Thumbnail)"></option>
                                     <option value="300 x 250px (Medium Rectangle)"></option><option value="728 x 90px (Leaderboard)"></option><option value="160 x 600px (Wide Skyscraper)"></option><option value="300 x 600px (Half Page)"></option><option value="1920 x 1080px (Web Banner)"></option>
