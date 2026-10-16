@@ -3149,52 +3149,120 @@ function resetRequestGateway() {
     if (shootingArea) shootingArea.style.display = 'none';
 }
 
-// One click fills every size an ad platform needs, so the requester types the detail once
-// (in #sizeMainDetail) instead of once per size. Sizes stay one row each, so the saved brief
-// keeps the same "[DELIVERABLES REQUIRED]" one-bullet-per-size format as before.
+// Each ad platform is one card: the requester ticks only the sizes they actually need (nothing is
+// pre-ticked), types the detail once (or leaves it to the main detail), and the brief stores the
+// pack as one grouped bullet with a sub-line per chosen size.
 const DELIVERABLE_SIZE_PACKS = {
-    pmax: [
-        '1200 x 628px (PMAX Landscape 1.91:1)',
-        '1200 x 1200px (PMAX Square 1:1)',
-        '960 x 1200px (PMAX Portrait 4:5)',
-        '1200 x 1200px (PMAX Logo Square)',
-        '1200 x 300px (PMAX Logo Landscape 4:1)',
-        'PMAX Video 16:9 / 1:1 / 9:16 (min 10s)'
-    ],
-    meta: [
-        '1080 x 1080px (Square Feed / Carousel)',
-        '1080 x 1350px (IG Portrait)',
-        '1080 x 1920px (IG Story / Reels / TikTok)'
-    ],
-    gdn: [
-        '300 x 250px (Medium Rectangle)',
-        '336 x 280px (Large Rectangle)',
-        '728 x 90px (Leaderboard)',
-        '300 x 600px (Half Page)',
-        '160 x 600px (Wide Skyscraper)',
-        '320 x 50px (Mobile Leaderboard)'
-    ]
+    pmax: {
+        label: 'PMAX',
+        jobType: 'PMAX (Performance Max)',
+        sizes: [
+            ['1200 x 628px (Landscape 1.91:1)', '1200×628 · Landscape'],
+            ['1200 x 1200px (Square 1:1)', '1200×1200 · Square'],
+            ['960 x 1200px (Portrait 4:5)', '960×1200 · Portrait'],
+            ['1200 x 1200px (Logo 1:1)', 'Logo 1:1'],
+            ['1200 x 300px (Logo 4:1)', 'Logo 4:1'],
+            ['Video 16:9 / 1:1 / 9:16 (min 10s)', 'Video 16:9 · 1:1 · 9:16']
+        ]
+    },
+    meta: {
+        label: 'Meta',
+        jobType: 'Meta Ads',
+        sizes: [
+            ['1080 x 1080px (Square Feed / Carousel)', '1080×1080 · Feed'],
+            ['1080 x 1350px (Portrait 4:5)', '1080×1350 · Portrait'],
+            ['1080 x 1920px (Story / Reels 9:16)', '1080×1920 · Story / Reels']
+        ]
+    },
+    gdn: {
+        label: 'GDN',
+        jobType: 'GDN Display',
+        sizes: [
+            ['300 x 250px (Medium Rectangle)', '300×250'],
+            ['336 x 280px (Large Rectangle)', '336×280'],
+            ['728 x 90px (Leaderboard)', '728×90'],
+            ['300 x 600px (Half Page)', '300×600'],
+            ['160 x 600px (Wide Skyscraper)', '160×600'],
+            ['320 x 50px (Mobile Leaderboard)', '320×50']
+        ]
+    }
 };
 
+function getSizePackCard(packKey) {
+    return document.querySelector(`#sizePackCards .size-pack-card[data-pack="${packKey}"]`);
+}
+
+function setSizePackJobType(packKey, checked) {
+    const jobType = DELIVERABLE_SIZE_PACKS[packKey]?.jobType;
+    const checkbox = jobType ? [...document.querySelectorAll('#jobTypes input[type="checkbox"]')].find(cb => cb.value === jobType) : null;
+    if (checkbox) checkbox.checked = checked;
+}
+
 function addSizePack(packKey) {
-    const sizes = DELIVERABLE_SIZE_PACKS[packKey] || [];
-    const container = document.getElementById('dynamicSizeContainer');
-    if (!container || !sizes.length) return;
-    const existing = new Set([...container.querySelectorAll('.dyn-size-input')].map(input => input.value.trim().toLowerCase()).filter(Boolean));
-    sizes.forEach(size => {
-        if (existing.has(size.toLowerCase())) return;
-        // Reuse the blank starter row instead of leaving an empty line above the pack.
-        const blankRow = [...container.querySelectorAll('.size-row')].find(row =>
-            [...row.querySelectorAll('input')].every(input => !input.value.trim())
-        );
-        if (blankRow) blankRow.querySelector('.dyn-size-input').value = size;
-        else addSizeRow(size);
+    const pack = DELIVERABLE_SIZE_PACKS[packKey];
+    const container = document.getElementById('sizePackCards');
+    if (!pack || !container) return;
+    setSizePackJobType(packKey, true);
+    const existing = getSizePackCard(packKey);
+    if (existing) { existing.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+
+    const card = document.createElement('div');
+    card.className = 'size-pack-card';
+    card.dataset.pack = packKey;
+    card.innerHTML = `
+        <div class="size-pack-card-head">
+            <strong>${escapeHtml(pack.label)}</strong>
+            <div class="size-pack-card-actions">
+                <button type="button" onclick="setSizePackSelection('${packKey}', true)">Select all</button>
+                <button type="button" onclick="setSizePackSelection('${packKey}', false)">Clear</button>
+                <button type="button" class="size-pack-remove" onclick="removeSizePack('${packKey}')" title="Remove ${escapeHtml(pack.label)}" aria-label="Remove ${escapeHtml(pack.label)}"><i data-lucide="x"></i></button>
+            </div>
+        </div>
+        <div class="size-pack-hint">Choose the sizes you need:</div>
+        <div class="size-chip-list">
+            ${pack.sizes.map(([value, short]) => `<label class="size-chip"><input type="checkbox" value="${escapeHtml(value)}" onchange="this.parentElement.classList.toggle('selected', this.checked)"><span>${escapeHtml(short)}</span></label>`).join('')}
+        </div>
+        <input type="text" class="size-pack-extra" list="sizeOptions" placeholder="Other ${escapeHtml(pack.label)} sizes (optional, comma separated)">
+        <div class="size-pack-fields">
+            <input type="text" class="size-pack-detail" placeholder="Detail (blank = main detail)">
+            <input type="text" class="size-pack-notes" placeholder="Notes (e.g. 2 variations each)">
+        </div>`;
+    container.appendChild(card);
+    refreshIcons();
+}
+
+function setSizePackSelection(packKey, selected) {
+    getSizePackCard(packKey)?.querySelectorAll('.size-chip input').forEach(input => {
+        input.checked = selected;
+        input.parentElement.classList.toggle('selected', selected);
     });
-    document.getElementById('sizeMainDetail')?.focus();
+}
+
+function removeSizePack(packKey) {
+    getSizePackCard(packKey)?.remove();
+    setSizePackJobType(packKey, false);
 }
 
 function handleSizePackJobType(checkbox, packKey) {
-    if (checkbox?.checked) addSizePack(packKey);
+    if (checkbox?.checked) { addSizePack(packKey); return; }
+    // Unticking the job type only drops the card if nothing in it has been filled in yet.
+    const card = getSizePackCard(packKey);
+    const touched = card && ([...card.querySelectorAll('.size-chip input')].some(input => input.checked)
+        || [...card.querySelectorAll('input[type="text"]')].some(input => input.value.trim()));
+    if (card && !touched) card.remove();
+}
+
+function getSizePackSelections() {
+    return [...document.querySelectorAll('#sizePackCards .size-pack-card')].map(card => {
+        const pack = DELIVERABLE_SIZE_PACKS[card.dataset.pack] || { label: card.dataset.pack };
+        const extra = card.querySelector('.size-pack-extra').value.split(',').map(size => size.trim()).filter(Boolean);
+        return {
+            label: pack.label,
+            sizes: [...[...card.querySelectorAll('.size-chip input:checked')].map(input => input.value), ...extra],
+            detail: card.querySelector('.size-pack-detail').value.trim(),
+            notes: card.querySelector('.size-pack-notes').value.trim()
+        };
+    });
 }
 
 function addSizeRow(size = '') {
@@ -3210,6 +3278,7 @@ function resetFormUI() {
     document.getElementById('mStatic').value = ''; document.getElementById('mVideo').value = ''; document.getElementById('mCarousel').value = ''; if(document.getElementById('mCaption')) document.getElementById('mCaption').value = ''; document.getElementById('pMonthlyPlan').value = '';
     const sizeContainer = document.getElementById('dynamicSizeContainer');
     if (document.getElementById('sizeMainDetail')) document.getElementById('sizeMainDetail').value = '';
+    if (document.getElementById('sizePackCards')) document.getElementById('sizePackCards').innerHTML = '';
     if (document.getElementById('pRefLink')) document.getElementById('pRefLink').value = '';
     sizeContainer.innerHTML = `<div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;"><input type="text" class="dyn-size-detail" placeholder="Detail (blank = main detail)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"></div>`;
 
@@ -12659,6 +12728,11 @@ async function submitRequest() {
         }
     }
 
+    if (currentRequestType === 'adhoc') {
+        const emptyPack = getSizePackSelections().find(pack => !pack.sizes.length);
+        if (emptyPack) return showAppleAlert("Choose Sizes", `Please choose at least one size for ${emptyPack.label}, or remove the ${emptyPack.label} card.`);
+    }
+
     const needsShoot = currentRequestType !== 'pitch' && document.getElementById('needsShootValue')?.value === 'yes';
 
     const submitBtn = document.getElementById('submitBtn');
@@ -12729,6 +12803,14 @@ async function submitRequest() {
         } else {
             types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
             const mainDetail = document.getElementById('sizeMainDetail') ? document.getElementById('sizeMainDetail').value.trim() : '';
+            // Sub-lines are indented with non-breaking spaces so the HTML brief view keeps the indent;
+            // trim() strips them, so getDeliverableLineCount() still counts each size as a deliverable.
+            getSizePackSelections().forEach(pack => {
+                if (!pack.sizes.length) return;
+                const noteStr = pack.notes ? ` *(Note: ${pack.notes})*` : '';
+                compiledSizes += `• ${pack.detail || mainDetail || 'N/A'} — ${pack.label} (${pack.sizes.length} size${pack.sizes.length === 1 ? '' : 's'})${noteStr}\n`;
+                pack.sizes.forEach(size => { compiledSizes += `\u00A0\u00A0\u00A0- ${size}\n`; });
+            });
             const sizeRows = document.querySelectorAll('.size-row');
             sizeRows.forEach(row => {
                 const sDetail = row.querySelector('.dyn-size-detail').value.trim();

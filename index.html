@@ -842,13 +842,15 @@
                             </div>
                             <div class="input-group" id="deliverablesContainer" style="margin-bottom: 20px;">
                                 <label>Deliverables (Details, Size & Format)</label>
+                                <input type="text" id="sizeMainDetail" class="size-main-detail" placeholder="Main detail — applies to every pack and size (e.g. Raya Sale 50% Key Visual)">
                                 <div class="size-pack-bar">
-                                    <span>Quick add:</span>
-                                    <button type="button" class="size-pack-btn" onclick="addSizePack('pmax')"><i data-lucide="plus"></i> PMAX pack</button>
-                                    <button type="button" class="size-pack-btn" onclick="addSizePack('meta')"><i data-lucide="plus"></i> Meta pack</button>
-                                    <button type="button" class="size-pack-btn" onclick="addSizePack('gdn')"><i data-lucide="plus"></i> GDN pack</button>
+                                    <span>Add platform:</span>
+                                    <button type="button" class="size-pack-btn" onclick="addSizePack('pmax')"><i data-lucide="plus"></i> PMAX</button>
+                                    <button type="button" class="size-pack-btn" onclick="addSizePack('meta')"><i data-lucide="plus"></i> Meta</button>
+                                    <button type="button" class="size-pack-btn" onclick="addSizePack('gdn')"><i data-lucide="plus"></i> GDN</button>
                                 </div>
-                                <input type="text" id="sizeMainDetail" class="size-main-detail" placeholder="Main detail — applies to every size below (e.g. Raya Sale 50% Key Visual)">
+                                <div id="sizePackCards"></div>
+                                <div class="size-custom-label">Other / custom sizes</div>
                                 <div id="dynamicSizeContainer">
                                     <div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
                                         <input type="text" class="dyn-size-detail" placeholder="Detail (blank = main detail)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
