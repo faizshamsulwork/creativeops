@@ -191,7 +191,7 @@ let calendarShowCompleted = localStorage.getItem('adtech_calendar_show_completed
 let selectedCalendarDateKey = '';
 let activeEditTaskState = null;
 let editModalLastFocus = null;
-const CORE_CREATIVE_NAMES = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
+const CORE_CREATIVE_NAMES = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Youke Yap", "Annisya Y.", "Herdina Syaki", "Nabila N.", "Liew Hui Yin"];
 const SUPER_ADMIN_NAMES = ["Faiz Shamsul"];
 const SUPER_ADMIN_LOGIN_PASSCODE = 'Act3030300!';
 const SUPER_ADMIN_VERIFIED_KEY = 'adtech_superadmin_verified';
@@ -602,6 +602,28 @@ function getCreativeOverrideNames() {
     } catch(e) {
         return [];
     }
+}
+
+// Creative status used to live only in the browser that set it (localStorage), so other admins
+// never saw those creatives in their assign list. Once team_members.is_creative exists, the
+// superadmin's browser pushes its local list up once per session so everyone shares it.
+let creativeOverridesSynced = false;
+async function syncCreativeOverridesToDatabase(teamData = []) {
+    if (creativeOverridesSynced || !hasSuperAdminAccess()) return;
+    const rows = Array.isArray(teamData) ? teamData : [];
+    if (!rows.length || !Object.prototype.hasOwnProperty.call(rows[0], 'is_creative')) return;
+    creativeOverridesSynced = true;
+    const overrideKeys = new Set(getCreativeOverrideNames().map(normalizeNameKey));
+    const names = rows
+        .filter(row => overrideKeys.has(normalizeNameKey(row.name)) && row.is_creative !== true)
+        .map(row => row.name);
+    if (!names.length) return;
+    const { error } = await supabaseClient.from('team_members').update({ is_creative: true }).in('name', names);
+    if (error) console.log('Creative flag sync failed:', error.message);
+    else names.forEach(name => {
+        const row = (globalTeamMembers || []).find(member => member.name === name);
+        if (row) row.is_creative = true;
+    });
 }
 
 function saveCreativeOverrideName(name) {
@@ -3791,6 +3813,7 @@ async function fetchSupabaseDataImpl(force = false, silent = false) {
                 if (!teamError && teamData) {
                     hydrateTeamCollections(teamData);
                     lastTeamMembersFetchAt = Date.now();
+                    syncCreativeOverridesToDatabase(teamData);
                 }
             } catch(e) { console.error("Gagal load senarai team:", e.message); }
         }
@@ -7862,7 +7885,8 @@ async function addTeamMember(event) {
         let { error } = await saveTeamMemberPayload(richPayload);
 
         if (error && /column|schema|cache|is_creative|department|role|team|is_admin|access_role|is_active|status/i.test(error.message || '')) {
-            const retry = await saveTeamMemberPayload(minimalPayload);
+            let retry = await saveTeamMemberPayload({ ...minimalPayload, is_creative: role === 'Creative' });
+            if (retry.error && /column|schema|cache|is_creative/i.test(retry.error.message || '')) retry = await saveTeamMemberPayload(minimalPayload);
             error = retry.error;
         }
 
@@ -7934,10 +7958,16 @@ async function submitSettingsMemberEdit(event, encodedOriginalName) {
             .eq('name', originalName);
 
         if (error && /column|schema|cache|is_creative|department|role|team|is_active|status/i.test(error.message || '')) {
-            const retry = await supabaseClient
+            let retry = await supabaseClient
                 .from('team_members')
-                .update(minimalPayload)
+                .update({ ...minimalPayload, is_creative: role === 'Creative' })
                 .eq('name', originalName);
+            if (retry.error && /column|schema|cache|is_creative/i.test(retry.error.message || '')) {
+                retry = await supabaseClient
+                    .from('team_members')
+                    .update(minimalPayload)
+                    .eq('name', originalName);
+            }
             error = retry.error;
         }
         if (error) throw new Error(error.message);
@@ -15609,6 +15639,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             if (teamData) {
                 hydrateTeamCollections(teamData);
                 lastTeamMembersFetchAt = Date.now();
+                syncCreativeOverridesToDatabase(teamData);
             }
         } catch(e) { console.log("Gagal load pre-boot team data:", e.message); }
 
