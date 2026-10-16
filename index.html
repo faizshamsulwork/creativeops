@@ -711,23 +711,28 @@
                     </div>
 
                     <div class="form-progress">
-                        <div class="step-indicator active" id="ind-1"><div class="step-dot"><i data-lucide="user"></i></div><span class="step-label">Requester</span></div>
-                        <div class="step-indicator" id="ind-2"><div class="step-dot"><i data-lucide="briefcase"></i></div><span class="step-label">Project</span></div>
+                        <div class="step-indicator active" id="ind-2"><div class="step-dot"><i data-lucide="briefcase"></i></div><span class="step-label">Project</span></div>
                         <div class="step-indicator" id="ind-3"><div class="step-dot"><i data-lucide="file-text"></i></div><span class="step-label">Brief</span></div>
                     </div>
 
-                    <div class="form-step active" id="step1">
-                        <h3 class="section-title">1. Requester Information</h3>
+                    <div class="form-step active" id="step2">
+                        <!-- Requester + region come from login, so they sit folded behind a one-line summary. -->
+                        <div class="requester-summary" id="requesterSummary">
+                            <i data-lucide="user"></i>
+                            <span>Requesting as <strong id="requesterSummaryName">—</strong> · <span id="requesterSummaryRegion"></span></span>
+                            <button type="button" class="requester-summary-change" onclick="toggleRequesterFields()">Change</button>
+                        </div>
+                        <div id="requesterFields" class="requester-fields" style="display: none;">
                         <div class="form-row">
                             <div class="input-group">
                                 <label>Requester Name</label>
-                                <select id="requesterName">
+                                <select id="requesterName" onchange="renderRequesterSummary()">
                                     <option value="">-- Select Name --</option>
                                     <optgroup label="Malaysia"><option value="Aaron">Aaron</option><option value="Abel">Abel</option><option value="Ain Sabrina">Ain Sabrina</option><option value="Alya">Alya</option><option value="Ammelia">Ammelia</option><option value="Angie Ng">Angie Ng</option><option value="Bernice Mah">Bernice Mah</option><option value="Boon Jie Xin">Boon Jie Xin</option><option value="Chong Jia Jun">Chong Jia Jun</option><option value="Darren (Boo Hwa Chian)">Darren (Boo Hwa Chian)</option><option value="Dillon Frederick Kugan">Dillon Frederick Kugan</option><option value="Faiz Shamsul">Faiz Shamsul</option><option value="Hao Yun">Hao Yun</option><option value="Joanne Yap">Joanne Yap</option><option value="Joseph Chong">Joseph Chong</option><option value="Kevin Tan">Kevin Tan</option><option value="Lina Leong">Lina Leong</option><option value="Nurul Iman Natasha">Nurul Iman Natasha</option><option value="Simon">Simon</option><option value="Steven">Steven</option><option value="Syaheerah Atiqah">Syaheerah Atiqah</option><option value="Wilson Ng Guan De">Wilson Ng Guan De</option><option value="Xuan Lee">Xuan Lee</option><option value="Zulkarnain Mustapa">Zulkarnain Mustapa</option></optgroup>
                                     <optgroup label="Indonesia"><option value="Angelina">Angelina</option><option value="Annisya Y.">Annisya Y.</option><option value="Arbaasya D.F.">Arbaasya D.F.</option><option value="Areta G.P.">Areta G.P.</option><option value="Ashley Karamoy">Ashley Karamoy</option><option value="Avira P.P.">Avira P.P.</option><option value="Ayu Aprillia">Ayu Aprillia</option><option value="Fadhil Zuhayr">Fadhil Zuhayr</option><option value="Fajar Abhirama">Fajar Abhirama</option><option value="Jap Hetty">Jap Hetty</option><option value="Joanne Chan">Joanne Chan</option><option value="Lutfan Allen R.">Lutfan Allen R.</option><option value="Marlina S.">Marlina S.</option><option value="Miftahul Fikri">Miftahul Fikri</option><option value="Moh. Reza P.">Moh. Reza P.</option><option value="Naufal Hilmy">Naufal Hilmy</option><option value="Tiffani Y.">Tiffani Y.</option><option value="Verincia T.">Verincia T.</option><option value="Youke Yap">Youke Yap</option></optgroup>
                                 </select>
                             </div>
-                            <div class="input-group"><label>Manual Name (If not in list)</label><input type="text" id="manualName" placeholder="Type name here"></div>
+                            <div class="input-group"><label>Manual Name (If not in list)</label><input type="text" id="manualName" placeholder="Type name here" oninput="renderRequesterSummary()"></div>
                         </div>
                         <div class="form-row">
                             <div class="input-group">
@@ -735,13 +740,8 @@
                                 <select id="pRegion"><option>Malaysia</option><option>Indonesia</option><option>Singapore</option><option>Hong Kong</option><option>China</option><option>Vietnam</option><option>Japan</option><option>Thailand</option><option>Philippines</option><option>Taiwan</option><option>South Korea</option><option>Australia</option><option>New Zealand</option></select>
                             </div>
                         </div>
-                        <div class="form-navigation" style="justify-content: flex-end;">
-                            <button class="btn-nav btn-next" onclick="goToStep(2)">Next Step <i data-lucide="arrow-right"></i></button>
                         </div>
-                    </div>
-
-                    <div class="form-step" id="step2">
-                        <h3 class="section-title">2. Project Details</h3>
+                        <h3 class="section-title">1. Project Details</h3>
                         <div class="form-row">
 
                             <div class="input-group" style="position: relative;">
@@ -757,7 +757,7 @@
 
                         </div>
 
-                        <h3 class="section-title" style="margin-top: 10px;">3. Job Specifications</h3>
+                        <h3 class="section-title" style="margin-top: 10px;">2. Job Specifications</h3>
 
                         <div id="jobTypesContainer">
                             <div class="input-group" style="margin-bottom: 20px;">
@@ -767,6 +767,9 @@
                                     <label class="check-item"><input type="checkbox" value="Video Production"> Video Production</label>
                                     <label class="check-item"><input type="checkbox" value="Copywriting/Article"> Copywriting/Article</label>
                                     <label class="check-item"><input type="checkbox" value="Presentation Deck"> Presentation Deck</label>
+                                    <label class="check-item"><input type="checkbox" value="PMAX (Performance Max)" onchange="handleSizePackJobType(this, 'pmax')"> PMAX / Performance Max</label>
+                                    <label class="check-item"><input type="checkbox" value="Meta Ads" onchange="handleSizePackJobType(this, 'meta')"> Meta Ads</label>
+                                    <label class="check-item"><input type="checkbox" value="GDN Display" onchange="handleSizePackJobType(this, 'gdn')"> GDN Display</label>
                                 </div>
                             </div>
                         </div>
@@ -807,14 +810,13 @@
                             </div>
                         </div>
 
-                        <div class="form-navigation">
-                            <button class="btn-nav btn-prev" onclick="goToStep(1)"><i data-lucide="arrow-left"></i> Back</button>
+                        <div class="form-navigation" style="justify-content: flex-end;">
                             <button class="btn-nav btn-next" onclick="goToStep(3)">Next Step <i data-lucide="arrow-right"></i></button>
                         </div>
                     </div>
 
                     <div class="form-step" id="step3">
-                        <h3 class="section-title">4. Creative Brief & Timeline</h3>
+                        <h3 class="section-title">3. Creative Brief & Timeline</h3>
 
                         <div id="standardBriefContainer">
                             <div class="input-group" style="margin-bottom: 20px;">
@@ -840,9 +842,16 @@
                             </div>
                             <div class="input-group" id="deliverablesContainer" style="margin-bottom: 20px;">
                                 <label>Deliverables (Details, Size & Format)</label>
+                                <div class="size-pack-bar">
+                                    <span>Quick add:</span>
+                                    <button type="button" class="size-pack-btn" onclick="addSizePack('pmax')"><i data-lucide="plus"></i> PMAX pack</button>
+                                    <button type="button" class="size-pack-btn" onclick="addSizePack('meta')"><i data-lucide="plus"></i> Meta pack</button>
+                                    <button type="button" class="size-pack-btn" onclick="addSizePack('gdn')"><i data-lucide="plus"></i> GDN pack</button>
+                                </div>
+                                <input type="text" id="sizeMainDetail" class="size-main-detail" placeholder="Main detail — applies to every size below (e.g. Raya Sale 50% Key Visual)">
                                 <div id="dynamicSizeContainer">
                                     <div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
-                                        <input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
+                                        <input type="text" class="dyn-size-detail" placeholder="Detail (blank = main detail)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                                         <input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                                         <input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                                     </div>
@@ -852,6 +861,8 @@
                                     <option value="1080 x 1080px (Square Feed / Carousel)"></option><option value="1080 x 1350px (IG Portrait)"></option><option value="1080 x 1920px (IG Story / Reels / TikTok)"></option><option value="1200 x 628px (FB Link / LinkedIn Post)"></option><option value="1920 x 1080px (YouTube Thumbnail)"></option>
                                     <option value="300 x 250px (Medium Rectangle)"></option><option value="728 x 90px (Leaderboard)"></option><option value="160 x 600px (Wide Skyscraper)"></option><option value="300 x 600px (Half Page)"></option><option value="1920 x 1080px (Web Banner)"></option>
                                     <option value="1920 x 1080px (FHD Video 16:9)"></option><option value="1080 x 1920px (Vertical Video 9:16)"></option><option value="3840 x 2160px (4K UHD)"></option>
+                                    <option value="1200 x 628px (PMAX Landscape 1.91:1)"></option><option value="1200 x 1200px (PMAX Square 1:1)"></option><option value="960 x 1200px (PMAX Portrait 4:5)"></option><option value="1200 x 1200px (PMAX Logo Square)"></option><option value="1200 x 300px (PMAX Logo Landscape 4:1)"></option>
+                                    <option value="336 x 280px (Large Rectangle)"></option><option value="320 x 50px (Mobile Leaderboard)"></option>
                                 </datalist>
                             </div>
                             <div class="input-group" id="structuredBriefContainer" style="margin-bottom: 20px; padding: 20px; background: rgba(14, 165, 233, 0.03); border: 1px dashed var(--link-color); border-radius: 12px;">
@@ -869,14 +880,19 @@
         </div>
 
         <div>
-            <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">3. Tone, Vibe & Reference Link <span style="color:var(--red);">*</span>
-                <div class="tooltip-container"><i data-lucide="help-circle" class="info-tooltip"></i><div class="tooltip-box">Corporate? Edgy? Minimalist? MUST include at least one reference link (Pinterest/Drive).</div></div>
+            <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">3. Tone & Vibe <span style="color:var(--red);">*</span>
+                <div class="tooltip-container"><i data-lucide="help-circle" class="info-tooltip"></i><div class="tooltip-box">Corporate? Edgy? Minimalist? Describe the look and feel.</div></div>
             </label>
-            <textarea id="briefVibe" rows="2" placeholder="e.g. Energetic and bold. Reference: https://pinterest.com/..." style="font-size: 0.9rem; padding: 10px;"></textarea>
+            <textarea id="briefVibe" rows="2" placeholder="e.g. Energetic and bold, dark background with neon highlights." style="font-size: 0.9rem; padding: 10px;"></textarea>
         </div>
 
         <div>
-            <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">4. Mandatory / "No-Go" Zone</label>
+            <label for="pRefLink" style="font-size: 0.8rem; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">4. Reference Link <span style="color:var(--red);">*</span></label>
+            <input type="text" id="pRefLink" placeholder="Pinterest / Drive / website link (https://...)" style="font-size: 0.9rem; padding: 10px;">
+        </div>
+
+        <div>
+            <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">5. Mandatory / "No-Go" Zone</label>
             <textarea id="briefMandatory" rows="2" placeholder="e.g. Must include new logo. DO NOT use the color red or cursive fonts." style="font-size: 0.9rem; padding: 10px;"></textarea>
         </div>
     </div>
@@ -924,7 +940,6 @@ Good Example: "We want to position the brand as the No.1 lifestyle choice for Ge
                                     *SLA: Minimum 5 working days required for the 1st Batch / First Draft.
                                 </small>
                             </div>
-                            <input type="hidden" id="pRefLink">
                         </div>
                         <!-- Content that needs a shoot: pick Yes and submitting chains straight into the Shooting
                              form (client/project/requester carried over), creating a linked Shooting ticket. -->

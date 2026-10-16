@@ -3088,7 +3088,31 @@ function selectRequestType(type) {
         badge.innerText = "AD-HOC REQUEST"; badge.style.color = "var(--accent)"; badge.style.borderColor = "var(--border-main)"; badge.style.background = "var(--bg-box)";
         updateDateLogic('Ad-Hoc');
     }
-    goToStep(1); window.scrollTo({ top: 0, behavior: 'smooth' });
+    renderRequesterSummary();
+    goToStep(2); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function getRequestFormRequesterName() {
+    return document.getElementById('requesterName')?.value || document.getElementById('manualName')?.value.trim() || '';
+}
+
+// Requester + region are already known from login, so step 1 is folded into a one-line summary;
+// the fields only open up when someone requests on behalf of a colleague (or nothing is set yet).
+function renderRequesterSummary() {
+    const name = getRequestFormRequesterName();
+    const region = document.getElementById('pRegion')?.value || userRegion || '';
+    const nameEl = document.getElementById('requesterSummaryName');
+    const regionEl = document.getElementById('requesterSummaryRegion');
+    if (nameEl) nameEl.textContent = name || 'Select your name';
+    if (regionEl) regionEl.textContent = region ? `${getFlag(region)} ${region}` : '';
+    const fields = document.getElementById('requesterFields');
+    if (fields && !name) fields.style.display = 'block';
+}
+
+function toggleRequesterFields() {
+    const fields = document.getElementById('requesterFields');
+    if (!fields) return;
+    fields.style.display = fields.style.display === 'none' ? 'block' : 'none';
 }
 
 function resetRequestGateway() {
@@ -3103,18 +3127,69 @@ function resetRequestGateway() {
     if (shootingArea) shootingArea.style.display = 'none';
 }
 
-function addSizeRow() {
+// One click fills every size an ad platform needs, so the requester types the detail once
+// (in #sizeMainDetail) instead of once per size. Sizes stay one row each, so the saved brief
+// keeps the same "[DELIVERABLES REQUIRED]" one-bullet-per-size format as before.
+const DELIVERABLE_SIZE_PACKS = {
+    pmax: [
+        '1200 x 628px (PMAX Landscape 1.91:1)',
+        '1200 x 1200px (PMAX Square 1:1)',
+        '960 x 1200px (PMAX Portrait 4:5)',
+        '1200 x 1200px (PMAX Logo Square)',
+        '1200 x 300px (PMAX Logo Landscape 4:1)',
+        'PMAX Video 16:9 / 1:1 / 9:16 (min 10s)'
+    ],
+    meta: [
+        '1080 x 1080px (Square Feed / Carousel)',
+        '1080 x 1350px (IG Portrait)',
+        '1080 x 1920px (IG Story / Reels / TikTok)'
+    ],
+    gdn: [
+        '300 x 250px (Medium Rectangle)',
+        '336 x 280px (Large Rectangle)',
+        '728 x 90px (Leaderboard)',
+        '300 x 600px (Half Page)',
+        '160 x 600px (Wide Skyscraper)',
+        '320 x 50px (Mobile Leaderboard)'
+    ]
+};
+
+function addSizePack(packKey) {
+    const sizes = DELIVERABLE_SIZE_PACKS[packKey] || [];
+    const container = document.getElementById('dynamicSizeContainer');
+    if (!container || !sizes.length) return;
+    const existing = new Set([...container.querySelectorAll('.dyn-size-input')].map(input => input.value.trim().toLowerCase()).filter(Boolean));
+    sizes.forEach(size => {
+        if (existing.has(size.toLowerCase())) return;
+        // Reuse the blank starter row instead of leaving an empty line above the pack.
+        const blankRow = [...container.querySelectorAll('.size-row')].find(row =>
+            [...row.querySelectorAll('input')].every(input => !input.value.trim())
+        );
+        if (blankRow) blankRow.querySelector('.dyn-size-input').value = size;
+        else addSizeRow(size);
+    });
+    document.getElementById('sizeMainDetail')?.focus();
+}
+
+function handleSizePackJobType(checkbox, packKey) {
+    if (checkbox?.checked) addSizePack(packKey);
+}
+
+function addSizeRow(size = '') {
     const container = document.getElementById('dynamicSizeContainer');
     const row = document.createElement('div'); row.className = 'size-row';
     row.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; animation: fadeIn 0.3s ease;';
-    row.innerHTML = `<input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: var(--red); cursor: pointer; padding: 0 5px; display: flex; align-items: center;"><i data-lucide="x" style="width: 18px;"></i></button>`;
+    row.innerHTML = `<input type="text" class="dyn-size-detail" placeholder="Detail (blank = main detail)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: var(--red); cursor: pointer; padding: 0 5px; display: flex; align-items: center;"><i data-lucide="x" style="width: 18px;"></i></button>`;
+    row.querySelector('.dyn-size-input').value = size;
     container.appendChild(row); refreshIcons();
 }
 
 function resetFormUI() {
     document.getElementById('mStatic').value = ''; document.getElementById('mVideo').value = ''; document.getElementById('mCarousel').value = ''; if(document.getElementById('mCaption')) document.getElementById('mCaption').value = ''; document.getElementById('pMonthlyPlan').value = '';
     const sizeContainer = document.getElementById('dynamicSizeContainer');
-    sizeContainer.innerHTML = `<div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;"><input type="text" class="dyn-size-detail" placeholder="Detail (e.g. Top 5 Performance)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"></div>`;
+    if (document.getElementById('sizeMainDetail')) document.getElementById('sizeMainDetail').value = '';
+    if (document.getElementById('pRefLink')) document.getElementById('pRefLink').value = '';
+    sizeContainer.innerHTML = `<div class="size-row" style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;"><input type="text" class="dyn-size-detail" placeholder="Detail (blank = main detail)" style="flex: 2; min-width: 150px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-input" list="sizeOptions" placeholder="Size (e.g. 1080x1080px)" style="flex: 1.5; min-width: 120px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"><input type="text" class="dyn-size-notes" placeholder="Notes (e.g. 2 sets)" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid var(--border-main); border-radius: 8px; background: var(--bg-input); color: var(--text-main);"></div>`;
 
     // 🌟 LOGIK BARU: Kosongkan 4 Kotak Brief Berstruktur + Copywriting Style
     if (document.getElementById('briefHook')) {
@@ -3132,16 +3207,16 @@ function resetFormUI() {
 }
 
 function goToStep(step) {
-    if (step === 2) {
-        const n1 = document.getElementById('requesterName').value; const n2 = document.getElementById('introManualName').value;
-        if (!n1 && !n2) return showAppleAlert("Incomplete Info", "Please tell us your name before proceeding.");
-    }
+    if (step < 2) step = 2; // the old requester step now lives at the top of step 2
     if (step === 3) {
+        if (!getRequestFormRequesterName()) {
+            document.getElementById('requesterFields').style.display = 'block';
+            return showAppleAlert("Incomplete Info", "Please tell us your name before proceeding.");
+        }
         const c = document.getElementById('pClient').value; const t = document.getElementById('pTitle').value;
         if (!c || !t) return showAppleAlert("Incomplete Info", "Please fill in Client Name and Project Title.");
     }
     document.querySelectorAll('.form-step').forEach(el => el.classList.remove('active')); document.getElementById('step' + step).classList.add('active');
-    document.getElementById('ind-1').className = 'step-indicator ' + (step >= 1 ? (step > 1 ? 'completed' : 'active') : '');
     document.getElementById('ind-2').className = 'step-indicator ' + (step >= 2 ? (step > 2 ? 'completed' : 'active') : '');
     document.getElementById('ind-3').className = 'step-indicator ' + (step >= 3 ? 'active' : '');
     refreshIcons();
@@ -12547,8 +12622,10 @@ async function submitRequest() {
             return showAppleAlert("Incomplete Brief", "Please select a Copywriting Tone, and fill in The Big Idea, Target Audience, and Tone & Vibe. Designers cannot read minds!");
         }
 
-        if (!vibe.includes('http') && !vibe.includes('www.')) {
-            return showAppleAlert("Missing Reference", "Please include a valid URL (http/www) in the 'Tone, Vibe & Reference' box. We need a visual reference!");
+        const refLink = document.getElementById('pRefLink') ? document.getElementById('pRefLink').value.trim() : '';
+        const hasUrl = value => value.includes('http') || value.includes('www.');
+        if (!hasUrl(refLink) && !hasUrl(vibe)) {
+            return showAppleAlert("Missing Reference", "Please paste a reference link (http/www) in the Reference Link box. We need a visual reference!");
         }
     }
 
@@ -12580,7 +12657,10 @@ async function submitRequest() {
         if (currentRequestType !== 'pitch') {
             const hook = document.getElementById('briefHook') ? document.getElementById('briefHook').value.trim() : '';
             const audience = document.getElementById('briefAudience') ? document.getElementById('briefAudience').value.trim() : '';
-            const vibe = document.getElementById('briefVibe') ? document.getElementById('briefVibe').value.trim() : '';
+            let vibe = document.getElementById('briefVibe') ? document.getElementById('briefVibe').value.trim() : '';
+            const refLink = document.getElementById('pRefLink') ? document.getElementById('pRefLink').value.trim() : '';
+            // Keep the link inside the brief too, so everything that reads [TONE, VIBE & REFERENCE] still sees it.
+            if (refLink && !vibe.includes(refLink)) vibe += `${vibe ? '\n' : ''}Reference: ${refLink}`;
             const mandatory = document.getElementById('briefMandatory') ? document.getElementById('briefMandatory').value.trim() : 'None';
             const copyStyle = document.getElementById('copyStyleInput') ? document.getElementById('copyStyleInput').value : 'Not specified';
 
@@ -12618,6 +12698,7 @@ async function submitRequest() {
 
         } else {
             types = Array.from(document.querySelectorAll('#jobTypes input:checked')).map(cb => cb.value).join(', ');
+            const mainDetail = document.getElementById('sizeMainDetail') ? document.getElementById('sizeMainDetail').value.trim() : '';
             const sizeRows = document.querySelectorAll('.size-row');
             sizeRows.forEach(row => {
                 const sDetail = row.querySelector('.dyn-size-detail').value.trim();
@@ -12627,12 +12708,17 @@ async function submitRequest() {
                 if (sDetail || sInput) {
                     // 🌟 FIX FORMAT: Gaya bullet point kemas & sembunyikan Note kalau kosong
                     let noteStr = (sNotes && sNotes !== '-') ? ` *(Note: ${sNotes})*` : '';
-                    let formatDetail = sDetail || 'N/A';
+                    let formatDetail = sDetail || mainDetail || 'N/A';
                     let formatSize = sInput ? ` — ${sInput}` : '';
 
                     compiledSizes += `• ${formatDetail}${formatSize}${noteStr}\n`;
                 }
             });
+        }
+
+        if (!compiledSizes && currentRequestType === 'adhoc') {
+            const mainDetail = document.getElementById('sizeMainDetail') ? document.getElementById('sizeMainDetail').value.trim() : '';
+            if (mainDetail) compiledSizes = `• ${mainDetail}\n`;
         }
 
         // Cantumkan brief mengikut jenis
@@ -12656,7 +12742,7 @@ async function submitRequest() {
         }
         const payload = {
             job_id: finalJobID, requester_name: name, region: region, client_name: client, project_title: projectTitle,
-            job_type: types, objective: objective, brief: fullBrief, deadline: deadline, client_deadline: deadline, original_client_deadline: deadline, internal_due_date: deadlinePlan.date || null, original_internal_due_date: deadlinePlan.date || null, internal_due_source: deadlinePlan.date ? 'system_generated' : null, internal_due_manually_adjusted: false, ref_link: document.getElementById('pRefLink').value,
+            job_type: types, objective: objective, brief: fullBrief, deadline: deadline, client_deadline: deadline, original_client_deadline: deadline, internal_due_date: deadlinePlan.date || null, original_internal_due_date: deadlinePlan.date || null, internal_due_source: deadlinePlan.date ? 'system_generated' : null, internal_due_manually_adjusted: false, ref_link: currentRequestType === 'pitch' ? '' : document.getElementById('pRefLink').value.trim(),
             remarks: document.getElementById('pRemarks').value, status: 'pending', assignee: 'Unassigned', playbook_link: '', work_status: 'Not started', revision: 0, approver: ''
         };
 

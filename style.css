@@ -1468,6 +1468,21 @@ html:not([data-theme="dark"]) .gateway-card.monthly:hover .gateway-icon {
 
 .form-step { display: none; animation: slideInRight 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .form-step.active { display: block; }
+
+.requester-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 20px; border: 1px solid var(--border-main); border-radius: 12px; background: var(--bg-box); color: var(--text-muted); font-size: 0.88rem; }
+.requester-summary i, .requester-summary svg { width: 16px; height: 16px; flex-shrink: 0; }
+.requester-summary strong { color: var(--text-strong); }
+.requester-summary-change { margin-left: auto; background: transparent; border: 1px solid var(--border-main); color: var(--link-color); border-radius: 8px; padding: 5px 12px; font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+.requester-fields { margin-bottom: 10px; }
+.size-pack-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.size-pack-bar > span { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); }
+.size-pack-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--bg-box); border: 1px solid var(--border-main); color: var(--link-color); border-radius: 999px; padding: 6px 12px; font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+.size-pack-btn i, .size-pack-btn svg { width: 14px; height: 14px; }
+/* Phones: the size (what makes PMAX rows different) gets its own full-width line above detail/notes. */
+@media (max-width: 600px) {
+    .size-row .dyn-size-input { order: -1; flex: 1 1 100% !important; }
+}
+.size-main-detail { width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid var(--link-color); border-radius: 8px; background: var(--bg-input); color: var(--text-main); }
 @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
 
 .section-title { font-size: 1.2rem; border-bottom: 1px solid var(--border-main); padding-bottom: 15px; margin-top: 0; margin-bottom: 25px; font-weight: 700; color: var(--text-strong); letter-spacing: -0.01em;}
