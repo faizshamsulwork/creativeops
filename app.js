@@ -528,6 +528,31 @@ function hasAdminAccess() {
     return Boolean(localStorage.getItem('adtech_lead_pin')) || hasAssignedAdminAccess();
 }
 
+// Superadmin sees every region; any other admin is scoped to their own country's requests.
+function isRegionScopedAdmin() {
+    return (hasAdminAccess() || isSuperAdmin) && !hasSuperAdminAccess();
+}
+
+// Admin scopes are Indonesia vs Malaysia; Malaysia (HQ) also owns blank, Global, Japan, Singapore etc.
+function getRegionScopeKey(region) {
+    return String(region || '').trim().toLowerCase() === 'indonesia' ? 'indonesia' : 'malaysia';
+}
+
+function getAdminScopeRegion() {
+    const member = getCurrentUserMember();
+    return String(member?.region || userRegion || 'Malaysia').trim();
+}
+
+function isTaskInMemberAdminRegion(task = {}, member = {}) {
+    if (isSuperAdminName(member?.name)) return true;
+    return getRegionScopeKey(task.region) === getRegionScopeKey(member?.region);
+}
+
+function isTaskInAdminRegionScope(task = {}) {
+    if (!isRegionScopedAdmin()) return true;
+    return getRegionScopeKey(task.region) === getRegionScopeKey(getAdminScopeRegion());
+}
+
 function syncAdminSessionFromProfile() {
     const userName = getCurrentUserName();
     const currentToken = localStorage.getItem('adtech_lead_pin');
@@ -2437,7 +2462,7 @@ function taskMatchesRegionFilter(task = {}, regionFilter = 'all') {
 
 function canCurrentUserViewTask(task = {}, options = {}) {
     const context = options.context || getCurrentUserAccessContext();
-    if (hasAdminAccess() || isSuperAdmin) return true;
+    if ((hasAdminAccess() || isSuperAdmin) && isTaskInAdminRegionScope(task)) return true;
     if (isTaskRequesterForUser(task, context)) return true;
     if (isTaskAssignedToUser(task, context)) return true;
     if (isTaskOtherRoleForUser(task, context)) return true;
@@ -2447,7 +2472,7 @@ function canCurrentUserViewTask(task = {}, options = {}) {
 function filterTasksForCurrentAccess(data = [], options = {}) {
     const rows = Array.isArray(data) ? data : [];
     const context = getCurrentUserAccessContext();
-    const viewerHasGlobalAccess = hasAdminAccess() || isSuperAdmin;
+    const viewerHasGlobalAccess = (hasAdminAccess() || isSuperAdmin) && !isRegionScopedAdmin();
     const regionFilter = options.regionFilter || currentRegionFilter || 'all';
 
     lastAssignedRegionVisibility = { hidden: [], visible: [] };
@@ -2464,6 +2489,12 @@ function filterTasksForCurrentAccess(data = [], options = {}) {
 
         return authorised && regionMatch;
     });
+}
+
+function buildAdminRegionScopeFilter() {
+    return getRegionScopeKey(getAdminScopeRegion()) === 'indonesia'
+        ? 'region.ilike.Indonesia'
+        : 'region.not.ilike.Indonesia,region.is.null';
 }
 
 function cleanPostgrestFilterValue(value) {
@@ -2498,7 +2529,17 @@ async function fetchCreativeRequestsForCurrentAccess() {
         .select('*')
         .order('created_at', { ascending: false });
 
-    if (hasAdminAccess() || isSuperAdmin) return await baseQuery();
+    if (hasAdminAccess() || isSuperAdmin) {
+        if (!isRegionScopedAdmin()) return await baseQuery();
+        // Region admins only pull their own country (plus rows they're personally on) so the
+        // other region's requests never leave the database — less egress, and filterTasksForCurrentAccess
+        // still re-checks every row client-side.
+        const scopeFilter = [buildAdminRegionScopeFilter(), buildLegacyCreativeRequestAccessFilter(['assignee', 'requester_name'])]
+            .filter(Boolean)
+            .join(',');
+        const scoped = await baseQuery().or(scopeFilter);
+        return scoped.error ? await baseQuery() : scoped;
+    }
 
     const fullRoleFields = ['assignee', 'requester_name', 'approver', 'client_follow_up_owner', 'follow_up_owner', 'owner', 'lead'];
     const knownLegacyFields = ['assignee', 'requester_name'];
@@ -2538,7 +2579,7 @@ async function fetchCreativeRequestsForCurrentAccess() {
 
 function filterTaskScopedRowsForCurrentAccess(rows = []) {
     const list = Array.isArray(rows) ? rows : [];
-    if (hasAdminAccess() || isSuperAdmin) return list;
+    if ((hasAdminAccess() || isSuperAdmin) && !isRegionScopedAdmin()) return list;
     const allowedJobIds = new Set((globalData || []).map(task => String(task.job_id || '')).filter(Boolean));
     return list.filter(row => allowedJobIds.has(String(row.job_id || '')));
 }
@@ -2591,7 +2632,7 @@ async function fetchShootReadinessSummaryForCurrentAccess() {
 async function fetchNoteCountsForCurrentAccess() {
     const authorisedJobIds = [...new Set((globalData || []).map(task => String(task.job_id || '')).filter(Boolean))];
     if (!authorisedJobIds.length) { noteCountByJobId = new Map(); return; }
-    const shouldNarrow = !(hasAdminAccess() || isSuperAdmin);
+    const shouldNarrow = !(hasAdminAccess() || isSuperAdmin) || isRegionScopedAdmin();
 
     try {
         let noteQuery = supabaseClient.from('task_note_logs').select('job_id');
@@ -3297,6 +3338,7 @@ function checkAdminUI() {
         adminOnlySettings.forEach(el => { el.disabled = false; el.classList.remove('disabled'); });
 
         isSuperAdmin = true;
+        applyAdminRegionScopeUI();
     } else {
         if (btn) {
             btn.innerHTML = '<i data-lucide="lock"></i> <span>Admin Access</span>';
@@ -3324,6 +3366,22 @@ function checkAdminUI() {
     renderSettingsAdminControls();
     if (typeof updateLiveClock === 'function') updateLiveClock();
     if (typeof refreshIcons === 'function') refreshIcons();
+}
+
+// Region-scoped admins only get the "All" toggle plus their own country; superadmin keeps every toggle.
+function applyAdminRegionScopeUI() {
+    const scoped = isRegionScopedAdmin();
+    const scopeKey = getRegionScopeKey(getAdminScopeRegion());
+    const toggles = { 't-my': 'Malaysia', 't-id': 'Indonesia', 't-gb': 'Global' };
+    Object.entries(toggles).forEach(([id, region]) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = (!scoped || getRegionScopeKey(region) === scopeKey) ? '' : 'none';
+    });
+    if (scoped && currentRegionFilter !== 'all' && getRegionScopeKey(currentRegionFilter) !== scopeKey) {
+        currentRegionFilter = 'all';
+        document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('t-all')?.classList.add('active');
+    }
 }
 
 /**
@@ -3761,7 +3819,7 @@ function removeTaskFromGlobalData(jobId) {
 // filtered only, with region filtering applied later at render time (the full sync populates it via
 // filterTasksForCurrentAccess(data, { regionFilter: 'all' }); mirror that here).
 function isTaskAuthorisedForCurrentAccess(task) {
-    return hasAdminAccess() || isSuperAdmin || canCurrentUserViewTask(task);
+    return canCurrentUserViewTask(task);
 }
 
 function upsertTaskIntoGlobalData(row) {
@@ -5437,7 +5495,7 @@ function findActiveTeamMemberByIdentity(identityValue) {
 
 function canMemberViewTask(task = {}, member = {}) {
     if (!member?.name) return false;
-    if (isAdminTeamMember(member) || isSuperAdminName(member.name)) return true;
+    if (isAdminTeamMember(member) && isTaskInMemberAdminRegion(task, member)) return true;
     const context = {
         name: member.name,
         member,
@@ -14488,7 +14546,7 @@ async function loadArchivedJobs() {
                     job_id: mapped.jobid || d.job_id || '', requester_name: mapped.requestername || mapped.name || mapped.requester || d.requester_name || '', region: mapped.region || d.region || '', client_name: mapped.clientname || mapped.client || d.client_name || '', project_title: mapped.projecttitle || mapped.title || d.project_title || '', job_type: mapped.jobtype || mapped.type || d.job_type || '', objective: mapped.objective || d.objective || '', brief: mapped.brief || d.brief || '', deadline: mapped.deadline || d.deadline || '', client_deadline: mapped.clientdeadline || d.client_deadline || mapped.deadline || d.deadline || '', original_client_deadline: mapped.originalclientdeadline || d.original_client_deadline || '', internal_due_date: mapped.internalduedate || d.internal_due_date || '', original_internal_due_date: mapped.originalinternalduedate || d.original_internal_due_date || '', completed_at: mapped.completedat || d.completed_at || '', ref_link: mapped.reflink || mapped.reference || d.ref_link || '', remarks: mapped.remarks || mapped.notes || d.remarks || '', status_notes: mapped.statusnotes || d.status_notes || '', status: (mapped.status || d.status || 'pending').toString().toLowerCase().trim(), assignee: mapped.assignee || mapped.pic || d.assignee || 'Unassigned', playbook_link: mapped.playbooklink || mapped.playbook || d.playbook_link || '', work_status: mapped.workstatus || mapped.progress || d.work_status || 'Not started', revision: mapped.revision || mapped.rev || d.revision || 0, approver: mapped.approver || d.approver || ''
                 };
             });
-            const combinedData = deduplicateTasks([...globalData, ...archived]);
+            const combinedData = deduplicateTasks([...globalData, ...archived.filter(isTaskAuthorisedForCurrentAccess)]);
             let doneData = combinedData.filter(d => String(d.status || '').toLowerCase() === 'approved' && String(d.work_status || '').toLowerCase() === 'done');
             doneData = sortDoneTasks(filterDataByRegion(doneData, isSuperAdmin ? currentRegionFilter : userRegion));
             const qD = document.getElementById('searchDone') ? document.getElementById('searchDone').value.toLowerCase() : '';
