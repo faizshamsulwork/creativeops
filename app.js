@@ -191,7 +191,7 @@ let calendarShowCompleted = localStorage.getItem('adtech_calendar_show_completed
 let selectedCalendarDateKey = '';
 let activeEditTaskState = null;
 let editModalLastFocus = null;
-const CORE_CREATIVE_NAMES = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Miftahul Fikri", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
+const CORE_CREATIVE_NAMES = ["Aaron", "Abel", "Alya", "Simon", "Steven", "Faiz Shamsul", "Youke Yap", "Annisya Y.", "Liew Hui Yin"];
 const SUPER_ADMIN_NAMES = ["Faiz Shamsul"];
 const SUPER_ADMIN_LOGIN_PASSCODE = 'Act3030300!';
 const SUPER_ADMIN_VERIFIED_KEY = 'adtech_superadmin_verified';
@@ -11106,7 +11106,7 @@ async function saveTaskNote(event, jobID) {
 
 function isIndonesiaCreativeName(name) {
     const cleanName = String(name || '').toLowerCase();
-    return ['annisya', 'miftahul', 'youke'].some(keyword => cleanName.includes(keyword));
+    return ['annisya', 'youke'].some(keyword => cleanName.includes(keyword));
 }
 
 function getCreativeTeamGroups() {
